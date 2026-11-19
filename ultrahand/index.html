@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>allto: Ultrahand</title>
+    <script src="../shared/allto.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header id="top">
+      <div id="alltoBar"></div>
+      <div class="topright"><span id="alltoChip"></span><span class="topnote">Design &amp; constraints · England</span></div>
+    </header>
+
+    <aside id="side">
+      <section class="intro">
+        <h1>Analyse a site</h1>
+        <p>Anywhere in England. Draw the red line, then see what is there.</p>
+      </section>
+
+      <section class="step">
+        <h3>1 · Find the place</h3>
+        <div class="search">
+          <input id="search" type="search" placeholder="Address, postcode or place" autocomplete="off" />
+          <button id="clearSearch" class="x" title="Clear search" hidden>×</button>
+        </div>
+        <ul id="results"></ul>
+        <div class="row between">
+          <button class="link" id="example">Or try an example: Castlefield, Manchester</button>
+          <button class="link strong" id="reset" title="Clear the search, red line and analysis">Start again</button>
+        </div>
+      </section>
+
+      <section class="step">
+        <h3>2 · Draw your site</h3>
+        <div class="sub-h">Red line</div>
+        <div class="row">
+          <button id="drawRed" class="solid redbtn">Draw red line</button>
+          <button id="editRed" class="ghost" disabled>Edit</button>
+          <button id="clearRed" class="ghost" disabled>Clear</button>
+        </div>
+        <label class="file">Import GeoJSON / KML<input id="importRed" type="file" accept=".geojson,.json,.kml" /></label>
+        <p class="hint" id="redHint">Click each corner of the site boundary. Double-click to finish.</p>
+        <p class="stat" id="redStat"></p>
+        <label class="inline">Proposed massing <input id="massing" type="number" min="0" max="300" step="1" value="0" /> m</label>
+
+        <div class="sub-h">Study area</div>
+        <div class="seg" id="studyMode">
+          <button data-mode="buffer" class="on">Around</button>
+          <button data-mode="walk">Walk</button>
+          <button data-mode="draw">Draw</button>
+        </div>
+        <div data-for="buffer"><input id="bufferM" type="range" min="50" max="800" step="25" value="200" /> <span id="bufferLbl" class="stat">200 m around the red line</span></div>
+        <div data-for="walk" hidden>
+          <div class="seg small" id="walkMin"><button data-v="5">5 min</button><button data-v="10" class="on">10 min</button><button data-v="15">15 min</button></div>
+        </div>
+        <div data-for="draw" hidden><button id="drawStudy" class="ghost">Draw study area</button></div>
+        <p class="stat" id="studyStat"></p>
+      </section>
+
+      <section class="step">
+        <h3>3 · Show what's here</h3>
+        <button id="analyse" class="solid" disabled>Analyse the site</button>
+        <p class="hint" id="progress"></p>
+      </section>
+
+      <section class="step" id="area" hidden></section>
+
+      <section class="step">
+        <h3>Drawings</h3>
+        <div class="row wrap">
+          <select id="axoMode"><option value="ortho">Axo: match the view</option><option value="oblique">Plan oblique (true axo)</option></select>
+          <label class="inline"><input id="optPlinth" type="checkbox" checked /> Plinth</label>
+          <label class="inline"><input id="optLabels" type="checkbox" /> Refs</label>
+        </div>
+        <div class="stack">
+          <button id="expAxo" class="outline" disabled>Axonometric (SVG)</button>
+          <button id="expAtlas" class="outline" disabled>Atlas sheet (SVG)</button>
+          <button id="expPlan" class="outline" disabled>Plan (SVG)</button>
+          <button id="expPng" class="outline">This view (PNG)</button>
+        </div>
+      </section>
+      <p class="fine">Drawn from open data. Not a measured survey or a flood risk assessment. Map © Mapbox © OpenStreetMap contributors. Designations: planning.data.gov.uk.</p>
+    </aside>
+
+    <main id="mapWrap">
+      <div id="map"></div>
+      <div id="toast" hidden></div>
+    </main>
+
+    <aside id="info">
+      <nav id="views" class="tabs">
+        <button data-view="plan" class="on">Plan</button>
+        <button data-view="3d">3D</button>
+        <button data-view="axo">Axonometric</button>
+        <button data-view="atlas">Atlas</button>
+        <button data-view="eye">Eye level</button>
+      </nav>
+      <div class="rot"><button id="rotL" title="Rotate 45° left">↺</button><span>Rotate</span><button id="rotR" title="Rotate 45° right">↻</button></div>
+
+      <div id="card" hidden></div>
+
+      <div id="drawingPanel">
+        <div class="sect-head"><h4>On the drawing</h4></div>
+        <p class="lead">Figure and ground</p>
+        <p class="sub">Existing buildings and streets. Add more from the layers below.</p>
+        <div class="bar"></div>
+        <div id="legend"></div>
+
+        <div class="sun">
+          <label class="check"><input id="sunOn" type="checkbox" checked /><span>Sun</span></label>
+          <p class="sub" id="sunStat"></p>
+          <div class="clock"><span id="sunClock">14:00</span><input id="sunDate" type="date" /></div>
+          <input id="sunTime" type="range" min="300" max="1320" step="15" value="840" />
+        </div>
+
+        <div class="sect-head"><h4 class="light">Add to the drawing</h4></div>
+        <div id="layers"></div>
+      </div>
+      <p class="fine">© Mapbox © OpenStreetMap contributors · planning.data.gov.uk · Walking times: Mapbox</p>
+    </aside>
+
+    <svg id="leader" aria-hidden="true"></svg>
+    <div id="passport" hidden></div>
+    <div id="exportView" hidden></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

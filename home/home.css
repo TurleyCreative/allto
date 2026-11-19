@@ -1,0 +1,10 @@
+.products { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin: 26px 0; }
+.product { text-decoration: none; display: flex; flex-direction: column; gap: 6px; border-top: 5px solid var(--accent); transition: transform 0.15s, box-shadow 0.15s; }
+.product:hover { transform: translateY(-2px); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.07); }
+.product h2 { margin: 6px 0 0; }
+.product p { margin: 0 0 10px; flex: 1; }
+.product .tag { align-self: flex-start; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 22%, white); }
+.product .go { font-weight: 600; font-size: 14px; }
+.example { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.example p { margin: 0 0 12px; }
+@media (max-width: 860px) { .products { grid-template-columns: 1fr; } }
