@@ -58,6 +58,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 .ghost:hover:not(:disabled), .outline:hover:not(:disabled) { border-color: var(--ink); }
 .outline { border: 1px solid var(--ink); padding: 11px; font-size: 13px; font-weight: 600; letter-spacing: var(--track); text-align: center; }
 .link { font-size: 12.5px; color: var(--muted); text-decoration: underline; text-underline-offset: 4px; padding: 4px 0; text-align: left; }
+.file + .link { display: block; margin-top: 2px; }
 .link.strong { white-space: nowrap; font-size: 12.5px; font-weight: 700; letter-spacing: var(--track); color: var(--ink); text-decoration-thickness: 1px; }
 .link:hover { color: var(--ink); }
 .seg { display: flex; border: 1px solid var(--ink); margin-bottom: 10px; }

@@ -43,6 +43,7 @@
           <button id="clearRed" class="ghost" disabled>Clear</button>
         </div>
         <label class="file">Import GeoJSON / KML<input id="importRed" type="file" accept=".geojson,.json,.kml" /></label>
+        <button class="link" id="quickBox">No red line? Drag a quick box for the study area</button>
         <p class="hint" id="redHint">Click each corner of the site boundary. Double-click to finish.</p>
         <p class="stat" id="redStat"></p>
         <label class="inline">Proposed massing <input id="massing" type="number" min="0" max="300" step="1" value="0" /> m</label>
@@ -52,12 +53,14 @@
           <button data-mode="buffer" class="on">Around</button>
           <button data-mode="walk">Walk</button>
           <button data-mode="draw">Draw</button>
+          <button data-mode="box">Box</button>
         </div>
         <div data-for="buffer"><input id="bufferM" type="range" min="50" max="800" step="25" value="200" /> <span id="bufferLbl" class="stat">200 m around the red line</span></div>
         <div data-for="walk" hidden>
           <div class="seg small" id="walkMin"><button data-v="5">5 min</button><button data-v="10" class="on">10 min</button><button data-v="15">15 min</button></div>
         </div>
         <div data-for="draw" hidden><button id="drawStudy" class="ghost">Draw study area</button></div>
+        <div data-for="box" hidden><button id="drawBox" class="ghost">Drag a box on the map</button> <span class="stat">No red line needed</span></div>
         <p class="stat" id="studyStat"></p>
       </section>
 

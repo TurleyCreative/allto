@@ -51,11 +51,12 @@ const S = {
   red: null as PolyF | null,
   study: null as PolyF | null,
   drawnStudy: null as PolyF | null,
-  studyMode: 'buffer' as 'buffer' | 'walk' | 'draw',
+  drawnBox: null as PolyF | null,
+  studyMode: 'buffer' as 'buffer' | 'walk' | 'draw' | 'box',
   bufferM: 200,
   walkMin: 10,
   walk: empty as FeatureCollection,
-  drawing: null as null | 'red' | 'study',
+  drawing: null as null | 'red' | 'study' | 'box',
   model: null as SiteModel | null,
   modelFC: empty as FeatureCollection,
   designations: empty as FeatureCollection,
@@ -271,6 +272,67 @@ $('#editRed').onclick = () => {
 };
 $('#clearRed').onclick = () => setRed(null);
 
+// ---- quick box: drag a rectangle on the map as the study area, no red line needed
+function setStudyMode(mode: typeof S.studyMode) {
+  S.studyMode = mode;
+  document.querySelectorAll<HTMLElement>('#studyMode button').forEach((x) => x.classList.toggle('on', x.dataset.mode === mode));
+  document.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => (el.hidden = el.dataset.for !== mode));
+}
+let boxStart: mapboxgl.LngLat | null = null;
+function startBox() {
+  draw.deleteAll();
+  setStudyMode('box');
+  if (S.view !== 'plan') setView('plan');
+  S.drawing = 'box';
+  map.dragPan.disable();
+  map.getCanvas().style.cursor = 'crosshair';
+  toast('Drag on the map to draw the study area.');
+}
+const boxOf = (a: mapboxgl.LngLat, b: mapboxgl.LngLat) =>
+  turf.bboxPolygon([Math.min(a.lng, b.lng), Math.min(a.lat, b.lat), Math.max(a.lng, b.lng), Math.max(a.lat, b.lat)]) as PolyF;
+function boxSize(f: PolyF) {
+  const [w, s, e, n] = turf.bbox(f);
+  const wide = turf.distance([w, s], [e, s], { units: 'meters' }), tall = turf.distance([w, s], [w, n], { units: 'meters' });
+  return `${Math.round(wide)} × ${Math.round(tall)} m`;
+}
+$('#quickBox').onclick = startBox;
+$('#drawBox').onclick = startBox;
+const boxDown = (e: mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) => {
+  if (S.drawing !== 'box') return;
+  e.preventDefault();
+  boxStart = e.lngLat;
+};
+const boxMove = (e: mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) => {
+  if (S.drawing !== 'box' || !boxStart) return;
+  (map.getSource('study') as mapboxgl.GeoJSONSource).setData(boxOf(boxStart, e.lngLat));
+};
+const boxUp = (e: mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) => {
+  if (S.drawing !== 'box' || !boxStart) return;
+  const f = boxOf(boxStart, e.lngLat);
+  boxStart = null;
+  map.dragPan.enable();
+  map.getCanvas().style.cursor = '';
+  // A click without a drag leaves the tool on; anything under 20 m is treated as that.
+  if (turf.area(f) < 400) return;
+  S.drawing = null;
+  S.drawnBox = f;
+  updateStudy();
+};
+map.on('mousedown', boxDown);
+map.on('touchstart', boxDown);
+map.on('mousemove', boxMove);
+map.on('touchmove', boxMove);
+map.on('mouseup', boxUp);
+map.on('touchend', boxUp);
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || S.drawing !== 'box') return;
+  S.drawing = null;
+  boxStart = null;
+  map.dragPan.enable();
+  map.getCanvas().style.cursor = '';
+  updateStudy();
+});
+
 function finishDraw() {
   const f = draw.getAll().features[0] as PolyF | undefined;
   if (!f || f.geometry.type !== 'Polygon' || f.geometry.coordinates[0].length < 4) return;
@@ -285,7 +347,7 @@ map.on('draw.create', () => {
 });
 map.on('draw.update', finishDraw);
 map.on('draw.modechange', (e: any) => {
-  if (e.mode === 'simple_select' && S.drawing) {
+  if (e.mode === 'simple_select' && S.drawing && S.drawing !== 'box') {
     finishDraw();
     draw.deleteAll();
     S.drawing = null;
@@ -343,9 +405,7 @@ function updateMassing() {
 // ---------------------------------------------------------------- study area
 document.querySelectorAll<HTMLButtonElement>('#studyMode button').forEach((b) =>
   b.addEventListener('click', () => {
-    S.studyMode = b.dataset.mode as any;
-    document.querySelectorAll('#studyMode button').forEach((x) => x.classList.toggle('on', x === b));
-    document.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => (el.hidden = el.dataset.for !== S.studyMode));
+    setStudyMode(b.dataset.mode as typeof S.studyMode);
     updateStudy();
   }),
 );
@@ -367,6 +427,7 @@ async function updateStudy() {
   const seq = ++studySeq;
   let study: PolyF | null = null;
   if (S.studyMode === 'draw') study = S.drawnStudy;
+  else if (S.studyMode === 'box') study = S.drawnBox;
   else if (S.red && S.studyMode === 'buffer') study = turf.buffer(S.red, S.bufferM, { units: 'meters' }) as PolyF;
   else if (S.red && S.studyMode === 'walk') {
     const fc = await isochrone(S.red);
@@ -377,7 +438,9 @@ async function updateStudy() {
   S.study = study;
   (map.getSource('study') as mapboxgl.GeoJSONSource)?.setData(study ?? empty);
   (map.getSource('mask') as mapboxgl.GeoJSONSource)?.setData(study ? maskOf(study) : empty);
-  $('#studyStat').textContent = study
+  $('#studyStat').textContent = study && S.studyMode === 'box' && !S.red
+    ? `Box ${boxSize(study)}, ${fmtArea(turf.area(study))}`
+    : study
     ? S.red
       ? `Red line ${fmtArea(turf.area(S.red))} within a ${fmtArea(turf.area(study))} study area`
       : `Study area ${fmtArea(turf.area(study))}, no red line`
@@ -484,7 +547,7 @@ function resetAll(home: boolean) {
   select(null);
   draw.deleteAll();
   Object.assign(S, {
-    red: null, study: null, drawnStudy: null, drawing: null, model: null, modelFC: empty, designations: empty,
+    red: null, study: null, drawnStudy: null, drawnBox: null, drawing: null, model: null, modelFC: empty, designations: empty,
     pois: [], place: '', lpa: null, walk: empty, massing: 0, atlas: null, atlasT: 0,
   });
   for (const id of ['mask', 'red', 'study', 'walk', 'model', 'pois', 'selected', 'massing', 'atlas-labels', ...DATASETS.map((d) => `ds-${d.id}`)])
@@ -827,6 +890,12 @@ $('#rotR').onclick = () => map.easeTo({ bearing: map.getBearing() + 45, duration
 async function setView(v: View, opts: { quiet?: boolean } = {}) {
   const prev = S.view;
   if (v === 'atlas' && !S.model) return toast('Analyse the site first: the atlas lays out every building in the study area.');
+  // The axonometric is a cut-out model of the study area, so read the buildings first if needed.
+  if (v === 'axo' && !S.model && S.study) {
+    toast('Reading the buildings in the study area…');
+    await analyse();
+  }
+  if (v === 'axo' && !S.study) toast('Draw a red line or a quick box first: the axonometric cuts out the study area.');
   S.view = v;
   document.querySelectorAll('#views [data-view]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.view === v));
   map.setCamera({ 'camera-projection': v === 'axo' || v === 'plan' || v === 'atlas' ? 'orthographic' : 'perspective' });

@@ -1,13 +1,14 @@
 /*
  * allto: Consultation in the shared allto style (the look Ultrahand set):
  * white ground, thin warm-grey rules, square corners, black primary actions, blue for selection,
- * Plus Jakarta Sans, sentence case. Loaded after the editor's own styles; it only re-points the
- * editor's design tokens and squares off its components, so the editor's code is untouched.
- * The sites the editor publishes have their own styles and are not affected.
+ * Plus Jakarta Sans at Ultrahand's sizes, sentence case, a 64 px header.
+ * Loaded after the editor's own styles; it re-points the editor's design tokens and restyles its
+ * components, so the editor's code is untouched. Published sites have their own styles.
+ *
+ * Selectors use :root[data-theme] so they outrank the editor's own :root[data-theme="light"].
  */
-:root,
-[data-theme='light'],
-[data-theme='dark'] {
+:root[data-theme],
+:root {
   --bg: #ffffff;
   --surface: #ffffff;
   --panel: #ffffff;
@@ -16,7 +17,7 @@
   --ink: #141414;
   --ghost: #6f6e6a;
   --ink2: #3b3a37;
-  --mid: #fbfbf9;
+  --mid: #f4f3ef;
   --accent: #141414;
   --accent2: #2433e0;
   --blue: #2433e0;
@@ -27,50 +28,68 @@
   --nt-w-border: #f1dbb2;
   --nt-w-ink: #8a5a12;
   --badge-ink: #141414;
-  --sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --sans: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;
+  --mono: 'Plus Jakarta Sans', Helvetica, Arial, sans-serif;
 }
 
-/* One look across allto: no dark mode switch in the editor. */
-#btn-theme-toggle { display: none !important; }
-body { font-family: var(--sans); color: var(--ink); }
+/* ---- frame: Ultrahand's 64 px header and panel widths */
+html, body { background: #fff; }
+body { font-family: var(--sans); font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+#app { grid-template-columns: 340px 1fr 368px !important; grid-template-rows: 64px 1fr !important; background: #fff; }
+#topbar { padding: 0 20px 0 24px; gap: 14px; border-bottom: 1px solid var(--border); }
+#topbar-logo { height: 22px !important; }
+.allto-bridge-slot { padding-left: 20px; margin-left: 6px !important; border-left: 1px solid #d6d5d0; height: 26px; }
+#btn-theme-toggle { display: none !important; } /* one look across allto */
+#topbar .badge, #topbar .allto-chip__meta { display: none !important; } /* keep the header to one line */
+#topbar .btn { padding: 8px 12px; white-space: nowrap; }
 
-/* Square, flat components */
-.btn, .ab, .f input, .f textarea, .f select, .cr input[type='color'], .si, .li, .ib, .cd-icon-popout,
+/* ---- tabs: underlined text, like Ultrahand's view tabs */
+.tb-tab { height: 64px; padding: 0 11px; font-size: 13.5px; font-weight: 600; color: #9a9994; }
+.tb-tab:hover, .tab:hover { color: var(--ink); }
+.tb-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.tab { font-size: 12.5px; font-weight: 600; color: #9a9994; letter-spacing: 0; padding: 12px 6px; }
+.tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+
+/* ---- type: Ultrahand's sizes */
+.st { font-size: 12.5px; font-weight: 600; color: var(--ghost); letter-spacing: 0; }
+.fl { font-size: 12.5px; font-weight: 500; color: var(--ghost); letter-spacing: 0; }
+.rh { padding: 20px 22px 16px; }
+.re { font-size: 12.5px; color: var(--ghost); letter-spacing: 0; }
+.rt { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15; }
+.rs { padding: 18px 22px; border-bottom: 1px solid var(--border); }
+.grp-name { text-transform: none; letter-spacing: 0; font-size: 12.5px; }
+
+/* ---- square, flat components */
+.btn, .ab, .ib, .f input, .f textarea, .f select, .cr input[type='color'], .si, .li, .cd-icon-popout,
 .grp-hdr, .grp-chev, .lr, .tg, .nt, #rs-tooltip, #pl, .mb, .mx, .mo, .a11y-badge, .sr input, .badge, .ob-step {
   border-radius: 0 !important;
 }
 
-/* Buttons: black for the main action, outlined for the rest */
-.btn { font-weight: 600; font-size: 12.5px; letter-spacing: 0; }
+/* ---- buttons: black for the main action, outlined for the rest */
+.btn { font-size: 13px; font-weight: 600; letter-spacing: 0; padding: 9px 14px; }
 .btn-a, .btn-dl { background: #141414 !important; border: 1px solid #141414 !important; color: #fff !important; }
 .btn-a:hover, .btn-dl:hover { opacity: 0.88; }
 .btn-g { background: #fff; color: var(--ink); border: 1px solid var(--border); }
 .btn-g:hover { border-color: var(--ink); color: var(--ink); }
-
-/* Top bar and tabs: underlined text tabs, as in Ultrahand */
-#topbar { border-bottom: 1px solid var(--border); }
-.tb-tab { font-size: 13px; font-weight: 600; color: #9a9994; }
-.tb-tab:hover { color: var(--ink); }
-.tb-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
-.tab { font-weight: 600; }
-.tab.on { color: var(--ink); border-bottom-color: var(--ink); }
-.badge { background: transparent; border: 1px solid var(--border); color: var(--ink); }
+.ab, .ib { background: #fff !important; border: 1px solid var(--border) !important; color: var(--ink); }
+.ab:hover, .ib:hover { background: #fff !important; border-color: var(--ink) !important; color: var(--ink); }
+.badge { background: transparent; border: 1px solid var(--border); color: var(--ink); font-size: 12px; }
 .bdot { background: #2bb673; }
-
-/* Lists: selection in allto blue */
-.si, .li, .grp-hdr { background: #fff; }
-.si:hover, .li:hover { border-color: var(--border2); }
-.si.on { border-color: var(--ink); box-shadow: inset 3px 0 0 #2433e0; }
-.li.on { border-color: #2433e0; }
-
-/* Panels and fields */
-.rs { border-bottom-color: var(--border); }
-.st { color: var(--ink); font-weight: 600; font-size: 12.5px; }
-.fl { color: var(--ghost); font-size: 11.5px; }
-.f input, .f textarea, .f select, .sr input { background: #fff; border-color: var(--border); }
-.f input:focus, .f textarea:focus, .f select:focus { border-color: var(--ink); }
-.grp-name { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .tg.on { background: #141414; }
 
-/* Accessible focus ring in allto blue */
-.btn:focus-visible, .tb-tab:focus-visible, .si:focus-visible, .li:focus-visible { outline: 2px solid #2433e0; outline-offset: 1px; }
+/* ---- lists: white rows, selection in allto blue */
+.si, .li, .grp-hdr, .lr { background: #fff; }
+.si { font-size: 14px; padding: 11px 12px; }
+.si:hover, .li:hover { border-color: var(--border2); }
+.si.on { background: #fff !important; border-color: var(--ink); box-shadow: inset 3px 0 0 #2433e0; }
+.li.on { border-color: #2433e0; }
+
+/* ---- fields */
+.f input, .f textarea, .f select, .sr input { background: #fff; border-color: var(--border); font-size: 13.5px; padding: 9px 11px; }
+.f input:focus, .f textarea:focus, .f select:focus { border-color: var(--ink); }
+
+/* ---- accessible focus ring in allto blue */
+.btn:focus-visible, .tb-tab:focus-visible, .tab:focus-visible, .si:focus-visible, .li:focus-visible { outline: 2px solid #2433e0; outline-offset: 1px; }
+
+/* Narrower screens: the project chip gives way first (home and the other products still show it). */
+@media (max-width: 1320px) { #topbar .allto-chip { display: none !important; } }
