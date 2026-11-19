@@ -15,6 +15,7 @@ export interface AlltoApi {
   mountSwitcher(host: HTMLElement | null, opts: { active?: string; theme?: string; logo?: boolean }): HTMLElement | null;
   mountProjectChip(host: HTMLElement | null, opts?: { theme?: string }): HTMLElement | null;
   notify(msg: string): void;
+  playIntro(opts?: { force?: boolean }): void;
 }
 export const Allto = (window as any).Allto as AlltoApi;
 

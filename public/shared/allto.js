@@ -160,6 +160,37 @@
       return chip;
     },
 
+    /**
+     * The allto intro animation, once per browser session (opts.force to replay).
+     * It belongs at the start of allto, not inside a tool; published consultation sites and
+     * exported presentations carry their own copy so the public sees it too.
+     */
+    playIntro: function (opts) {
+      opts = opts || {};
+      try {
+        if (!opts.force && sessionStorage.getItem('allto:intro')) return;
+        sessionStorage.setItem('allto:intro', '1');
+      } catch (e) { /* storage blocked: play it */ }
+      if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      var box = document.createElement('div');
+      box.className = 'allto-intro';
+      box.setAttribute('role', 'presentation');
+      box.innerHTML = '<img src="' + ROOT + 'shared/allto-intro.gif?' + Date.now() + '" alt=""><button class="allto-intro__skip" type="button">Skip</button>';
+      document.body.appendChild(box);
+      var img = box.querySelector('img');
+      var done = false;
+      function close() {
+        if (done) return;
+        done = true;
+        box.classList.add('out');
+        setTimeout(function () { box.remove(); }, 650);
+      }
+      img.addEventListener('load', function () { box.classList.add('ready'); setTimeout(close, 5100); });
+      box.addEventListener('click', close);
+      document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
+      setTimeout(close, 6500); // in case the animation can't load
+    },
+
     /** A short notice in the corner, e.g. "Red line updated from Ultrahand". */
     notify: function (msg) {
       var n = document.createElement('div');

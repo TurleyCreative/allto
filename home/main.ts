@@ -2,6 +2,8 @@ import '../lib/page.css';
 import './home.css';
 import { Allto, redLineImage, esc, when } from '../lib/allto';
 
+// The allto intro opens the whole process (once per session).
+Allto.playIntro();
 Allto.mountSwitcher(document.getElementById('alltoBar'), {});
 Allto.mountProjectChip(document.getElementById('alltoChip'));
 
@@ -15,7 +17,7 @@ function renderProject() {
   host.innerHTML = p.updatedAt
     ? `${img ? `<img src="${img}" alt="The red line on a map">` : '<div class="noimg">No red line yet</div>'}
        <div>
-         <span class="muted">Current project</span>
+         <p class="label">Current project</p>
          <h2>${esc(p.name || 'Untitled project')}</h2>
          <dl>
            ${p.place ? `<dt>Place</dt><dd>${esc(p.place)}</dd>` : ''}
@@ -29,7 +31,7 @@ function renderProject() {
        </div>`
     : `<div class="noimg">Your red line will show here</div>
        <div>
-         <span class="muted">No project yet</span>
+         <p class="label">No project yet</p>
          <h2>Start with a site</h2>
          <p class="muted">Draw a red line in Ultrahand or Consultation. Every allto product picks it up from there.</p>
          <div class="row"><a class="btn" href="${Allto.url('ultrahand')}">Start in Ultrahand</a><a class="btn ghost" href="${Allto.url('consultation')}">Start in Consultation</a></div>

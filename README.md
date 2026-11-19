@@ -20,6 +20,14 @@ Every page loads `public/shared/allto.js`, which provides `window.Allto`:
 - **Ultrahand** shares its red line and, once analysed, the place. A red line from elsewhere replaces its own and clears the old analysis.
 - **The product switcher** (allto* logo, then Consultation · Present · Ultrahand) and the project chip come from the same file, so every product carries the same top bar.
 
+## One look
+
+Every product follows the style Ultrahand set: white ground, thin warm-grey rules, square corners, black primary actions, blue for selection, sentence case and Plus Jakarta Sans. The product switcher is a row of underlined text tabs. The consultation editor gets this look from `public/shared/allto-editor.css`, which re-points its design tokens (the editor's code is untouched) and fixes it to the light theme.
+
+## The allto intro
+
+The allto intro animation (`public/shared/allto-intro.gif`) opens the whole process: it plays once per browser session on the allto home page (`Allto.playIntro()`; skip with a click or Esc; off with reduced motion). It no longer plays inside the consultation editor. Published consultation sites keep their own copy so the public still sees it, and Present's exports will open with it too.
+
 Type is Plus Jakarta Sans across allto (`public/shared/allto.css`). Published consultation sites keep their own per-project font setting, which is client branding.
 
 ## Run it

@@ -11,7 +11,7 @@ function renderProject() {
   document.getElementById('project')!.innerHTML = p.updatedAt
     ? `${img ? `<img src="${img}" alt="The red line on a map">` : '<div class="noimg">No red line yet</div>'}
        <div>
-         <span class="muted">Presenting</span>
+         <p class="label">Presenting</p>
          <h2>${esc(p.name || 'Untitled project')}</h2>
          <p class="muted">${esc(when(p))}</p>
          <p>This is the project Present will build from. Slides follow the red line and drawings as they change in Consultation and Ultrahand.</p>
@@ -27,7 +27,7 @@ const PLAN = [
   ['Presenter view', 'Speaker notes, a clock and the next slide on your screen; the audience sees the map and drawings full screen.'],
   ['Export', 'Send it on as PDF or PowerPoint, with the drawings kept as crisp vectors.'],
 ];
-document.getElementById('plan')!.innerHTML = PLAN.map(([t, d]) => `<div class="card"><h3>${esc(t)}</h3><p class="muted">${esc(d)}</p></div>`).join('');
+document.getElementById('plan')!.innerHTML = PLAN.map(([t, d]) => `<div><h3>${esc(t)}</h3><p class="muted">${esc(d)}</p></div>`).join('');
 
 renderProject();
 Allto.onChange(renderProject);

@@ -1,0 +1,76 @@
+/*
+ * allto: Consultation in the shared allto style (the look Ultrahand set):
+ * white ground, thin warm-grey rules, square corners, black primary actions, blue for selection,
+ * Plus Jakarta Sans, sentence case. Loaded after the editor's own styles; it only re-points the
+ * editor's design tokens and squares off its components, so the editor's code is untouched.
+ * The sites the editor publishes have their own styles and are not affected.
+ */
+:root,
+[data-theme='light'],
+[data-theme='dark'] {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --panel: #ffffff;
+  --border: #e2e1dc;
+  --border2: #d6d5d0;
+  --ink: #141414;
+  --ghost: #6f6e6a;
+  --ink2: #3b3a37;
+  --mid: #fbfbf9;
+  --accent: #141414;
+  --accent2: #2433e0;
+  --blue: #2433e0;
+  --nt-bg: #f4f5ff;
+  --nt-border: #d9dcfb;
+  --nt-ink: #2433e0;
+  --nt-w-bg: #fff7ea;
+  --nt-w-border: #f1dbb2;
+  --nt-w-ink: #8a5a12;
+  --badge-ink: #141414;
+  --sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+/* One look across allto: no dark mode switch in the editor. */
+#btn-theme-toggle { display: none !important; }
+body { font-family: var(--sans); color: var(--ink); }
+
+/* Square, flat components */
+.btn, .ab, .f input, .f textarea, .f select, .cr input[type='color'], .si, .li, .ib, .cd-icon-popout,
+.grp-hdr, .grp-chev, .lr, .tg, .nt, #rs-tooltip, #pl, .mb, .mx, .mo, .a11y-badge, .sr input, .badge, .ob-step {
+  border-radius: 0 !important;
+}
+
+/* Buttons: black for the main action, outlined for the rest */
+.btn { font-weight: 600; font-size: 12.5px; letter-spacing: 0; }
+.btn-a, .btn-dl { background: #141414 !important; border: 1px solid #141414 !important; color: #fff !important; }
+.btn-a:hover, .btn-dl:hover { opacity: 0.88; }
+.btn-g { background: #fff; color: var(--ink); border: 1px solid var(--border); }
+.btn-g:hover { border-color: var(--ink); color: var(--ink); }
+
+/* Top bar and tabs: underlined text tabs, as in Ultrahand */
+#topbar { border-bottom: 1px solid var(--border); }
+.tb-tab { font-size: 13px; font-weight: 600; color: #9a9994; }
+.tb-tab:hover { color: var(--ink); }
+.tb-tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.tab { font-weight: 600; }
+.tab.on { color: var(--ink); border-bottom-color: var(--ink); }
+.badge { background: transparent; border: 1px solid var(--border); color: var(--ink); }
+.bdot { background: #2bb673; }
+
+/* Lists: selection in allto blue */
+.si, .li, .grp-hdr { background: #fff; }
+.si:hover, .li:hover { border-color: var(--border2); }
+.si.on { border-color: var(--ink); box-shadow: inset 3px 0 0 #2433e0; }
+.li.on { border-color: #2433e0; }
+
+/* Panels and fields */
+.rs { border-bottom-color: var(--border); }
+.st { color: var(--ink); font-weight: 600; font-size: 12.5px; }
+.fl { color: var(--ghost); font-size: 11.5px; }
+.f input, .f textarea, .f select, .sr input { background: #fff; border-color: var(--border); }
+.f input:focus, .f textarea:focus, .f select:focus { border-color: var(--ink); }
+.grp-name { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.tg.on { background: #141414; }
+
+/* Accessible focus ring in allto blue */
+.btn:focus-visible, .tb-tab:focus-visible, .si:focus-visible, .li:focus-visible { outline: 2px solid #2433e0; outline-offset: 1px; }
