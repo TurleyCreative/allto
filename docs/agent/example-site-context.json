@@ -1,0 +1,177 @@
+{
+  "schema": "allto.ultrahand.site/1",
+  "generatedAt": "2026-11-20T21:15:25.388Z",
+  "place": "Castlefield, Manchester",
+  "localPlanningAuthority": "Manchester LPA",
+  "location": {
+    "lng": -2.25579,
+    "lat": 53.477325
+  },
+  "redLine": {
+    "areaM2": 6621,
+    "perimeterM": 330,
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [
+        [
+          [
+            -2.25668,
+            53.47735
+          ],
+          [
+            -2.25545,
+            53.47783
+          ],
+          [
+            -2.25492,
+            53.47729
+          ],
+          [
+            -2.25611,
+            53.47683
+          ],
+          [
+            -2.25668,
+            53.47735
+          ]
+        ]
+      ]
+    }
+  },
+  "studyArea": {
+    "kind": "200 m around the red line",
+    "areaM2": 197441
+  },
+  "buildings": {
+    "inStudyArea": 121,
+    "onSite": 5,
+    "heightsRecorded": 121,
+    "medianHeightM": 9.3,
+    "tallestM": 99.2,
+    "listedEntries": 15,
+    "heightBands": [
+      {
+        "label": "Up to 6 m (1–2 storeys)",
+        "count": 19
+      },
+      {
+        "label": "6–12 m (2–4 storeys)",
+        "count": 77
+      },
+      {
+        "label": "12–20 m (4–6 storeys)",
+        "count": 19
+      },
+      {
+        "label": "20–40 m (6–12 storeys)",
+        "count": 5
+      },
+      {
+        "label": "Over 40 m",
+        "count": 1
+      }
+    ]
+  },
+  "townscape": {
+    "studyArea": {
+      "landM2": 197441,
+      "buildings": 121,
+      "coverage": 0.321,
+      "plotRatioEstimate": 1.4,
+      "floorAreaEstimateM2": 276268,
+      "meanStoreys": 4.4
+    },
+    "redLine": {
+      "landM2": 6621,
+      "buildings": 5,
+      "coverage": 0.35,
+      "plotRatioEstimate": 1.3,
+      "floorAreaEstimateM2": 8356,
+      "meanStoreys": 3.6
+    },
+    "medianFootprintM2": 136,
+    "streetsAndPathsKmPerKm2": 64.8,
+    "storeyHeightAssumedM": 3.2
+  },
+  "designations": {
+    "onRedLine": [
+      {
+        "type": "Conservation areas",
+        "name": "Castlefield",
+        "reference": "511",
+        "url": "https://www.planning.data.gov.uk/entity/44004018"
+      },
+      {
+        "type": "Listed buildings",
+        "name": "MANCHESTER MUSEUM OF SCIENCE AND INDUSTRY, FORMER LOWER BYROM STREET WAREHOUSE (Grade II)",
+        "reference": "1283016",
+        "url": "https://www.planning.data.gov.uk/entity/31739255"
+      }
+    ],
+    "inStudyArea": {
+      "Conservation areas": {
+        "count": 2,
+        "examples": [
+          "Castlefield",
+          "St John Street"
+        ]
+      },
+      "Listed buildings": {
+        "count": 18,
+        "examples": [
+          "123, LIVERPOOL ROAD (Grade II)",
+          "COLONNADED RAILWAY VIADUCT AT FORMER LIVERPOOL ROAD GOODS DEPOT (Grade II)",
+          "FORMER ST MATTHEWS SUNDAY SCHOOL (Grade II)",
+          "MUSEUM OF SCIENCE AND INDUSTRY, AIR AND SPACE MUSEUM (Grade II)",
+          "NUMBERS 25 TO 31 AND ATTACHED FORMER CHAPEL (Grade II)",
+          "FORMER COMMERCIAL HOTEL (Grade II)",
+          "THE GIANTS BASIN (Grade II)",
+          "RAILWAY VIADUCT LINKING BRIDGE OVER IRWELL TO LIVERPOOL ROAD STATION (Grade II)",
+          "ST JOHNS COLLEGE OF FURTHER EDUCATION (Grade II)",
+          "OLD WAREHOUSE TO NORTH OF FORMER LIVERPOOL ROAD RAILWAY STATION (Grade I)",
+          "PAIR OF CULVERT ARCHES OVER RIVER MEDLOCK AND ASSOCIATED OVERFLOW CHANNEL (Grade II)",
+          "MANCHESTER MUSEUM OF SCIENCE AND INDUSTRY, FORMER LOWER BYROM STREET WAREHOUSE (Grade II)"
+        ]
+      },
+      "Flood zones 2 & 3": {
+        "count": 7,
+        "examples": [
+          "Flood zone 2",
+          "Flood zone 3"
+        ]
+      },
+      "Brownfield register": {
+        "count": 5,
+        "examples": [
+          "109466/FO/2015/C1",
+          "114385/FO/2016",
+          "114723/FO/2016",
+          "CC_Cap_1000",
+          "118040/FO/2017"
+        ]
+      }
+    }
+  },
+  "gettingAbout": {
+    "nearestStation": {
+      "name": "Deansgate-Castlefield",
+      "kind": "tram",
+      "distanceM": 453
+    },
+    "busStopsWithin400m": 13
+  },
+  "walkingReach": null,
+  "selectedBuilding": null,
+  "proposedMassingHeightM": null,
+  "sources": [
+    "Buildings and streets: OpenStreetMap via Mapbox",
+    "Designations: planning.data.gov.uk",
+    "Places: OpenStreetMap",
+    "Walking: street network at 4.8 km/h"
+  ],
+  "caveats": [
+    "Heights are from OpenStreetMap where recorded; others are drawn at 6 m.",
+    "Floor areas and plot ratios are estimates at 3.2 m a storey.",
+    "Drawn from open data: not a measured survey or a flood risk assessment."
+  ]
+}

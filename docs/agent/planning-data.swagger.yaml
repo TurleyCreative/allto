@@ -1,0 +1,118 @@
+# planning.data.gov.uk as a Copilot Studio / Power Platform custom connector.
+# Power Platform custom connectors use OpenAPI 2.0 (Swagger). No authentication is needed.
+swagger: '2.0'
+info:
+  title: Planning data for England
+  description: Designations and planning data for England from planning.data.gov.uk (DLUHC). Open data, no key.
+  version: '1.0'
+host: www.planning.data.gov.uk
+basePath: /
+schemes:
+  - https
+produces:
+  - application/json
+paths:
+  /entity.json:
+    get:
+      operationId: FindEntities
+      summary: Find planning entities at or around a place
+      description: >-
+        Finds entities (e.g. conservation areas, listed buildings, flood risk zones, tree preservation zones,
+        scheduled monuments, article 4 direction areas, green belt, brownfield land) at a point or intersecting a
+        WKT geometry. Use the site's location from the Ultrahand site context.
+      parameters:
+        - name: dataset
+          in: query
+          required: false
+          type: string
+          description: >-
+            Dataset name, e.g. conservation-area, listed-building, listed-building-outline, flood-risk-zone,
+            tree-preservation-zone, tree, scheduled-monument, park-and-garden, world-heritage-site,
+            article-4-direction-area, green-belt, brownfield-land, site-of-special-scientific-interest,
+            ancient-woodland, local-nature-reserve, local-planning-authority. Repeat for several.
+        - name: longitude
+          in: query
+          required: false
+          type: number
+          description: Longitude of a point (WGS84). Use with latitude.
+        - name: latitude
+          in: query
+          required: false
+          type: number
+          description: Latitude of a point (WGS84). Use with longitude.
+        - name: geometry
+          in: query
+          required: false
+          type: string
+          description: A WKT geometry in WGS84, e.g. POLYGON((lng lat, …)), to search within.
+        - name: geometry_relation
+          in: query
+          required: false
+          type: string
+          enum: [within, equals, disjoint, intersects, touches, contains, covers, coveredby, overlaps, crosses]
+          description: How entities relate to the geometry. Usually intersects.
+        - name: limit
+          in: query
+          required: false
+          type: integer
+          default: 20
+          description: Results per page (up to 500).
+        - name: offset
+          in: query
+          required: false
+          type: integer
+          description: Skip this many results, for paging.
+      responses:
+        '200':
+          description: Matching entities
+          schema:
+            type: object
+            properties:
+              count:
+                type: integer
+              entities:
+                type: array
+                items:
+                  $ref: '#/definitions/Entity'
+  /entity/{entity}.json:
+    get:
+      operationId: GetEntity
+      summary: Get one planning entity
+      description: The full record for one entity, by its number (the last part of a planning.data.gov.uk entity link).
+      parameters:
+        - name: entity
+          in: path
+          required: true
+          type: integer
+          description: Entity number, e.g. 44004018
+      responses:
+        '200':
+          description: The entity
+          schema:
+            $ref: '#/definitions/Entity'
+definitions:
+  Entity:
+    type: object
+    properties:
+      entity:
+        type: integer
+      name:
+        type: string
+      dataset:
+        type: string
+      reference:
+        type: string
+      prefix:
+        type: string
+      start-date:
+        type: string
+      end-date:
+        type: string
+      entry-date:
+        type: string
+      organisation-entity:
+        type: string
+      documentation-url:
+        type: string
+      document-url:
+        type: string

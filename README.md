@@ -50,6 +50,16 @@ The example site in `public/examples/` keeps its Mapbox token out of git as `__M
 
 `npm run build` writes the whole site to `dist/`. On push to `main`, `.github/workflows/pages.yml` deploys it to GitHub Pages: set **Settings → Pages → Source: GitHub Actions** and add the repository variable `VITE_MAPBOX_TOKEN`.
 
+## Ultrahand: what it does now
+
+- **Red line or quick box**, study area (around, walk, drawn, box), planning designations, transport and everyday places
+- **Views:** plan, 3D, axonometric (cut-out model, buildings grow from the site), atlas (every building on a numbered grid), eye level (first person: drag to look, W/S to walk)
+- **Walking reach from a point:** click a spot; 5 / 10 / 15 minutes spread along the streets; toggle bands and set colours in the key
+- **Townscape:** coverage, estimated plot ratio and floor area, storeys, height bands, grain, street density
+- **Building passport**, selection with a leader line, sun and shadow
+- **Drawings:** axonometric, atlas sheet and plan (SVG); CAD plan (DXF on British National Grid); 3D model (OBJ)
+- **Ask about this site:** a Copilot Studio agent with the site already in hand. Setup: [docs/agent](docs/agent/README.md); token service: [workers/agent-token](workers/agent-token)
+
 ## Layout
 
 ```
@@ -60,6 +70,8 @@ lib/                       typed window.Allto, static red-line map, shared page 
 public/shared/             allto.js, allto.css, consultation-bridge.js, logos (served as-is)
 public/consultation/       the consultation editor (single file, served as-is)
 public/examples/           a published consultation site (Thompson's Yard)
+workers/agent-token/       Cloudflare Worker: Direct Line tokens for the site agent
+docs/agent/                setting up the Copilot Studio site agent
 ```
 
 ## Next steps
