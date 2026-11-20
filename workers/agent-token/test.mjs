@@ -17,6 +17,12 @@ globalThis.fetch = async (url, init = {}) => {
     return Response.json({ token: 'dl-token', conversationId: 'conv-1', expires_in: 3600 });
   }
   if (String(url).startsWith('https://copilot.example/token')) return Response.json({ token: 'cs-token', expires_in: 3600 });
+  if (String(url).startsWith('https://inspire.landregistry.gov.uk/inspire/ows?')) {
+    const u = new URL(String(url));
+    assert.equal(u.searchParams.get('layers'), 'inspire:CP.CadastralParcel');
+    assert.equal(u.searchParams.get('request'), 'GetMap');
+    return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'Content-Type': 'image/png' } });
+  }
   return new Response('?', { status: 500 });
 };
 
@@ -93,6 +99,22 @@ await test('network failure becomes a plain message', async () => {
     assert.equal(r.status, 502);
     assert.equal((await r.json()).error, 'Could not reach Direct Line');
   } finally { globalThis.fetch = real; }
+});
+
+await test('parcels: allowed site gets a Land Registry tile with CORS and caching', async () => {
+  const r = await worker.fetch(req('/inspire-parcels?bbox=-251350,7068650,-250850,7069150', { method: 'GET' }), base);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('Content-Type'), 'image/png');
+  assert.equal(r.headers.get('Access-Control-Allow-Origin'), ORIGIN);
+  assert.match(r.headers.get('Cache-Control'), /max-age=86400/);
+});
+
+await test('parcels: other sites refused; bad or huge boxes rejected; nothing else proxied', async () => {
+  assert.equal((await worker.fetch(req('/inspire-parcels?bbox=0,0,1,1', { method: 'GET', origin: 'https://evil.example' }), base)).status, 403);
+  assert.equal((await worker.fetch(req('/inspire-parcels?bbox=1,2,3', { method: 'GET' }), base)).status, 400);
+  assert.equal((await worker.fetch(req('/inspire-parcels?bbox=0,0,50000,50000', { method: 'GET' }), base)).status, 400);
+  assert.equal((await worker.fetch(req('/inspire-parcels?bbox=0,0,1,1&url=https://evil.example', { method: 'GET' }), base)).status, 200);
+  assert.ok(calls.every((c) => c.url.startsWith('https://inspire.landregistry.gov.uk/')));
 });
 
 console.log(results.join('\n'));

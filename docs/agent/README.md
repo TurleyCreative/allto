@@ -103,6 +103,18 @@ Recommended: in Cloudflare, add a **rate limiting rule** on `/token` (e.g. 30 re
    on the red line) without being told.
 4. Select a building, or click a spot to walk from: ask about it. The agent gets the update automatically.
 
+## Also on Monday (optional)
+
+- **Land Registry parcels.** The Worker now also serves the Land Registry's INSPIRE parcel map (its map service doesn't allow
+  browsers to call it directly). Deploying the Worker in step 3 turns the *Land Registry parcels* layer on in Ultrahand
+  (Planning, in the layers) once the token address is set. Nothing else to configure.
+- **Energy certificates (EPC).** The EPC register has moved to a new government service
+  (get-energy-performance-data.communities.gov.uk). It needs a free account and an API key in your name; once you have
+  one, store it on the Worker (`npx wrangler secret put EPC_KEY`) and Ultrahand can add each building's energy rating,
+  age band and floor area to the passport.
+- **Public transport frequencies.** Ultrahand gives walking times to stops and stations; service frequencies need the
+  Bus Open Data Service (free key) and a routing engine such as r5 or OpenTripPlanner on a small server.
+
 ## Later
 
 - **Staff sign-in.** Put Cloudflare Access (Zero Trust, with Microsoft Entra ID) in front of the Worker, or turn on

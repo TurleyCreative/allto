@@ -54,11 +54,19 @@ The example site in `public/examples/` keeps its Mapbox token out of git as `__M
 
 - **Red line or quick box**, study area (around, walk, drawn, box), planning designations, transport and everyday places
 - **Views:** plan, 3D, axonometric (cut-out model, buildings grow from the site), atlas (every building on a numbered grid), eye level (first person: drag to look, W/S to walk)
+- **Massing:** draw proposed blocks with a use and storeys; live floor area by use, homes, density, plot ratio and coverage, with stated assumptions; in every view and export
+- **LIDAR (Environment Agency, 1 m):** measured building heights, ground levels in metres AOD, true-scale site sections, 1 m contours
 - **Walking reach from a point:** click a spot; 5 / 10 / 15 minutes spread along the streets; toggle bands and set colours in the key
+- **Public transport access:** stations and stops by walking time along the streets
+- **Surface water flood risk:** the EA national assessment as a layer, and the share of the red line at each risk level
+- **People and place:** Census 2021 (population, density, age, homes, tenure, cars, travel to work) and deprivation (IMD 2019) for the surrounding neighbourhoods, with a map layer
 - **Townscape:** coverage, estimated plot ratio and floor area, storeys, height bands, grain, street density
-- **Building passport**, selection with a leader line, sun and shadow
-- **Drawings:** axonometric, atlas sheet and plan (SVG); CAD plan (DXF on British National Grid); 3D model (OBJ)
-- **Ask about this site:** a Copilot Studio agent with the site already in hand. Setup: [docs/agent](docs/agent/README.md); token service: [workers/agent-token](workers/agent-token)
+- **Building passport**, selection with a leader line, sun and shadow, **sun study sheet** (21 March, June, December at 9, 12, 15) with a sun-path diagram
+- **Drawings:** axonometric, atlas sheet, plan and sun study (SVG); site section (SVG); CAD plan (DXF on British National Grid); 3D model (OBJ)
+- **Land Registry parcels** (INSPIRE index polygons) as a layer, through the allto Worker
+- **Ask about this site:** a Copilot Studio agent with the site already in hand. Setup: [docs/agent](docs/agent/README.md); Worker: [workers/agent-token](workers/agent-token)
+
+Open data used: OpenStreetMap (via Mapbox), planning.data.gov.uk, Environment Agency LIDAR and surface water (OGL), ONS and Nomis (Census 2021, OGL), MHCLG English Indices of Deprivation 2019 (OGL), HM Land Registry INSPIRE Index Polygons.
 
 ## Layout
 

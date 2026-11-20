@@ -188,3 +188,20 @@ class MinHeap {
     return top;
   }
 }
+
+/** Walking distance (metres) from the walk's start to a point, via its nearest street (within `max` m). */
+export function distanceTo(g: Graph, dist: Float64Array, p: XY, max = 150): number | null {
+  const edges: [number, number][] = [];
+  // Only edges near the point matter: a coarse filter keeps this quick for many points.
+  g.adj.forEach((ns, a) => {
+    const pa = g.pts[a];
+    if (Math.abs(pa[0] - p[0]) > max + 200 || Math.abs(pa[1] - p[1]) > max + 200) return;
+    ns.forEach((n) => a < n.to && edges.push([a, n.to]));
+  });
+  const hit = nearestEdge(g.pts, edgeGrid(g.pts, edges, 50), p, max);
+  if (!hit) return null;
+  const off = Math.hypot(hit.p[0] - p[0], hit.p[1] - p[1]);
+  const via = (i: number) => dist[i] + Math.hypot(g.pts[i][0] - hit.p[0], g.pts[i][1] - hit.p[1]);
+  const d = Math.min(via(hit.a), via(hit.b)) + off;
+  return isFinite(d) ? d : null;
+}

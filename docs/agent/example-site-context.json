@@ -1,6 +1,6 @@
 {
-  "schema": "allto.ultrahand.site/1",
-  "generatedAt": "2026-11-20T21:15:25.388Z",
+  "schema": "allto.ultrahand.site/2",
+  "generatedAt": "2026-11-20T21:42:47.920Z",
   "place": "Castlefield, Manchester",
   "localPlanningAuthority": "Manchester LPA",
   "location": {
@@ -46,25 +46,26 @@
     "inStudyArea": 121,
     "onSite": 5,
     "heightsRecorded": 121,
-    "medianHeightM": 9.3,
-    "tallestM": 99.2,
+    "medianHeightM": 11.8,
+    "tallestM": 40.4,
     "listedEntries": 15,
+    "heightsMeasuredByLidar": 120,
     "heightBands": [
       {
-        "label": "Up to 6 m (1–2 storeys)",
-        "count": 19
+        "label": "Up to 6 m (1\u20132 storeys)",
+        "count": 7
       },
       {
-        "label": "6–12 m (2–4 storeys)",
-        "count": 77
+        "label": "6\u201312 m (2\u20134 storeys)",
+        "count": 69
       },
       {
-        "label": "12–20 m (4–6 storeys)",
-        "count": 19
+        "label": "12\u201320 m (4\u20136 storeys)",
+        "count": 33
       },
       {
-        "label": "20–40 m (6–12 storeys)",
-        "count": 5
+        "label": "20\u201340 m (6\u201312 storeys)",
+        "count": 11
       },
       {
         "label": "Over 40 m",
@@ -77,21 +78,123 @@
       "landM2": 197441,
       "buildings": 121,
       "coverage": 0.321,
-      "plotRatioEstimate": 1.4,
-      "floorAreaEstimateM2": 276268,
-      "meanStoreys": 4.4
+      "plotRatioEstimate": 2,
+      "floorAreaEstimateM2": 385901,
+      "meanStoreys": 6.1
     },
     "redLine": {
       "landM2": 6621,
       "buildings": 5,
       "coverage": 0.35,
-      "plotRatioEstimate": 1.3,
-      "floorAreaEstimateM2": 8356,
-      "meanStoreys": 3.6
+      "plotRatioEstimate": 1.7,
+      "floorAreaEstimateM2": 11241,
+      "meanStoreys": 4.8
     },
     "medianFootprintM2": 136,
     "streetsAndPathsKmPerKm2": 64.8,
     "storeyHeightAssumedM": 3.2
+  },
+  "publicTransportAccess": {
+    "busStopsWithin5MinWalk": [
+      {
+        "name": "Lower Byrom Street/Science Museum",
+        "minutes": 2.6
+      },
+      {
+        "name": "Lower Byrom Street/Quay Street",
+        "minutes": 4.4
+      },
+      {
+        "name": "Liverpool Road/Barton St",
+        "minutes": 4.4
+      },
+      {
+        "name": "Liverpool Road/Science Museum",
+        "minutes": 4.7
+      }
+    ],
+    "stationsWithin12MinWalk": [
+      {
+        "name": "Deansgate-Castlefield",
+        "kind": "tram",
+        "minutes": 7.9
+      },
+      {
+        "name": "Deansgate",
+        "kind": "rail",
+        "minutes": 8
+      }
+    ],
+    "note": "Walking times along streets; no service frequencies."
+  },
+  "surfaceWaterRiskOnRedLine": {
+    "High": {
+      "areaM2": 18,
+      "share": 0.003
+    },
+    "Medium": {
+      "areaM2": 24,
+      "share": 0.004
+    },
+    "Low": {
+      "areaM2": 45,
+      "share": 0.006999999999999999
+    }
+  },
+  "peopleAndPlace": {
+    "neighbourhoods": [
+      {
+        "code": "E01033681",
+        "name": "Manchester 060B",
+        "imdDecile2019": 7
+      },
+      {
+        "code": "E01033682",
+        "name": "Manchester 060C",
+        "imdDecile2019": 6
+      },
+      {
+        "code": "E01032906",
+        "name": "Salford 034E",
+        "imdDecile2019": 2
+      }
+    ],
+    "residents": 4595,
+    "households": 2742,
+    "peoplePerHectare": 52,
+    "shares": {
+      "age": {
+        "under15": 0.043932144410613314,
+        "age15to64": 0.9206176598521096,
+        "over65": 0.035450195737277077
+      },
+      "accommodation": {
+        "flats": 0.9364499634769905,
+        "terracedOrSemi": 0.05880204528853177,
+        "detached": 0.004747991234477721
+      },
+      "tenure": {
+        "owned": 0.2862873814733771,
+        "sharedOwnership": 0.005105762217359592,
+        "socialRented": 0.11159737417943107,
+        "privateRented": 0.5959153902261123
+      },
+      "householdsWithoutACar": 0.49562043795620436,
+      "travelToWork": {
+        "home": 0.5286135693215339,
+        "walk": 0.18997050147492625,
+        "cycle": 0.021533923303834808,
+        "publicTransport": 0.08702064896755163,
+        "car": 0.16371681415929204
+      }
+    },
+    "note": "Census 2021 for the 2021 LSOAs overlapping the study area (they extend beyond it); IMD 2019 deciles, 1 = most deprived 10% in England."
+  },
+  "groundLevelsAOD": {
+    "min": 27.1,
+    "max": 32.7,
+    "fall": 5.6,
+    "over": "red line"
   },
   "designations": {
     "onRedLine": [
@@ -163,7 +266,36 @@
   "walkingReach": null,
   "selectedBuilding": null,
   "proposedMassingHeightM": null,
+  "proposedBlocks": {
+    "blocks": [
+      {
+        "name": "Block A",
+        "use": "Residential",
+        "storeys": 12,
+        "heightM": 37.8,
+        "fromM": 0,
+        "footprintM2": 5649,
+        "floorAreaM2": 67791
+      }
+    ],
+    "totals": {
+      "floorAreaM2": 67791,
+      "byUse": {
+        "Residential": 67791
+      },
+      "homes": 855,
+      "dwellingsPerHectare": 1291,
+      "plotRatio": 10.2,
+      "coverage": 0.853,
+      "tallestM": 37.8
+    },
+    "assumptions": {
+      "residentialNetToGross": 0.82,
+      "averageHomeM2": 65
+    }
+  },
   "sources": [
+    "Heights and ground levels: Environment Agency LIDAR 1 m (where measured)",
     "Buildings and streets: OpenStreetMap via Mapbox",
     "Designations: planning.data.gov.uk",
     "Places: OpenStreetMap",

@@ -46,7 +46,7 @@
         <button class="link" id="quickBox">No red line? Drag a quick box for the study area</button>
         <p class="hint" id="redHint">Click each corner of the site boundary. Double-click to finish.</p>
         <p class="stat" id="redStat"></p>
-        <label class="inline">Proposed massing <input id="massing" type="number" min="0" max="300" step="1" value="0" /> m</label>
+        <label class="inline">Quick massing: the red line at <input id="massing" type="number" min="0" max="300" step="1" value="0" /> m</label>
 
         <div class="sub-h">Study area</div>
         <div class="seg" id="studyMode">
@@ -70,6 +70,20 @@
         <p class="hint" id="progress"></p>
       </section>
 
+      <section class="step" id="massingStep">
+        <h3>4 · Massing</h3>
+        <p class="hint">Draw proposed blocks, then set each one's use and storeys. The totals update as you go.</p>
+        <div class="row"><button id="drawBlock" class="solid">Draw a block</button></div>
+        <div id="blockList"></div>
+        <div id="massTotals"></div>
+        <details class="assume">
+          <summary>Assumptions</summary>
+          <label class="inline">Residential net to gross <input id="aNtg" type="number" min="50" max="100" step="1" /> %</label>
+          <label class="inline">Average home <input id="aHome" type="number" min="25" max="200" step="1" /> m² net</label>
+          <p class="hint">Storey heights by use: residential 3.15 m, workspace 4.0 m, retail and food 4.5 m, community 4.0 m, other 3.5 m.</p>
+        </details>
+      </section>
+
       <section class="step" id="area" hidden></section>
 
       <section class="step">
@@ -83,6 +97,7 @@
           <button id="expAxo" class="outline" disabled>Axonometric (SVG)</button>
           <button id="expAtlas" class="outline" disabled>Atlas sheet (SVG)</button>
           <button id="expPlan" class="outline" disabled>Plan (SVG)</button>
+          <button id="expSun" class="outline" disabled>Sun study (SVG)</button>
           <button id="expDxf" class="outline" disabled>CAD plan (DXF, British National Grid)</button>
           <button id="expObj" class="outline" disabled>3D model (OBJ)</button>
           <button id="expPng" class="outline">This view (PNG)</button>

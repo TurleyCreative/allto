@@ -1,16 +1,15 @@
 // CAD and 3D exports of the site model, on British National Grid (EPSG:27700) so they line up with
 // OS mapping and survey drawings. Projection uses the standard Helmert transformation, which is
 // good to a few metres: fine for context models, not a substitute for a measured survey.
-import proj4 from 'proj4';
 import earcut from 'earcut';
+import { toBNG } from './bng';
 import type { Feature, Polygon, MultiPolygon, Position } from 'geojson';
 import type { SiteModel, Bldg } from './model';
 
-const BNG = '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs';
-const toBNG = proj4('EPSG:4326', BNG);
-const en = (p: Position): [number, number] => toBNG.forward([p[0], p[1]]) as [number, number];
+const en = (p: Position): [number, number] => toBNG(p);
 
 type PolyF = Feature<Polygon | MultiPolygon>;
+export interface ExportBlock { name: string; use: string; shape: Feature<Polygon>; base: number; top: number }
 const polysOf = (f: PolyF) => (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates);
 const f3 = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
@@ -26,9 +25,10 @@ const LAYERS: [string, number][] = [
   ['UH_ROADS', 9],
   ['UH_REFS', 7],
   ['UH_MASSING', 1],
+  ['UH_PROPOSED', 1],
 ];
 
-export function siteDXF(m: SiteModel, opts: { massing: number }): string {
+export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBlock[] }): string {
   const out: string[] = [];
   const put = (...pairs: (string | number)[]) => {
     for (let i = 0; i < pairs.length; i += 2) out.push(String(pairs[i]), String(pairs[i + 1]));
@@ -64,6 +64,11 @@ export function siteDXF(m: SiteModel, opts: { massing: number }): string {
     for (const p of polysOf(m.red)) for (const r of p) poly('UH_RED_LINE', ring(r), true);
     if (opts.massing > 0) for (const p of polysOf(m.red)) poly('UH_MASSING', ring(p[0]), true, 0, opts.massing);
   }
+  for (const b of opts.blocks ?? []) {
+    for (const r of b.shape.geometry.coordinates) poly('UH_PROPOSED', ring(r), true, b.base, b.top - b.base);
+    const c = en(b.shape.geometry.coordinates[0][0]);
+    put(0, 'TEXT', 8, 'UH_PROPOSED', 10, f3(c[0]), 20, f3(c[1]), 30, f3(b.top), 40, 1.5, 1, `${b.name} (${b.use})`);
+  }
   for (const p of polysOf(m.study)) for (const r of p) poly('UH_STUDY_AREA', ring(r), true);
   for (const r of m.roads) for (const l of r.lines) poly('UH_ROADS', l.map((q) => en(m.frame.toLngLat(q))), false);
 
@@ -77,7 +82,7 @@ export function siteDXF(m: SiteModel, opts: { massing: number }): string {
  * Extruded buildings with walls and roofs, in metres, Z up, relative to a British National Grid
  * origin (rounded to 100 m and written in the header) so 3D packages keep full precision.
  */
-export function siteOBJ(m: SiteModel, opts: { massing: number; context: boolean }): { obj: string; origin: [number, number] } {
+export function siteOBJ(m: SiteModel, opts: { massing: number; context: boolean; blocks?: ExportBlock[] }): { obj: string; origin: [number, number] } {
   const c = en(m.frame.toLngLat([0, 0]));
   const origin: [number, number] = [Math.round(c[0] / 100) * 100, Math.round(c[1] / 100) * 100];
   const v: string[] = [], faces: string[] = [];
@@ -130,6 +135,7 @@ export function siteOBJ(m: SiteModel, opts: { massing: number; context: boolean 
 
   for (const b of m.buildings) if (b.inStudy || opts.context) solid(`${b.ref}${b.inSite ? '_site' : ''}${b.listed.length ? '_listed' : ''}`, b.feature, b.minH, b.h);
   if (m.red && opts.massing > 0) solid('Proposed_massing', m.red, 0, opts.massing);
+  for (const b of opts.blocks ?? []) solid(`Proposed_${b.name.replace(/\W+/g, '_')}_${b.use.replace(/\W+/g, '_')}`, b.shape, b.base, b.top);
 
   // The study area as a ground plate.
   faces.push('o Study_area');

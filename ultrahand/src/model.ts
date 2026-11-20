@@ -23,6 +23,9 @@ export interface Bldg {
   listed: Feature[];
   designations: Feature[];
   places: string[]; // names of mapped places inside the footprint
+  heightSource?: 'osm' | 'lidar';
+  osmH?: number; // the OpenStreetMap height, kept when LIDAR replaces it
+  groundM?: number; // ground level, metres above ordnance datum (LIDAR)
 }
 
 export interface SiteModel {

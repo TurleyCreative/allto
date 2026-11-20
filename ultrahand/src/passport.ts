@@ -39,7 +39,7 @@ export async function openPassport(b: Bldg, ctx: PassportCtx, host: HTMLElement)
   const { plan, mass, neighbours } = drawings(b, ctx.model);
 
   const heightLine = b.heightKnown
-    ? `Height ${b.h.toFixed(1)} m${b.minH > 0 ? ` (from ${b.minH.toFixed(1)} m)` : ''}, from OpenStreetMap via Mapbox`
+    ? `Height ${b.h.toFixed(1)} m${b.minH > 0 ? ` (from ${b.minH.toFixed(1)} m)` : ''}, ${b.heightSource === 'lidar' ? `measured from Environment Agency LIDAR${b.groundM != null ? `; ground ${b.groundM.toFixed(1)} m AOD` : ''}` : 'from OpenStreetMap via Mapbox'}`
     : 'Height not recorded: drawn at 6 m';
   const levels = tags['building:levels'] ? `${tags['building:levels']} storeys recorded` : '';
 

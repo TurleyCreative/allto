@@ -16,7 +16,11 @@
  *
  * GET  /health  which mode is configured (no secrets)
  * POST /token   { token, conversationId?, expiresIn, directLineDomain, userId }
+ * GET  /inspire-parcels?bbox=minx,miny,maxx,maxy   HM Land Registry INSPIRE Index Polygons as a
+ *      256 px map tile (Web Mercator). The Land Registry map service doesn't allow browser requests,
+ *      so allto asks through here; only that one service, only image tiles, cached for a day.
  */
+const INSPIRE_WMS = 'https://inspire.landregistry.gov.uk/inspire/ows';
 
 const json = (body, status, headers) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers } });
@@ -83,6 +87,16 @@ export default {
 
     if (url.pathname === '/health') {
       return json({ ok: true, mode: env.DIRECTLINE_SECRET ? 'directline-secret' : env.COPILOT_TOKEN_ENDPOINT ? 'copilot-token-endpoint' : 'not-configured', directLineDomain: directLineDomain(env) }, 200, headers || {});
+    }
+    if (url.pathname === '/inspire-parcels') {
+      if (!headers) return json({ error: 'This site is not allowed to use this service.' }, 403);
+      const bbox = (url.searchParams.get('bbox') || '').split(',').map(Number);
+      if (bbox.length !== 4 || bbox.some((v) => !Number.isFinite(v)) || bbox[2] <= bbox[0] || bbox[3] <= bbox[1] || bbox[2] - bbox[0] > 20000)
+        return json({ error: 'bbox must be minx,miny,maxx,maxy in metres (Web Mercator), up to 20 km wide' }, 400, headers);
+      const q = new URLSearchParams({ service: 'WMS', version: '1.3.0', request: 'GetMap', layers: 'inspire:CP.CadastralParcel', styles: '', format: 'image/png', transparent: 'true', crs: 'EPSG:3857', width: '256', height: '256', bbox: bbox.join(',') });
+      const r = await reach('the Land Registry map service', `${INSPIRE_WMS}?${q}`, { cf: { cacheTtl: 86400, cacheEverything: true } }).catch((e) => e);
+      if (r instanceof Error || !r.ok || !/^image\//.test(r.headers.get('content-type') || '')) return json({ error: r instanceof Error ? r.message : `Land Registry answered ${r.status}` }, 502, headers);
+      return new Response(r.body, { status: 200, headers: { ...headers, 'Content-Type': r.headers.get('content-type'), 'Cache-Control': 'public, max-age=86400' } });
     }
     if (url.pathname !== '/token') return json({ error: 'Not found' }, 404, headers || {});
     if (!headers) return json({ error: 'This site is not allowed to ask for a token.' }, 403);
