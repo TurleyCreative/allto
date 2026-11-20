@@ -152,12 +152,20 @@ h4.light { font-weight: 600; color: var(--muted); }
 
 /* walking reach from a point */
 .walk-origin { width: 16px; height: 16px; border-radius: 50%; background: #141414; border: 3px solid #fff; box-shadow: 0 0 0 1.5px #141414, 0 2px 8px rgba(0, 0, 0, 0.25); cursor: pointer; }
-#walkPanel { position: absolute; left: 14px; top: 14px; z-index: 3; width: 290px; background: #fff; border: 1px solid var(--line); box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08); padding: 12px 14px; font-size: 12.5px; }
+#walkPanel { position: absolute; left: 14px; top: 14px; z-index: 3; width: 318px; background: #fff; border: 1px solid var(--line); box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08); padding: 12px 14px; font-size: 12.5px; }
 #walkPanel[hidden] { display: none; }
 #walkPanel .wp-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: 13.5px; }
 #walkPanel .wp-head button { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
-#walkPanel .wr { display: grid; grid-template-columns: 16px 48px 46px 1fr; align-items: center; gap: 6px; padding: 3px 0; }
-#walkPanel .sw { width: 16px; height: 4px; }
+#walkPanel .wr { display: grid; grid-template-columns: 15px 22px 46px 44px 1fr; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; }
+#walkPanel .wr.off b, #walkPanel .wr.off span { color: var(--faint); }
+#walkPanel .wr input[type='checkbox'] { margin: 0; accent-color: var(--ink); }
+#walkPanel .wr input[type='color'] { width: 22px; height: 14px; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
+#walkPanel .wr input[type='color']::-webkit-color-swatch-wrapper { padding: 0; }
+#walkPanel .wr input[type='color']::-webkit-color-swatch { border: 0; }
+#walkPanel .wr input[type='color']::-moz-color-swatch { border: 0; }
+#walkPanel .wpal { display: flex; gap: 6px; margin-top: 8px; }
+#walkPanel .wpal button { width: 34px; height: 10px; border: 1px solid var(--line); }
+#walkPanel .wpal button:hover { outline: 1px solid var(--ink); outline-offset: 1px; }
 #walkPanel p { margin: 8px 0 0; }
 
 /* atlas references: page labels so they share the app's font */

@@ -46,7 +46,26 @@ type View = 'plan' | '3d' | 'axo' | 'atlas' | 'eye';
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const empty: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-const WALK_COLOURS = ['#c2410c', '#f19a3e', '#f7cf9c']; // 5, 10, 15 minutes
+// Walk bands (5, 10, 15 minutes): colours and which are shown, remembered in this browser.
+const WALK_PALETTES: Record<string, string[]> = {
+  Orange: ['#c2410c', '#f19a3e', '#f7cf9c'],
+  Blue: ['#1d3fbf', '#4f7be8', '#a9c1f5'],
+  Green: ['#1f6b35', '#4fa45f', '#a8d5a6'],
+  Purple: ['#5b2a86', '#9157c2', '#cfb3e8'],
+  Grey: ['#141414', '#6f6e6a', '#c4c3be'],
+};
+const walkStyle = (() => {
+  try {
+    const j = JSON.parse(localStorage.getItem('ultrahand:walk') ?? 'null');
+    if (j?.colours?.length === 3 && j?.on?.length === 3) return j as { colours: string[]; on: boolean[] };
+  } catch { /* nothing saved */ }
+  return { colours: [...WALK_PALETTES.Orange], on: [true, true, true] };
+})();
+const saveWalkStyle = () => {
+  try {
+    localStorage.setItem('ultrahand:walk', JSON.stringify(walkStyle));
+  } catch { /* storage blocked */ }
+};
 const HOME = { center: [-2.2557, 53.4776] as [number, number], zoom: 16 };
 
 const S = {
@@ -139,7 +158,7 @@ function addLayers() {
   map.addLayer({
     id: 'walkpt', type: 'line', source: 'walkpt', filter: ['<=', ['get', 'd'], 0],
     layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: { 'line-color': ['match', ['get', 'band'], 5, WALK_COLOURS[0], 10, WALK_COLOURS[1], WALK_COLOURS[2]], 'line-width': ['interpolate', ['linear'], ['zoom'], 14, ['match', ['get', 'band'], 5, 1.8, 10, 1.2, 0.9], 18, ['match', ['get', 'band'], 5, 4.5, 10, 3, 2.2]] },
+    paint: { 'line-color': walkColourExpr(), 'line-width': ['interpolate', ['linear'], ['zoom'], 14, ['match', ['get', 'band'], 5, 1.8, 10, 1.2, 0.9], 18, ['match', ['get', 'band'], 5, 4.5, 10, 3, 2.2]] },
   });
   map.addLayer({ id: 'study-line', type: 'line', source: 'study', paint: { 'line-color': '#141414', 'line-width': 1.1, 'line-dasharray': [7, 3, 1, 3] } });
   map.addLayer({ id: 'red-fill', type: 'fill', source: 'red', paint: { 'fill-color': '#d7262e', 'fill-opacity': 0.06 } });
@@ -1125,16 +1144,15 @@ async function walkFromPoint(ll: [number, number]) {
     if (!res) return (clearWalk(), toast('No street within 250 m of that spot.'));
     const { fc, lengthIn } = walkPieces(graph, res.dist, frame, WALK_LIMIT);
     (map.getSource('walkpt') as mapboxgl.GeoJSONSource).setData(fc);
-    showWalkPanel(
-      BANDS.map((b, i) => `<div class="wr"><span class="sw" style="background:${WALK_COLOURS[i]}"></span><b>${b} min</b><span>${fmtDist(b * WALK_SPEED)}</span><span class="muted">${(lengthIn[b] / 1000).toFixed(1)} km of streets and paths</span></div>`).join('') +
-        `<p class="muted">Along the streets at 4.8 km/h${res.start > 15 ? `, starting ${Math.round(res.start)} m from the nearest street` : ''}. Click another spot to walk from there.</p>`,
-    );
+    lastWalk = { lengthIn, start: res.start };
+    renderWalkKey();
     // Spread outward from the marker.
     cancelAnimationFrame(walkRAF);
     const t0 = performance.now(), ms = 2600;
     const step = () => {
       const k = Math.min(1, (performance.now() - t0) / ms);
-      map.setFilter('walkpt', ['<=', ['get', 'd'], WALK_LIMIT * k]);
+      walkReach = WALK_LIMIT * k;
+      map.setFilter('walkpt', walkFilter());
       if (k < 1) walkRAF = requestAnimationFrame(step);
     };
     step();
@@ -1142,6 +1160,64 @@ async function walkFromPoint(ll: [number, number]) {
     console.error(e);
     if (seq === walkSeq) (clearWalk(), toast('Could not read the streets just now.'));
   }
+}
+
+let walkReach = 0; // metres revealed so far by the spreading animation
+let lastWalk: { lengthIn: Record<number, number>; start: number } | null = null;
+
+function walkColourExpr(): any {
+  return ['match', ['get', 'band'], 5, walkStyle.colours[0], 10, walkStyle.colours[1], walkStyle.colours[2]];
+}
+/** Reached so far, and only the bands that are switched on in the key. */
+function walkFilter(): any {
+  const on = BANDS.filter((_, i) => walkStyle.on[i]);
+  return ['all', ['<=', ['get', 'd'], walkReach], ['in', ['get', 'band'], ['literal', on]]];
+}
+function applyWalkStyle() {
+  if (!map.getLayer('walkpt')) return;
+  map.setPaintProperty('walkpt', 'line-color', walkColourExpr());
+  map.setFilter('walkpt', walkFilter());
+  saveWalkStyle();
+}
+
+/** The key: a row per band with a tick box (show on the map) and a colour, plus palettes. */
+function renderWalkKey() {
+  if (!lastWalk) return;
+  const { lengthIn, start } = lastWalk;
+  showWalkPanel(
+    BANDS.map(
+      (b, i) => `<label class="wr${walkStyle.on[i] ? '' : ' off'}">
+        <input type="checkbox" data-band="${i}" ${walkStyle.on[i] ? 'checked' : ''} aria-label="Show ${b} minutes on the map">
+        <input type="color" data-colour="${i}" value="${walkStyle.colours[i]}" aria-label="Colour for ${b} minutes" title="Change colour">
+        <b>${b} min</b><span>${fmtDist(b * WALK_SPEED)}</span><span class="muted">${(lengthIn[b] / 1000).toFixed(1)} km of street</span>
+      </label>`,
+    ).join('') +
+      `<div class="wpal">${Object.entries(WALK_PALETTES)
+        .map(([name, c]) => `<button data-pal="${name}" title="${name}" aria-label="${name} colours" style="background:linear-gradient(90deg,${c[0]} 0 33%,${c[1]} 33% 66%,${c[2]} 66%)"></button>`)
+        .join('')}</div>` +
+      `<p class="muted">Along streets and footpaths at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Click another spot to walk from there.</p>`,
+  );
+  const el = $('#walkPanel');
+  el.querySelectorAll<HTMLInputElement>('[data-band]').forEach((cb) =>
+    cb.addEventListener('change', () => {
+      walkStyle.on[+cb.dataset.band!] = cb.checked;
+      cb.closest('.wr')!.classList.toggle('off', !cb.checked);
+      applyWalkStyle();
+    }),
+  );
+  el.querySelectorAll<HTMLInputElement>('[data-colour]').forEach((ci) =>
+    ci.addEventListener('input', () => {
+      walkStyle.colours[+ci.dataset.colour!] = ci.value;
+      applyWalkStyle();
+    }),
+  );
+  el.querySelectorAll<HTMLButtonElement>('[data-pal]').forEach((b) =>
+    b.addEventListener('click', () => {
+      walkStyle.colours = [...WALK_PALETTES[b.dataset.pal!]];
+      applyWalkStyle();
+      renderWalkKey();
+    }),
+  );
 }
 
 function showWalkPanel(body: string) {
@@ -1156,9 +1232,11 @@ function clearWalk(all = true) {
   walkMarker?.remove();
   walkMarker = null;
   (map.getSource('walkpt') as mapboxgl.GeoJSONSource | undefined)?.setData(empty);
-  if (map.getLayer('walkpt')) map.setFilter('walkpt', ['<=', ['get', 'd'], 0]);
+  walkReach = 0;
+  if (map.getLayer('walkpt')) map.setFilter('walkpt', walkFilter());
   if (all) {
     walkSeq++;
+    lastWalk = null;
     $('#walkPanel').hidden = true;
   }
 }
