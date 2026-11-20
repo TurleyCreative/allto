@@ -154,3 +154,32 @@ export async function fetchPoisFromTiles(bbox: BBox, token: string): Promise<Poi
   });
   return [...out.values()];
 }
+
+/**
+ * Walkable street lines for an area, cut exactly at each tile's edge so the same street in
+ * neighbouring tiles meets end to end (the walk network joins them back up).
+ */
+export async function fetchWalkNetwork(bbox: BBox, token: string): Promise<{ cls: string; coords: number[][] }[]> {
+  let z = 16;
+  while (z > 14 && tilesFor(bbox, z).length > 100) z--;
+  const NO_WALK = /^(motorway|motorway_link|ferry|aerialway|golf|major_rail|minor_rail|service_rail)$/;
+  const out: { cls: string; coords: number[][] }[] = [];
+  const t2lon = (x: number) => (x / 2 ** z) * 360 - 180;
+  const t2lat = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** z))) * 180) / Math.PI;
+  await pool(tilesFor(bbox, z), 8, async ([x, y]) => {
+    const r = await fetch(`https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/${z}/${x}/${y}.vector.pbf?access_token=${token}`);
+    if (!r.ok) return;
+    const L = new VectorTile(new PbfReader(new Uint8Array(await r.arrayBuffer()))).layers;
+    if (!L.road) return;
+    const tb: BBox = [t2lon(x), t2lat(y + 1), t2lon(x + 1), t2lat(y)];
+    for (let i = 0; i < L.road.length; i++) {
+      const gj = L.road.feature(i).toGeoJSON(x, y, z) as Feature;
+      const cls = String(gj.properties?.class ?? '');
+      if (!isLine(gj) || NO_WALK.test(cls) || gj.properties?.structure === 'tunnel' && /motorway|trunk/.test(cls)) continue;
+      const clipped = turf.bboxClip(gj as any, tb).geometry as LineString | MultiLineString;
+      const parts = clipped.type === 'LineString' ? [clipped.coordinates] : clipped.coordinates;
+      for (const c of parts) if (c.length > 1) out.push({ cls, coords: c });
+    }
+  });
+  return out;
+}

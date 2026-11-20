@@ -8,13 +8,14 @@ import type { Feature, FeatureCollection, Polygon, MultiPolygon } from 'geojson'
 import './style.css';
 
 import { DATASETS, fetchDataset, fetchPlanningAuthority, describe, entityUrl } from './planning';
-import { fetchStreets, fetchPoisFromTiles } from './tiles';
+import { fetchStreets, fetchPoisFromTiles, fetchWalkNetwork } from './tiles';
+import { buildGraph, walkFrom, walkPieces, WALK_SPEED, BANDS } from './walk';
 import { buildModel, modelGeoJSON, GREEN, type SiteModel, type Bldg } from './model';
 import { fetchPois, fetchBuildingAt, reverseGeocode, type Poi } from './osm';
 import { renderAxo, groundLayers, LOOK, type AxoBuilding, type GroundPolys } from './axo';
 import { openPassport, useLabel } from './passport';
 import { layoutAtlas, translateFeature, ease, type AtlasLayout } from './atlas';
-import { fmtArea, fmtDist, toLocalPolys, type XY, type LocalPoly } from './geo';
+import { fmtArea, fmtDist, toLocalPolys, LocalFrame, type XY, type LocalPoly } from './geo';
 
 const TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
@@ -45,6 +46,7 @@ type View = 'plan' | '3d' | 'axo' | 'atlas' | 'eye';
 const $ = <T extends HTMLElement = HTMLElement>(s: string) => document.querySelector<T>(s)!;
 const empty: FeatureCollection = { type: 'FeatureCollection', features: [] };
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const WALK_COLOURS = ['#c2410c', '#f19a3e', '#f7cf9c']; // 5, 10, 15 minutes
 const HOME = { center: [-2.2557, 53.4776] as [number, number], zoom: 16 };
 
 const S = {
@@ -122,7 +124,7 @@ const growExpr = (prop: string, T: number): any => [
 function addLayers() {
   styleBase();
   map.setFog(null as any); // fog greys out the pitched views; drawings want a clean white ground
-  for (const id of ['mask', 'red', 'study', 'walk', 'model', 'pois', 'selected', 'massing', 'atlas-labels']) map.addSource(id, { type: 'geojson', data: empty });
+  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'atlas-labels']) map.addSource(id, { type: 'geojson', data: empty });
 
   for (const d of DATASETS) {
     map.addSource(`ds-${d.id}`, { type: 'geojson', data: empty });
@@ -134,6 +136,11 @@ function addLayers() {
   }
   map.addLayer({ id: 'mask', type: 'fill', source: 'mask', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 } });
   map.addLayer({ id: 'walk', type: 'line', source: 'walk', paint: { 'line-color': '#f08a1c', 'line-width': ['match', ['get', 'contour'], 5, 1.6, 10, 1.3, 1], 'line-dasharray': [1, 2] } });
+  map.addLayer({
+    id: 'walkpt', type: 'line', source: 'walkpt', filter: ['<=', ['get', 'd'], 0],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: { 'line-color': ['match', ['get', 'band'], 5, WALK_COLOURS[0], 10, WALK_COLOURS[1], WALK_COLOURS[2]], 'line-width': ['interpolate', ['linear'], ['zoom'], 14, ['match', ['get', 'band'], 5, 1.8, 10, 1.2, 0.9], 18, ['match', ['get', 'band'], 5, 4.5, 10, 3, 2.2]] },
+  });
   map.addLayer({ id: 'study-line', type: 'line', source: 'study', paint: { 'line-color': '#141414', 'line-width': 1.1, 'line-dasharray': [7, 3, 1, 3] } });
   map.addLayer({ id: 'red-fill', type: 'fill', source: 'red', paint: { 'fill-color': '#d7262e', 'fill-opacity': 0.06 } });
   map.addLayer({ id: 'red-line', type: 'line', source: 'red', paint: { 'line-color': '#d7262e', 'line-width': 3 } });
@@ -310,6 +317,7 @@ const boxUp = (e: mapboxgl.MapMouseEvent | mapboxgl.MapTouchEvent) => {
   if (S.drawing !== 'box' || !boxStart) return;
   const f = boxOf(boxStart, e.lngLat);
   boxStart = null;
+  lastDrawEnd = Date.now();
   map.dragPan.enable();
   map.getCanvas().style.cursor = '';
   // A click without a drag leaves the tool on; anything under 20 m is treated as that.
@@ -341,6 +349,7 @@ function finishDraw() {
   else if (S.drawing === 'study') ((S.drawnStudy = clean), updateStudy());
 }
 map.on('draw.create', () => {
+  lastDrawEnd = Date.now();
   finishDraw();
   draw.deleteAll();
   S.drawing = null;
@@ -545,6 +554,8 @@ function resetAll(home: boolean) {
   cancelAnimationFrame(growRAF);
   cancelAnimationFrame(atlasRAF);
   hideAtlasRefs();
+  clearWalk();
+  walkNet = null;
   select(null);
   draw.deleteAll();
   Object.assign(S, {
@@ -627,6 +638,10 @@ function applyVisibility() {
   vis('ds-listed', flat && S.visible.has('listed-building'));
   vis('ds-brownfield', flat && S.visible.has('brownfield-land'));
   vis('walk', !atlas && S.visible.has('walk'));
+  vis('walkpt', !atlas);
+  if (walkMarker) walkMarker.getElement().style.display = atlas ? 'none' : '';
+  const wp = document.getElementById('walkPanel');
+  if (wp && walkMarker) wp.hidden = atlas;
   vis('pois', flat && S.visible.has('pois'));
   vis('pois-label', flat && S.visible.has('pois'));
   for (const id of ['red-fill', 'red-line', 'study-line', 'massing-3d', 'selected-line']) vis(id, !atlas);
@@ -692,10 +707,13 @@ map.on('mouseleave', 'model-3d', () => {
   if (hoverId !== null) map.setFeatureState({ source: 'model', id: hoverId }, { hover: false });
   hoverId = null;
 });
+let lastDrawEnd = 0; // the click that finishes a drawing must not also start a walk
 map.on('click', (e) => {
-  if (S.drawing || !S.model) return;
-  const hit = map.queryRenderedFeatures(e.point, { layers: ['model-3d'] })[0];
-  select(hit ? S.model.buildings[hit.id as number] : null);
+  if (S.drawing || eye.dragged || Date.now() - lastDrawEnd < 400) return;
+  const hit = S.model ? map.queryRenderedFeatures(e.point, { layers: ['model-3d'] })[0] : undefined;
+  if (S.model) select(hit ? S.model.buildings[hit.id as number] : null);
+  // An empty spot: walk from here (not in the atlas, where the buildings are out of place, or at eye level).
+  if (!hit && S.view !== 'atlas' && S.view !== 'eye') walkFromPoint([e.lngLat.lng, e.lngLat.lat]);
 });
 
 let osmSeq = 0;
@@ -901,8 +919,8 @@ function atlasBounds(): [[number, number], [number, number]] {
 
 // ---------------------------------------------------------------- views
 document.querySelectorAll<HTMLButtonElement>('#views [data-view]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view as View)));
-$('#rotL').onclick = () => map.easeTo({ bearing: map.getBearing() - 45, duration: 600 });
-$('#rotR').onclick = () => map.easeTo({ bearing: map.getBearing() + 45, duration: 600 });
+$('#rotL').onclick = () => (eye.on ? ((eye.heading -= 45), applyEye()) : map.easeTo({ bearing: map.getBearing() - 45, duration: 600 }));
+$('#rotR').onclick = () => (eye.on ? ((eye.heading += 45), applyEye()) : map.easeTo({ bearing: map.getBearing() + 45, duration: 600 }));
 
 async function setView(v: View, opts: { quiet?: boolean } = {}) {
   const prev = S.view;
@@ -914,6 +932,7 @@ async function setView(v: View, opts: { quiet?: boolean } = {}) {
   }
   if (v === 'axo' && !S.study) toast('Draw a red line or a quick box first: the axonometric cuts out the study area.');
   S.view = v;
+  if (prev === 'eye' && v !== 'eye') exitEye();
   document.querySelectorAll('#views [data-view]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.view === v));
   map.setCamera({ 'camera-projection': v === 'axo' || v === 'plan' || v === 'atlas' ? 'orthographic' : 'perspective' });
   const isolate = (v === 'axo' || v === 'atlas') && !!S.model;
@@ -948,13 +967,7 @@ async function setView(v: View, opts: { quiet?: boolean } = {}) {
     await animateAtlas(1);
   } else if (v === 'eye') {
     const { from, look } = eyePoint(target);
-    // Mapbox caps pitch at 85°, so aim at the ground 16 m ahead (≈84°): near-horizontal, the way a person sees.
-    const heading = turf.bearing(from, look);
-    const aim = turf.destination(from, 16, heading, { units: 'meters' }).geometry.coordinates as [number, number];
-    const cam = map.getFreeCameraOptions();
-    cam.position = mapboxgl.MercatorCoordinate.fromLngLat(from, 1.7);
-    cam.lookAtPoint(aim);
-    map.setFreeCameraOptions(cam);
+    enterEye(from, turf.bearing(from, look));
   }
   if (prev === 'eye' && v !== 'eye' && v !== 'atlas' && v !== 'axo') map.easeTo({ center: target, zoom: 16.5, duration: 700 });
   setTimeout(drawLeader, 750);
@@ -967,6 +980,72 @@ function toast(msg: string) {
   el.hidden = false;
   clearTimeout(toastT);
   toastT = window.setTimeout(() => (el.hidden = true), 3500);
+}
+
+// ---- eye level: first-person controls
+// Mapbox's own controls orbit and pan around a point on the ground ahead of the camera, which
+// feels like sliding about. At eye level you stand still and look around, and walk forward.
+const eye = { on: false, pos: [0, 0] as [number, number], heading: 0, look: 16, dragged: false };
+const EYE_H = 1.7; // metres
+const EYE_MAX_LOOK = 16; // aiming 16 m ahead at 1.7 m is about 84°, as level as Mapbox allows
+
+function applyEye() {
+  const aim = turf.destination(eye.pos, eye.look, eye.heading, { units: 'meters' }).geometry.coordinates as [number, number];
+  const cam = map.getFreeCameraOptions();
+  cam.position = mapboxgl.MercatorCoordinate.fromLngLat(eye.pos, EYE_H);
+  cam.lookAtPoint(aim);
+  map.setFreeCameraOptions(cam);
+}
+function enterEye(from: [number, number], heading: number) {
+  Object.assign(eye, { on: true, pos: from, heading, look: EYE_MAX_LOOK });
+  for (const h of [map.dragPan, map.dragRotate, map.scrollZoom, map.keyboard, map.doubleClickZoom, map.touchZoomRotate, map.touchPitch]) h.disable();
+  applyEye();
+  toast('Drag to look around. W / S or ↑ / ↓ (or scroll) to walk, A / D or ← / → to turn.');
+}
+function exitEye() {
+  eye.on = false;
+  for (const h of [map.dragPan, map.dragRotate, map.scrollZoom, map.keyboard, map.doubleClickZoom, map.touchZoomRotate, map.touchPitch]) h.enable();
+}
+function eyeWalk(m: number) {
+  eye.pos = turf.destination(eye.pos, m, eye.heading, { units: 'meters' }).geometry.coordinates as [number, number];
+  applyEye();
+}
+{
+  const canvas = map.getCanvasContainer();
+  let last: { x: number; y: number } | null = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!eye.on) return;
+    last = { x: e.clientX, y: e.clientY };
+    eye.dragged = false;
+  });
+  window.addEventListener('pointermove', (e) => {
+    if (!eye.on || !last) return;
+    const dx = e.clientX - last.x, dy = e.clientY - last.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) eye.dragged = true;
+    last = { x: e.clientX, y: e.clientY };
+    eye.heading -= dx * 0.25; // drag the view: dragging left turns right, like grabbing the scene
+    eye.look = Math.max(5, Math.min(EYE_MAX_LOOK, eye.look * Math.exp(-dy * 0.01))); // drag up to look down
+    applyEye();
+  });
+  window.addEventListener('pointerup', () => {
+    last = null;
+    setTimeout(() => (eye.dragged = false), 0);
+  });
+  canvas.addEventListener('wheel', (e) => {
+    if (!eye.on) return;
+    e.preventDefault();
+    eyeWalk(-Math.sign(e.deltaY) * 4);
+  }, { passive: false });
+  window.addEventListener('keydown', (e) => {
+    if (!eye.on || (e.target as HTMLElement).closest('input, textarea, select')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'w' || k === 'arrowup') eyeWalk(2.5);
+    else if (k === 's' || k === 'arrowdown') eyeWalk(-2.5);
+    else if (k === 'a' || k === 'arrowleft') ((eye.heading -= 5), applyEye());
+    else if (k === 'd' || k === 'arrowright') ((eye.heading += 5), applyEye());
+    else return;
+    e.preventDefault();
+  });
 }
 
 /** Stand in a street at a comfortable distance from the facade (about twice the height), facing the building. */
@@ -1011,6 +1090,81 @@ function pointInRing(p: XY, r: XY[]) {
     if (r[i][1] > p[1] !== r[j][1] > p[1] && p[0] < ((r[j][0] - r[i][0]) * (p[1] - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) c = !c;
   return c;
 }
+
+// ---------------------------------------------------------------- walking reach from a point
+// Click a spot in the study area: the streets you can walk to in 5, 10 and 15 minutes spread out
+// from it, along the real street network at 80 m a minute.
+let walkNet: { study: PolyF; frame: LocalFrame; graph: ReturnType<typeof buildGraph> } | null = null;
+let walkMarker: mapboxgl.Marker | null = null;
+let walkRAF = 0;
+let walkSeq = 0;
+const WALK_LIMIT = BANDS[BANDS.length - 1] * WALK_SPEED;
+
+async function walkFromPoint(ll: [number, number]) {
+  if (!S.study) return;
+  if (!turf.booleanPointInPolygon(ll, turf.buffer(S.study, 150, { units: 'meters' })!)) return toast('Click a spot inside the study area to walk from there.');
+  const seq = ++walkSeq;
+  clearWalk(false);
+  const el = document.createElement('div');
+  el.className = 'walk-origin';
+  el.title = 'Walking from here (click to clear)';
+  el.addEventListener('click', (ev) => (ev.stopPropagation(), clearWalk()));
+  walkMarker = new mapboxgl.Marker({ element: el }).setLngLat(ll).addTo(map);
+  showWalkPanel('<p class="muted">Finding the streets around the study area…</p>');
+  try {
+    if (!walkNet || walkNet.study !== S.study) {
+      const area = turf.buffer(S.study, WALK_LIMIT + 100, { units: 'meters' })!;
+      const c = turf.centroid(S.study).geometry.coordinates;
+      const frame = new LocalFrame(c[0], c[1]);
+      const lines = await fetchWalkNetwork(turf.bbox(area), TOKEN);
+      if (seq !== walkSeq) return;
+      walkNet = { study: S.study, frame, graph: buildGraph(lines, frame) };
+    }
+    const { graph, frame } = walkNet;
+    const res = walkFrom(graph, frame.toLocal(ll), WALK_LIMIT);
+    if (!res) return (clearWalk(), toast('No street within 250 m of that spot.'));
+    const { fc, lengthIn } = walkPieces(graph, res.dist, frame, WALK_LIMIT);
+    (map.getSource('walkpt') as mapboxgl.GeoJSONSource).setData(fc);
+    showWalkPanel(
+      BANDS.map((b, i) => `<div class="wr"><span class="sw" style="background:${WALK_COLOURS[i]}"></span><b>${b} min</b><span>${fmtDist(b * WALK_SPEED)}</span><span class="muted">${(lengthIn[b] / 1000).toFixed(1)} km of streets and paths</span></div>`).join('') +
+        `<p class="muted">Along the streets at 4.8 km/h${res.start > 15 ? `, starting ${Math.round(res.start)} m from the nearest street` : ''}. Click another spot to walk from there.</p>`,
+    );
+    // Spread outward from the marker.
+    cancelAnimationFrame(walkRAF);
+    const t0 = performance.now(), ms = 2600;
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / ms);
+      map.setFilter('walkpt', ['<=', ['get', 'd'], WALK_LIMIT * k]);
+      if (k < 1) walkRAF = requestAnimationFrame(step);
+    };
+    step();
+  } catch (e) {
+    console.error(e);
+    if (seq === walkSeq) (clearWalk(), toast('Could not read the streets just now.'));
+  }
+}
+
+function showWalkPanel(body: string) {
+  const el = $('#walkPanel');
+  el.innerHTML = `<div class="wp-head"><b>Walking from here</b><button id="walkClear" title="Clear (Esc)">Clear</button></div>${body}`;
+  el.hidden = false;
+  $('#walkClear').onclick = () => clearWalk();
+}
+
+function clearWalk(all = true) {
+  cancelAnimationFrame(walkRAF);
+  walkMarker?.remove();
+  walkMarker = null;
+  (map.getSource('walkpt') as mapboxgl.GeoJSONSource | undefined)?.setData(empty);
+  if (map.getLayer('walkpt')) map.setFilter('walkpt', ['<=', ['get', 'd'], 0]);
+  if (all) {
+    walkSeq++;
+    $('#walkPanel').hidden = true;
+  }
+}
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !S.drawing && walkMarker) clearWalk();
+});
 
 // ---------------------------------------------------------------- sun
 const today = new Date();

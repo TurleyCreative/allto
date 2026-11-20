@@ -150,6 +150,16 @@ h4.light { font-weight: 600; color: var(--muted); }
 .desig .sw { width: 9px; height: 9px; margin-top: 5px; flex: none; }
 .desig a { color: inherit; text-underline-offset: 3px; }
 
+/* walking reach from a point */
+.walk-origin { width: 16px; height: 16px; border-radius: 50%; background: #141414; border: 3px solid #fff; box-shadow: 0 0 0 1.5px #141414, 0 2px 8px rgba(0, 0, 0, 0.25); cursor: pointer; }
+#walkPanel { position: absolute; left: 14px; top: 14px; z-index: 3; width: 290px; background: #fff; border: 1px solid var(--line); box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08); padding: 12px 14px; font-size: 12.5px; }
+#walkPanel[hidden] { display: none; }
+#walkPanel .wp-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; font-size: 13.5px; }
+#walkPanel .wp-head button { font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+#walkPanel .wr { display: grid; grid-template-columns: 16px 48px 46px 1fr; align-items: center; gap: 6px; padding: 3px 0; }
+#walkPanel .sw { width: 16px; height: 4px; }
+#walkPanel p { margin: 8px 0 0; }
+
 /* atlas references: page labels so they share the app's font */
 .atlas-ref { font: 600 11px/1 var(--font); color: var(--ink); pointer-events: none; white-space: nowrap; }
 
