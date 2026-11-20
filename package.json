@@ -12,12 +12,15 @@
     "@mapbox/mapbox-gl-draw": "^1.5.2",
     "@mapbox/vector-tile": "^3.0.0",
     "@turf/turf": "^7.4.0",
+    "earcut": "^3.0.1",
     "mapbox-gl": "^3.35.1",
     "pbf": "^5.2.0",
+    "proj4": "^2.15.0",
     "suncalc": "^2.1.4"
   },
   "devDependencies": {
     "@types/mapbox__mapbox-gl-draw": "^1.4.9",
+    "@types/proj4": "^2.5.6",
     "@types/suncalc": "^1.9.2",
     "typescript": "5.9",
     "vite": "^7.3.8"

@@ -10,6 +10,9 @@ import './style.css';
 import { DATASETS, fetchDataset, fetchPlanningAuthority, describe, entityUrl } from './planning';
 import { fetchStreets, fetchPoisFromTiles, fetchWalkNetwork } from './tiles';
 import { buildGraph, walkFrom, walkPieces, WALK_SPEED, BANDS } from './walk';
+import { computeMetrics, pct, ratio, type Metrics } from './metrics';
+import { siteDXF, siteOBJ } from './export3d';
+import { initAgentPanel } from './agent';
 import { buildModel, modelGeoJSON, GREEN, type SiteModel, type Bldg } from './model';
 import { fetchPois, fetchBuildingAt, reverseGeocode, type Poi } from './osm';
 import { renderAxo, groundLayers, LOOK, type AxoBuilding, type GroundPolys } from './axo';
@@ -90,6 +93,7 @@ const S = {
   openGroups: new Set<string>(),
   massing: 0,
   atlas: null as AtlasLayout | null,
+  metrics: null as Metrics | null,
   atlasT: 0,
 };
 
@@ -527,6 +531,7 @@ async function analyse() {
     say('Building the site model…');
     S.model = buildModel(streets, S.study, S.red, context, S.designations);
     S.modelFC = modelGeoJSON(S.model);
+    S.metrics = computeMetrics(S.model, S.study, S.red);
     S.atlas = null;
     S.atlasT = 0;
     (map.getSource('model') as mapboxgl.GeoJSONSource).setData(S.modelFC);
@@ -555,9 +560,10 @@ async function analyse() {
     renderSummary();
     renderLegend();
     select(null);
-    ['#expAxo', '#expPlan', '#expAtlas'].forEach((s) => ($<HTMLButtonElement>(s).disabled = false));
+    ['#expAxo', '#expPlan', '#expAtlas', '#expDxf', '#expObj'].forEach((s) => ($<HTMLButtonElement>(s).disabled = false));
     say('');
     if (S.view === 'axo' || S.view === '3d') animateGrow();
+    agent.contextChanged();
   } catch (e) {
     console.error(e);
     say(`Something failed: ${(e as Error).message}`);
@@ -579,7 +585,7 @@ function resetAll(home: boolean) {
   draw.deleteAll();
   Object.assign(S, {
     red: null, study: null, drawnStudy: null, drawnBox: null, drawing: null, model: null, modelFC: empty, designations: empty,
-    pois: [], place: '', lpa: null, walk: empty, massing: 0, atlas: null, atlasT: 0,
+    pois: [], place: '', lpa: null, walk: empty, massing: 0, atlas: null, atlasT: 0, metrics: null,
   });
   for (const id of ['mask', 'red', 'study', 'walk', 'model', 'pois', 'selected', 'massing', 'atlas-labels', ...DATASETS.map((d) => `ds-${d.id}`)])
     (map.getSource(id) as mapboxgl.GeoJSONSource | undefined)?.setData(empty);
@@ -590,7 +596,7 @@ function resetAll(home: boolean) {
   $('#progress').textContent = '';
   $('#area').hidden = true;
   $('#area').innerHTML = '';
-  ['#expAxo', '#expPlan', '#expAtlas'].forEach((s) => ($<HTMLButtonElement>(s).disabled = true));
+  ['#expAxo', '#expPlan', '#expAtlas', '#expDxf', '#expObj'].forEach((s) => ($<HTMLButtonElement>(s).disabled = true));
   setRed(null);
   try {
     localStorage.removeItem(KEY);
@@ -689,12 +695,38 @@ function renderSummary() {
     <p class="big"><b>${ha < 10 ? ha.toFixed(1) : Math.round(ha)} ha</b> · <b>${inStudy.length}</b> buildings${tallest ? `, the tallest about <b>${Math.round(tallest.h)} m</b>` : ''}</p>
     <p class="muted">${known.length} heights recorded, the rest estimated at 6 m. ${listed} listed building entries.${S.lpa ? ` ${esc(S.lpa)}.` : ''}</p>
     <p><button class="link strong" id="drawAnother">Draw another area</button></p>
+    ${townscapeHTML()}
     <h4>On the red line</h4>
     ${onRed.length ? onRed.map((f) => `<div class="desig"><span class="sw" style="background:${colorOf(f.properties?.dataset)}"></span><a href="${entityUrl(f)}" target="_blank">${esc(describe(f))}</a></div>`).join('') : `<p class="muted">${S.red ? 'No designations touch the red line.' : 'No red line drawn.'}</p>`}
     <h4>Getting about</h4>
     ${rail ? `<p>Nearest station: <b>${esc(rail.p.name)}</b>, ${fmtDist(rail.d)}</p>` : '<p class="muted">No station within 1.2 km.</p>'}
     <p>${buses} bus stops within 400 m</p>`;
   $('#drawAnother').onclick = () => resetAll(false);
+}
+
+/** Floor areas are quoted in square metres, rounded to a sensible figure. */
+const m2 = (x: number) => `${(x >= 10000 ? Math.round(x / 100) * 100 : Math.round(x)).toLocaleString('en-GB')} m²`;
+
+/** Townscape measures for the study area and, with a red line, the site. */
+function townscapeHTML() {
+  const t = S.metrics;
+  if (!t) return '';
+  const row = (k: string, a: string, b?: string | null) => `<tr><th>${k}</th><td>${a}</td>${t.site ? `<td>${b ?? '—'}</td>` : ''}</tr>`;
+  const s = t.study, r = t.site;
+  return `<h4>Townscape</h4>
+    <table class="metrics">
+      ${t.site ? '<tr><th></th><td class="muted">Study area</td><td class="muted">Red line</td></tr>' : ''}
+      ${row('Coverage', pct(s.coverage), r && pct(r.coverage))}
+      ${row('Plot ratio', `about ${ratio(s.plotRatio)}`, r && `about ${ratio(r.plotRatio)}`)}
+      ${row('Floor area', `about ${m2(s.gfaM2)}`, r && `about ${m2(r.gfaM2)}`)}
+      ${row('Average storeys', s.meanStoreys.toFixed(1), r && (r.buildings ? r.meanStoreys.toFixed(1) : '—'))}
+      ${row('Buildings', String(s.buildings), r && String(r.buildings))}
+    </table>
+    <p class="muted">Heights: median ${Math.round(t.heights.median)} m, tallest ${Math.round(t.heights.tallest)} m (${t.heights.known} recorded). Grain: median footprint ${fmtArea(t.grainM2)}. Streets and paths: ${t.streetKmPerKm2.toFixed(0)} km per km².</p>
+    <div class="hbars">${t.heights.bands
+      .map((b) => `<div class="hb"><span>${b.label}</span><i style="width:${s.buildings ? (b.count / s.buildings) * 100 : 0}%"></i><b>${b.count}</b></div>`)
+      .join('')}</div>
+    <p class="muted fine">Floor areas are estimates from height at ${3.2} m a storey.</p>`;
 }
 
 function renderLegend() {
@@ -748,6 +780,7 @@ function select(b: Bldg | null) {
   }
   map.setFeatureState({ source: 'model', id: b.idx }, { selected: true });
   renderCard(b, null);
+  agent.contextChanged();
   renderLegend();
   const seq = ++osmSeq;
   fetchBuildingAt(b.ll[0], b.ll[1]).then((o) => seq === osmSeq && S.selected === b && renderCard(b, o?.tags ?? {}));
@@ -811,7 +844,7 @@ function drawLeader() {
   const svg = $('#leader');
   const b = S.selected;
   const anchor = document.getElementById('anchor');
-  if (!b || !anchor || $('#card').hidden) return void (svg.innerHTML = '');
+  if (!b || !anchor || $('#card').hidden || !$('#agentDrawer').hidden) return void (svg.innerHTML = '');
   const mr = $('#map').getBoundingClientRect();
   const pt = projectAt(displayLL(b), S.view === 'plan' ? 0 : b.h * 0.6);
   const x0 = mr.left + pt.x, y0 = mr.top + pt.y;
@@ -1146,6 +1179,7 @@ async function walkFromPoint(ll: [number, number]) {
     (map.getSource('walkpt') as mapboxgl.GeoJSONSource).setData(fc);
     lastWalk = { lengthIn, start: res.start };
     renderWalkKey();
+    agent.contextChanged();
     // Spread outward from the marker.
     cancelAnimationFrame(walkRAF);
     const t0 = performance.now(), ms = 2600;
@@ -1346,6 +1380,17 @@ function exportAtlas() {
 $('#expAxo').onclick = () => exportDrawing('axo');
 $('#expPlan').onclick = () => exportDrawing('plan');
 $('#expAtlas').onclick = exportAtlas;
+$('#expDxf').onclick = () => {
+  if (!S.model) return;
+  download(new Blob([siteDXF(S.model, { massing: S.massing })], { type: 'application/dxf' }), `${slug(S.place || 'site')}-bng.dxf`);
+  toast('DXF on British National Grid, in metres. Buildings carry their heights as elevation and thickness.');
+};
+$('#expObj').onclick = () => {
+  if (!S.model) return;
+  const { obj, origin } = siteOBJ(S.model, { massing: S.massing, context: false });
+  download(new Blob([obj], { type: 'text/plain' }), `${slug(S.place || 'site')}-E${origin[0]}-N${origin[1]}.obj`);
+  toast(`OBJ in metres, Z up, origin at British National Grid E ${origin[0]} N ${origin[1]}.`);
+};
 $('#expPng').onclick = () => map.getCanvas().toBlob((b) => b && download(b, `${slug(S.place || 'site')}-${S.view}.png`));
 
 function showExport(svg: string, name: string) {
@@ -1384,6 +1429,107 @@ function safe<T>(fn: () => T, fb: T): T {
     return fb;
   }
 }
+
+// ---------------------------------------------------------------- the site, for the agent
+// Everything Ultrahand knows about the site, as data (sent to the agent) and as text (to copy).
+// The shape is documented in docs/agent/site-context.md; bump `schema` if it changes.
+function siteContext() {
+  if (!S.model || !S.study) return null;
+  const m = S.model, t = S.metrics;
+  const r0 = (n: number) => Math.round(n), r1 = (n: number) => Math.round(n * 10) / 10, r6 = (n: number) => Math.round(n * 1e6) / 1e6;
+  const centre = turf.centroid(S.red ?? S.study).geometry.coordinates;
+  const label = (id: string) => DATASETS.find((d) => d.id === id)?.label ?? id;
+  const hits = (g: PolyF) => S.designations.features.filter((f) => f.geometry && safe(() => turf.booleanIntersects(f as any, g), false));
+  const item = (f: Feature) => ({ type: label(f.properties?.dataset), name: describe(f), reference: f.properties?.reference ?? null, url: entityUrl(f) });
+  const grouped: Record<string, { count: number; examples: string[] }> = {};
+  for (const f of hits(S.study)) {
+    const g = (grouped[label(f.properties?.dataset)] ??= { count: 0, examples: [] });
+    g.count++;
+    if (g.examples.length < 12 && !g.examples.includes(describe(f))) g.examples.push(describe(f));
+  }
+  const inStudy = m.buildings.filter((b) => b.inStudy);
+  const near = (cat: string) => S.pois.filter((p) => p.cat === cat).map((p) => ({ p, d: turf.distance(centre, [p.lon, p.lat], { units: 'meters' }) })).sort((a, b) => a.d - b.d);
+  const rail = near('rail')[0];
+  const area = (s: { areaM2: number; coverage: number; plotRatio: number; gfaM2: number; meanStoreys: number; buildings: number }) =>
+    ({ landM2: r0(s.areaM2), buildings: s.buildings, coverage: r1(s.coverage * 100) / 100, plotRatioEstimate: r1(s.plotRatio), floorAreaEstimateM2: r0(s.gfaM2), meanStoreys: r1(s.meanStoreys) });
+  const sel = S.selected;
+  return {
+    schema: 'allto.ultrahand.site/1',
+    generatedAt: new Date().toISOString(),
+    place: S.place || null,
+    localPlanningAuthority: S.lpa,
+    location: { lng: r6(centre[0]), lat: r6(centre[1]) },
+    redLine: S.red
+      ? { areaM2: r0(turf.area(S.red)), perimeterM: r0(turf.length(turf.polygonToLine(S.red as any) as any, { units: 'meters' })), geometry: turf.truncate(S.red, { precision: 6 }).geometry }
+      : null,
+    studyArea: {
+      kind: S.studyMode === 'buffer' ? `${S.bufferM} m around the red line` : S.studyMode === 'walk' ? `${S.walkMin} minutes' walk from the red line` : S.studyMode === 'box' ? 'quick box' : 'drawn',
+      areaM2: r0(turf.area(S.study)),
+    },
+    buildings: {
+      inStudyArea: inStudy.length,
+      onSite: inStudy.filter((b) => b.inSite).length,
+      heightsRecorded: t?.heights.known ?? 0,
+      medianHeightM: t ? r1(t.heights.median) : null,
+      tallestM: t ? r1(t.heights.tallest) : null,
+      listedEntries: inStudy.reduce((n, b) => n + b.listed.length, 0),
+      heightBands: t?.heights.bands ?? [],
+    },
+    townscape: t
+      ? { studyArea: area(t.study), redLine: t.site ? area(t.site) : null, medianFootprintM2: r0(t.grainM2), streetsAndPathsKmPerKm2: r1(t.streetKmPerKm2), storeyHeightAssumedM: 3.2 }
+      : null,
+    designations: { onRedLine: S.red ? hits(S.red).map(item) : [], inStudyArea: grouped },
+    gettingAbout: {
+      nearestStation: rail ? { name: rail.p.name, kind: rail.p.kind, distanceM: r0(rail.d) } : null,
+      busStopsWithin400m: near('bus').filter((x) => x.d <= 400).length,
+    },
+    walkingReach:
+      lastWalk && walkMarker
+        ? {
+            from: { lng: r6(walkMarker.getLngLat().lng), lat: r6(walkMarker.getLngLat().lat) },
+            speedKmh: 4.8,
+            bands: BANDS.map((b) => ({ minutes: b, metres: b * WALK_SPEED, streetsAndPathsKm: r1(lastWalk!.lengthIn[b] / 1000) })),
+          }
+        : null,
+    selectedBuilding: sel
+      ? { ref: sel.ref, name: sel.places[0] ?? null, heightM: r1(sel.h), heightRecorded: sel.heightKnown, footprintM2: r0(sel.area), onSite: sel.inSite, listed: sel.listed.map(describe), designations: sel.designations.map(describe) }
+      : null,
+    proposedMassingHeightM: S.massing || null,
+    sources: ['Buildings and streets: OpenStreetMap via Mapbox', 'Designations: planning.data.gov.uk', 'Places: OpenStreetMap', 'Walking: street network at 4.8 km/h'],
+    caveats: ['Heights are from OpenStreetMap where recorded; others are drawn at 6 m.', 'Floor areas and plot ratios are estimates at 3.2 m a storey.', 'Drawn from open data: not a measured survey or a flood risk assessment.'],
+  };
+}
+
+function siteSummary(): string {
+  const c = siteContext();
+  if (!c) return '';
+  const L: string[] = [];
+  L.push(`Site: ${c.place ?? 'unnamed'}${c.localPlanningAuthority ? ` (${c.localPlanningAuthority})` : ''}`);
+  if (c.redLine) L.push(`Red line: ${fmtArea(c.redLine.areaM2)}, perimeter ${fmtDist(c.redLine.perimeterM)}`);
+  L.push(`Study area: ${c.studyArea.kind}, ${fmtArea(c.studyArea.areaM2)}`);
+  L.push(`Buildings: ${c.buildings.inStudyArea} in the study area, ${c.buildings.onSite} on the site; median height ${c.buildings.medianHeightM} m, tallest ${c.buildings.tallestM} m (${c.buildings.heightsRecorded} heights recorded); ${c.buildings.listedEntries} listed building entries`);
+  if (c.townscape) {
+    const s = c.townscape.studyArea, r = c.townscape.redLine;
+    L.push(`Townscape (study area): coverage ${Math.round(s.coverage * 100)}%, plot ratio about ${s.plotRatioEstimate}, average ${s.meanStoreys} storeys, median footprint ${fmtArea(c.townscape.medianFootprintM2)}, ${c.townscape.streetsAndPathsKmPerKm2} km of streets and paths per km²`);
+    if (r) L.push(`Townscape (red line): coverage ${Math.round(r.coverage * 100)}%, plot ratio about ${r.plotRatioEstimate}, ${r.buildings} buildings`);
+  }
+  L.push(`On the red line: ${c.designations.onRedLine.length ? c.designations.onRedLine.map((d) => `${d.type}: ${d.name}`).join('; ') : 'no designations'}`);
+  const g = Object.entries(c.designations.inStudyArea);
+  if (g.length) L.push(`In the study area: ${g.map(([k, v]) => `${k} ${v.count}${v.examples.length ? ` (${v.examples.slice(0, 4).join(', ')}${v.count > 4 ? ', …' : ''})` : ''}`).join('; ')}`);
+  const ga = c.gettingAbout;
+  L.push(`Getting about: ${ga.nearestStation ? `nearest station ${ga.nearestStation.name}, ${fmtDist(ga.nearestStation.distanceM)}` : 'no station within 1.2 km'}; ${ga.busStopsWithin400m} bus stops within 400 m`);
+  if (c.walkingReach) L.push(`Walking from the marked point: ${c.walkingReach.bands.map((b) => `${b.minutes} min ${b.streetsAndPathsKm} km of street`).join(', ')}`);
+  if (c.selectedBuilding) {
+    const b = c.selectedBuilding;
+    L.push(`Selected building ${b.ref}${b.name ? ` (${b.name})` : ''}: ${b.heightM} m${b.heightRecorded ? '' : ' (estimated)'}, footprint ${fmtArea(b.footprintM2)}${b.onSite ? ', on the site' : ''}${b.listed.length ? `; listed: ${b.listed.join(', ')}` : ''}`);
+  }
+  if (c.proposedMassingHeightM) L.push(`Proposed massing: ${c.proposedMassingHeightM} m over the red line`);
+  L.push('', ...c.caveats);
+  return L.join('\n');
+}
+
+const agent = initAgentPanel({ context: siteContext, summary: siteSummary, place: () => S.place });
+$('#askBtn').onclick = () => (($('#agentDrawer').hidden ? agent.open() : agent.close()), drawLeader());
 
 // ---------------------------------------------------------------- remember the last site (this browser only)
 const KEY = 'ultrahand:last';

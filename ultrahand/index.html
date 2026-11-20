@@ -83,6 +83,8 @@
           <button id="expAxo" class="outline" disabled>Axonometric (SVG)</button>
           <button id="expAtlas" class="outline" disabled>Atlas sheet (SVG)</button>
           <button id="expPlan" class="outline" disabled>Plan (SVG)</button>
+          <button id="expDxf" class="outline" disabled>CAD plan (DXF, British National Grid)</button>
+          <button id="expObj" class="outline" disabled>3D model (OBJ)</button>
           <button id="expPng" class="outline">This view (PNG)</button>
         </div>
       </section>
@@ -103,7 +105,7 @@
         <button data-view="atlas">Atlas</button>
         <button data-view="eye">Eye level</button>
       </nav>
-      <div class="rot"><button id="rotL" title="Rotate 45° left">↺</button><span>Rotate</span><button id="rotR" title="Rotate 45° right">↻</button></div>
+      <div class="rot"><button id="askBtn" class="ask" title="Ask the site agent about this site">Ask about this site</button><span class="sp"></span><button id="rotL" title="Rotate 45° left">↺</button><span>Rotate</span><button id="rotR" title="Rotate 45° right">↻</button></div>
 
       <div id="card" hidden></div>
 
@@ -128,6 +130,7 @@
     </aside>
 
     <svg id="leader" aria-hidden="true"></svg>
+    <div id="agentDrawer" hidden></div>
     <div id="passport" hidden></div>
     <div id="exportView" hidden></div>
     <script type="module" src="./src/main.ts"></script>

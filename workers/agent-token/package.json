@@ -1,0 +1,13 @@
+{
+  "name": "allto-agent-token",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test.mjs",
+    "deploy": "npx wrangler deploy",
+    "dev": "npx wrangler dev"
+  },
+  "devDependencies": {
+    "wrangler": "^4.166.0"
+  }
+}

@@ -28,6 +28,8 @@ jobs:
         env:
           # Public Mapbox token (pk.*), stored as a repository variable. Restrict it to the Pages URL on mapbox.com.
           VITE_MAPBOX_TOKEN: ${{ vars.VITE_MAPBOX_TOKEN }}
+          # The allto agent token Worker's /token address (optional until the agent exists).
+          VITE_AGENT_TOKEN_URL: ${{ vars.VITE_AGENT_TOKEN_URL }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
