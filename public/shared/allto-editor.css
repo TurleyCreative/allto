@@ -34,7 +34,7 @@
 
 /* ---- frame: Ultrahand's 64 px header and panel widths */
 html, body { background: #fff; }
-body { font-family: var(--sans); font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+body { font-family: var(--sans); font-size: 14px; color: var(--ink); }
 #app { grid-template-columns: 340px 1fr 368px !important; grid-template-rows: 64px 1fr !important; background: #fff; }
 #topbar { padding: 0 20px 0 24px; gap: 14px; border-bottom: 1px solid var(--border); }
 #topbar-logo { height: 22px !important; }

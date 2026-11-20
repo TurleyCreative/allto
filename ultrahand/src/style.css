@@ -21,7 +21,6 @@ body {
   color: var(--ink);
   background: var(--paper);
   overflow: hidden;
-  font-variant-numeric: tabular-nums;
 }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
@@ -150,6 +149,9 @@ h4.light { font-weight: 600; color: var(--muted); }
 .desig { font-size: 12.5px; padding: 4px 0; border-bottom: 1px solid #f0efea; display: flex; gap: 8px; }
 .desig .sw { width: 9px; height: 9px; margin-top: 5px; flex: none; }
 .desig a { color: inherit; text-underline-offset: 3px; }
+
+/* atlas references: page labels so they share the app's font */
+.atlas-ref { font: 600 11px/1 var(--font); color: var(--ink); pointer-events: none; white-space: nowrap; }
 
 #leader { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
 

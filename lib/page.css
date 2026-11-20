@@ -1,6 +1,6 @@
 /* allto pages (home, Present) in the shared allto style set by Ultrahand. */
 * { box-sizing: border-box; }
-body { margin: 0; font: 14.5px/1.55 var(--allto-font, 'Plus Jakarta Sans', sans-serif); color: #141414; background: #fff; font-variant-numeric: tabular-nums; }
+body { margin: 0; font: 14.5px/1.55 var(--allto-font, 'Plus Jakarta Sans', sans-serif); color: #141414; background: #fff; }
 a { color: inherit; }
 .bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; padding: 0 24px; background: #fff; border-bottom: 1px solid #e2e1dc; position: sticky; top: 0; z-index: 5; }
 .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 80px; }

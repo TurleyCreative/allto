@@ -544,6 +544,7 @@ function resetAll(home: boolean) {
   studySeq++;
   cancelAnimationFrame(growRAF);
   cancelAnimationFrame(atlasRAF);
+  hideAtlasRefs();
   select(null);
   draw.deleteAll();
   Object.assign(S, {
@@ -855,7 +856,7 @@ function animateAtlas(to: 0 | 1, ms = 1500): Promise<void> {
   const src = map.getSource('model') as mapboxgl.GeoJSONSource;
   const from = S.atlasT;
   if (!S.model || !S.atlas || from === to) return Promise.resolve();
-  (map.getSource('atlas-labels') as mapboxgl.GeoJSONSource).setData(empty);
+  hideAtlasRefs();
   const t0 = performance.now();
   return new Promise((res) => {
     const step = () => {
@@ -864,12 +865,28 @@ function animateAtlas(to: 0 | 1, ms = 1500): Promise<void> {
       src.setData(k < 1 ? atlasFC(S.atlasT) : to ? atlasFC(1) : S.modelFC);
       if (k < 1) atlasRAF = requestAnimationFrame(step);
       else {
-        if (to) (map.getSource('atlas-labels') as mapboxgl.GeoJSONSource).setData(atlasLabels());
+        if (to) showAtlasRefs();
         res();
       }
     };
     step();
   });
+}
+
+// Atlas references are page labels (Plus Jakarta Sans), not map-drawn text in Mapbox's own font.
+let atlasRefs: mapboxgl.Marker[] = [];
+function showAtlasRefs() {
+  hideAtlasRefs();
+  for (const f of atlasLabels().features) {
+    const el = document.createElement('span');
+    el.className = 'atlas-ref';
+    el.textContent = String(f.properties?.text ?? '');
+    atlasRefs.push(new mapboxgl.Marker({ element: el, anchor: 'top' }).setLngLat((f.geometry as any).coordinates).addTo(map));
+  }
+}
+function hideAtlasRefs() {
+  atlasRefs.forEach((m) => m.remove());
+  atlasRefs = [];
 }
 
 function atlasLabels(): FeatureCollection {
