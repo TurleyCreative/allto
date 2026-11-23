@@ -15,8 +15,8 @@ ALLOWED_ORIGINS = "https://turleycreative.github.io,http://localhost:5173,http:/
 # Regional Direct Line address for the Copilot Studio environment.
 DIRECTLINE_DOMAIN = "https://europe.directline.botframework.com"
 # Cloudflare Access: once Access protects this Worker, set these so the Worker checks the login too.
-# ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
-# ACCESS_AUD = "the Application Audience (AUD) tag from the Access application"
+ACCESS_TEAM_DOMAIN = "tbg-mands-stonehaven.cloudflareaccess.com"
+ACCESS_AUD = "a44614a48b6d41fb4f9241151152240545f00c786aaaefff9dfa95701a20f7ff"
 
 # Secrets are never kept in this file. Set them in the Cloudflare dashboard (Worker > Settings > Variables and
 # Secrets) or with: npx wrangler secret put DIRECTLINE_SECRET   /   npx wrangler secret put TEAM_KEY
