@@ -1,5 +1,8 @@
 name: Deploy to GitHub Pages
 
+# allto now lives on Cloudflare behind Turley sign-in (see docs/cloudflare.md). GitHub Pages only publishes a
+# page that sends people there, so no open copy of allto stays on the public web.
+
 on:
   push:
     branches: [main]
@@ -18,21 +21,19 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-        env:
-          # Public Mapbox token (pk.*), stored as a repository variable. Restrict it to the Pages URL on mapbox.com.
-          VITE_MAPBOX_TOKEN: ${{ vars.VITE_MAPBOX_TOKEN }}
-          # The allto agent token Worker's /token address (optional until the agent exists).
-          VITE_AGENT_TOKEN_URL: ${{ vars.VITE_AGENT_TOKEN_URL || 'https://allto-agent-token.chris-hemsley.workers.dev/token' }}
+      - name: A page that moves people to allto on Cloudflare
+        run: |
+          mkdir -p site
+          cat > site/index.html <<'HTML'
+          <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>allto has moved</title><meta http-equiv="refresh" content="0; url=https://allto.chris-hemsley.workers.dev/ultrahand/">
+          <style>body{font:16px/1.5 Helvetica,Arial,sans-serif;color:#141414;max-width:520px;margin:15vh auto;padding:0 24px}a{color:#141414}</style></head>
+          <body><h1>allto has moved</h1><p>allto now needs a Turley sign-in. Go to <a href="https://allto.chris-hemsley.workers.dev/ultrahand/">allto.chris-hemsley.workers.dev</a>.</p></body></html>
+          HTML
+          cp site/index.html site/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: site
   deploy:
     needs: build
     runs-on: ubuntu-latest
