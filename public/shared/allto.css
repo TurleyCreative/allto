@@ -23,6 +23,10 @@
 .allto-switch--dark .allto-switch__tabs a { color: #a29c94; }
 .allto-switch--dark .allto-switch__tabs a:hover, .allto-switch--dark .allto-switch__tabs a.on { color: #f0ece4; border-bottom-color: #f0ece4; }
 
+.allto-me { margin-left: 8px; padding-left: 18px; border-left: 1px solid #d6d5d0; font: 500 12.5px/1 var(--allto-font); color: #6f6e6a; white-space: nowrap; }
+.allto-me a { color: #141414; }
+.allto-switch--dark .allto-me, .allto-switch--dark .allto-me a { color: #a29c94; }
+
 .allto-chip { display: inline-flex; align-items: center; gap: 8px; font: 500 12.5px/1.2 var(--allto-font); color: var(--allto-ink); white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
 .allto-chip--dark { color: #f0ece4; }
 .allto-chip__dot { width: 8px; height: 8px; border-radius: 50%; background: #c9c4bb; flex: none; }

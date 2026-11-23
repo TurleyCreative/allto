@@ -40,6 +40,7 @@
   }
 
   var listeners = [];
+  var meP = null;
 
   function closeRing(ring) {
     if (!ring || ring.length < 3) return null;
@@ -137,6 +138,13 @@
       html += '</span>';
       nav.innerHTML = html;
       host.appendChild(nav);
+      Allto.whoAmI().then(function (me) {
+        if (!me || !me.email) return;
+        var who = document.createElement('span');
+        who.className = 'allto-me';
+        who.innerHTML = escapeHtml(me.email) + ' · <a href="' + ROOT + 'cdn-cgi/access/logout">Sign out</a>';
+        nav.appendChild(who);
+      });
       return nav;
     },
 
@@ -189,6 +197,17 @@
       box.addEventListener('click', close);
       document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); } });
       setTimeout(close, 6500); // in case the animation can't load
+    },
+
+    /**
+     * Who is signed in, when allto is served by its Cloudflare Worker behind Cloudflare Access.
+     * Resolves to { email, unlocked } or null (elsewhere, e.g. a local copy).
+     */
+    whoAmI: function () {
+      if (!meP) meP = fetch(ROOT + 'me', { credentials: 'same-origin' })
+        .then(function (r) { return r.ok && /json/.test(r.headers.get('content-type') || '') ? r.json() : null; })
+        .catch(function () { return null; });
+      return meP;
     },
 
     /** A short notice in the corner, e.g. "Red line updated from Ultrahand". */

@@ -1,0 +1,22 @@
+# allto on Cloudflare: the whole app (static files from ../../dist) plus its server routes, one Worker.
+name = "allto"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+account_id = "27dccc2dbc8b269aa7a934ed755cfe97"
+
+[assets]
+directory = "../../dist"
+binding = "ASSETS"
+run_worker_first = true
+
+[vars]
+# Other sites allowed to call /token and /inspire-parcels (the app's own address is always allowed).
+ALLOWED_ORIGINS = "https://turleycreative.github.io,http://localhost:5173,http://localhost:4173"
+# Regional Direct Line address for the Copilot Studio environment.
+DIRECTLINE_DOMAIN = "https://europe.directline.botframework.com"
+# Cloudflare Access: once Access protects this Worker, set these so the Worker checks the login too.
+# ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
+# ACCESS_AUD = "the Application Audience (AUD) tag from the Access application"
+
+# Secrets are never kept in this file. Set them in the Cloudflare dashboard (Worker > Settings > Variables and
+# Secrets) or with: npx wrangler secret put DIRECTLINE_SECRET   /   npx wrangler secret put TEAM_KEY

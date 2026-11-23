@@ -1,0 +1,161 @@
+// Tests for the allto Worker, with Direct Line, the Land Registry, Access and static files stood in for.
+// Run: node test.mjs
+import assert from 'node:assert/strict';
+import worker from './src/index.js';
+
+const APP = 'https://allto.example.workers.dev';
+const PAGES = 'https://turleycreative.github.io';
+const TEAM = 'turley.cloudflareaccess.com', AUD = 'aud-123';
+
+// A real RSA key pair stands in for Access's signing key.
+const kp = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+const pub = { ...(await crypto.subtle.exportKey('jwk', kp.publicKey)), kid: 'k1' };
+const b64u = (b) => Buffer.from(b).toString('base64url');
+async function jwt(claims, { kid = 'k1', key = kp.privateKey } = {}) {
+  const h = b64u(JSON.stringify({ alg: 'RS256', kid })), p = b64u(JSON.stringify(claims));
+  const s = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(`${h}.${p}`)));
+  return `${h}.${p}.${b64u(s)}`;
+}
+const good = () => jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600, email: 'a.person@turley.co.uk' });
+
+let calls = [];
+globalThis.fetch = async (url, init = {}) => {
+  const u = String(url);
+  calls.push(u);
+  if (u === `https://${TEAM}/cdn-cgi/access/certs`) return Response.json({ keys: [pub] });
+  if (u.endsWith('/v3/directline/tokens/generate')) {
+    if (init.headers?.Authorization !== 'Bearer s3cret') return new Response('denied', { status: 403 });
+    return Response.json({ token: 'dl-token', conversationId: 'c1', expires_in: 3600 });
+  }
+  if (u.startsWith('https://inspire.landregistry.gov.uk/inspire/ows?')) return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'Content-Type': 'image/png' } });
+  return new Response('?', { status: 500 });
+};
+const ASSETS = { fetch: async (req) => new Response(`file ${new URL(req.url).pathname}`, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60' } }) };
+const base = { ALLOWED_ORIGINS: PAGES, DIRECTLINE_DOMAIN: 'https://europe.directline.botframework.com', DIRECTLINE_SECRET: 's3cret', TEAM_KEY: 'open sesame', ASSETS };
+const withAccess = { ...base, ACCESS_TEAM_DOMAIN: TEAM, ACCESS_AUD: AUD };
+
+function req(path, { method = 'GET', origin = APP, cookie, jwt: token, body, sameOrigin = false } = {}) {
+  const h = new Headers();
+  if (origin) h.set('Origin', origin);
+  if (sameOrigin) h.set('Sec-Fetch-Site', 'same-origin');
+  if (cookie) h.set('Cookie', cookie);
+  if (token) h.set('Cf-Access-Jwt-Assertion', token);
+  return new Request(APP + path, { method, headers: h, body });
+}
+const form = (o) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
+async function unlock(env, opts = {}) {
+  const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next: '/present/index.html' }), ...opts }), env);
+  return { r, cookie: (r.headers.get('Set-Cookie') || '').split(';')[0] };
+}
+
+const results = [];
+async function test(name, fn) {
+  calls = [];
+  try { await fn(); results.push(`ok   ${name}`); } catch (e) { results.push(`FAIL ${name}: ${e.message}`); process.exitCode = 1; }
+}
+
+await test('Ultrahand and the home page are open without the key', async () => {
+  for (const p of ['/index.html', '/ultrahand/index.html', '/shared/allto.js']) {
+    const r = await worker.fetch(req(p, { origin: null }), base);
+    assert.equal(r.status, 200, p);
+    assert.equal(await r.text(), `file ${p}`);
+  }
+});
+
+await test('Consultation and Present ask for the key and serve no files without it', async () => {
+  for (const p of ['/consultation/index.html', '/consultation/', '/present/index.html', '/present']) {
+    const r = await worker.fetch(req(p, { origin: null }), base);
+    const t = await r.text();
+    assert.equal(r.status, 200, p);
+    assert.match(t, /Enter the key/);
+    assert.ok(!t.startsWith('file '), p);
+  }
+});
+
+await test('wrong key: refused, slowed, no cookie', async () => {
+  const t = Date.now();
+  const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'nope', next: '/consultation/index.html' }) }), base);
+  assert.equal(r.status, 401);
+  assert.equal(r.headers.get('Set-Cookie'), null);
+  assert.ok(Date.now() - t >= 500);
+});
+
+await test('right key: cookie set (HttpOnly, Secure), then Consultation and Present open, not cached', async () => {
+  const { r, cookie } = await unlock(base);
+  assert.equal(r.status, 303);
+  assert.equal(r.headers.get('Location'), `${APP}/present/index.html`);
+  assert.match(r.headers.get('Set-Cookie'), /HttpOnly; Secure; SameSite=Lax/);
+  for (const p of ['/consultation/index.html', '/present/index.html']) {
+    const page = await worker.fetch(req(p, { origin: null, cookie }), base);
+    assert.equal(await page.text(), `file ${p}`);
+    assert.equal(page.headers.get('Cache-Control'), 'private, no-store');
+  }
+});
+
+await test('a forged or expired cookie does not open them; changing the key locks everyone out', async () => {
+  const forged = `allto_key=${encodeURIComponent(`${Date.now() + 1e9}.${'0'.repeat(64)}`)}`;
+  assert.match(await (await worker.fetch(req('/present/index.html', { cookie: forged }), base)).text(), /Enter the key/);
+  const { cookie } = await unlock(base);
+  assert.match(await (await worker.fetch(req('/present/index.html', { cookie }), { ...base, TEAM_KEY: 'new key' })).text(), /Enter the key/);
+});
+
+await test('unlock only redirects inside Consultation or Present', async () => {
+  const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next: 'https://evil.example/' }) }), base);
+  assert.equal(r.headers.get('Location'), `${APP}/consultation/index.html`);
+  const r2 = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next: '//evil.example/present/' }) }), base);
+  assert.equal(r2.headers.get('Location'), `${APP}/consultation/index.html`);
+});
+
+await test('agent token for the app itself (same origin) and allowed sites; others refused', async () => {
+  const own = await worker.fetch(req('/token', { method: 'POST' }), base);
+  assert.equal(own.status, 200);
+  assert.equal((await own.json()).token, 'dl-token');
+  const sameSite = await worker.fetch(req('/token', { method: 'POST', origin: null, sameOrigin: true }), base);
+  assert.equal(sameSite.status, 200);
+  const pages = await worker.fetch(req('/token', { method: 'POST', origin: PAGES }), base);
+  assert.equal(pages.status, 200);
+  assert.equal(pages.headers.get('Access-Control-Allow-Origin'), PAGES);
+  assert.equal((await worker.fetch(req('/token', { method: 'POST', origin: 'https://evil.example' }), base)).status, 403);
+});
+
+await test('secret never appears in any response', async () => {
+  for (const p of ['/token', '/health', '/me']) assert.ok(!(await (await worker.fetch(req(p, { method: p === '/token' ? 'POST' : 'GET' }), base)).text()).includes('s3cret'));
+  assert.ok(!(await (await worker.fetch(req('/health'), base)).text()).includes('open sesame'));
+});
+
+await test('parcels tile for the app; bad boxes rejected; only the Land Registry is called', async () => {
+  const r = await worker.fetch(req('/inspire-parcels?bbox=-251350,7068650,-250850,7069150', { origin: null, sameOrigin: true }), base);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('Content-Type'), 'image/png');
+  assert.equal((await worker.fetch(req('/inspire-parcels?bbox=0,0,50000,50000'), base)).status, 400);
+  assert.ok(calls.every((c) => c.startsWith('https://inspire.landregistry.gov.uk/')));
+});
+
+await test('with Access configured: no login, a bad login or an expired login is refused', async () => {
+  assert.equal((await worker.fetch(req('/token', { method: 'POST' }), withAccess)).status, 401);
+  const other = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+  const forged = await jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600, email: 'x@turley.co.uk' }, { key: other.privateKey });
+  assert.equal((await worker.fetch(req('/token', { method: 'POST', jwt: forged }), withAccess)).status, 401);
+  const expired = await jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) - 10, email: 'x@turley.co.uk' });
+  assert.equal((await worker.fetch(req('/token', { method: 'POST', jwt: expired }), withAccess)).status, 401);
+  const wrongAud = await jwt({ aud: ['other'], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600 });
+  assert.equal((await worker.fetch(req('/token', { method: 'POST', jwt: wrongAud }), withAccess)).status, 401);
+});
+
+await test('with Access configured: a good login works, /me says who, and the key is tied to that person', async () => {
+  const token = await good();
+  assert.equal((await worker.fetch(req('/token', { method: 'POST', jwt: token }), withAccess)).status, 200);
+  const me = await (await worker.fetch(req('/me', { jwt: token }), withAccess)).json();
+  assert.deepEqual(me, { email: 'a.person@turley.co.uk', unlocked: false });
+  const { cookie } = await unlock(withAccess, { jwt: token });
+  assert.equal(await (await worker.fetch(req('/present/index.html', { jwt: token, cookie }), withAccess)).text(), 'file /present/index.html');
+  const someoneElse = await jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600, email: 'b.other@turley.co.uk' });
+  assert.match(await (await worker.fetch(req('/present/index.html', { jwt: someoneElse, cookie }), withAccess)).text(), /Enter the key/);
+});
+
+await test('health reports configuration without secrets', async () => {
+  const h = await (await worker.fetch(req('/health'), withAccess)).json();
+  assert.deepEqual([h.mode, h.access, h.consultationAndPresentKey], ['directline-secret', 'checked', 'required']);
+});
+
+console.log(results.join('\n'));

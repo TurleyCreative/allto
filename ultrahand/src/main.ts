@@ -81,7 +81,8 @@ const WORKER_BASE = (() => {
   try {
     u = localStorage.getItem('ultrahand:agentTokenUrl') || u;
   } catch { /* storage blocked */ }
-  return u ? u.replace(/\/token\/?$/, '') : '';
+  // A relative address ("/token", when allto is served by the Worker itself) means this site.
+  return u ? new URL(u, location.href).href.replace(/\/token\/?$/, '') : '';
 })();
 const HOME = { center: [-2.2557, 53.4776] as [number, number], zoom: 16 };
 
