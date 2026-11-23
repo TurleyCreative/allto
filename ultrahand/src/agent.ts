@@ -2,8 +2,12 @@
 //
 // The agent is reached through Bot Framework Web Chat over Direct Line. A token comes from the allto
 // token Worker (workers/agent-token), so the agent's secret never reaches the browser. When the chat
-// connects, Ultrahand sends the site as an event named "allto.siteContext" (see docs/agent), then
-// "startConversation" so the agent greets with the site in hand.
+// connects, Ultrahand gives the agent the site two ways, so it works with any Copilot Studio agent:
+//  - a message starting "[Ultrahand site context]" with the site as JSON. It is hidden from the chat,
+//    and so is the agent's short reply to it. Agents without topics (the newer Copilot Studio view)
+//    read it as part of the conversation; their instructions say what it is (docs/agent).
+//  - an event named "allto.siteContext", for agents with a topic that stores it in a variable.
+// When the site changes, it is sent again just before the user's next question.
 //
 // Without an agent yet, the panel still shows exactly what would be sent, to copy or download.
 
@@ -51,17 +55,30 @@ function loadWebChat(): Promise<void> {
 export function initAgentPanel(deps: AgentDeps) {
   const drawer = document.getElementById('agentDrawer')!;
   let store: any = null;
+  let directLine: any = null;
   let connected = false;
+  let started = false; // a chat is connecting or open: never redraw the panel over it
   let lastSent = '';
+  const hidden = new Set<string>(); // ids of the context messages, to hide them and the replies to them
 
+  /** Send the site, unless the agent already has this version. Hidden from the chat. */
   const sendContext = () => {
-    if (!store || !connected) return;
+    if (!directLine || !connected) return;
     const ctx = deps.context();
     const body = JSON.stringify(ctx);
     if (!ctx || body === lastSent) return;
     lastSent = body;
-    store.dispatch({ type: 'WEB_CHAT/SEND_EVENT', payload: { name: 'allto.siteContext', value: ctx } });
+    directLine
+      .postActivity({
+        type: 'message',
+        from: { id: userId, role: 'user' },
+        text: `[Ultrahand site context] The site the user is looking at in Ultrahand, as JSON. Not a question: reply only "OK".\n\n${body}`,
+        channelData: { allto: 'site-context' },
+      })
+      .subscribe({ next: (id: string) => hidden.add(id), error: () => {} });
+    store?.dispatch({ type: 'WEB_CHAT/SEND_EVENT', payload: { name: 'allto.siteContext', value: ctx } });
   };
+  let userId = 'dl_ultrahand';
 
   function render() {
     const url = tokenUrl();
@@ -112,6 +129,7 @@ export function initAgentPanel(deps: AgentDeps) {
     drawer.querySelector('[data-a=forget]')?.addEventListener('click', () => {
       try { localStorage.removeItem(KEY); } catch { /* storage blocked */ }
       connected = false;
+      started = false;
       store = null;
       render();
     });
@@ -134,6 +152,7 @@ export function initAgentPanel(deps: AgentDeps) {
     const url = tokenUrl();
     const host = document.getElementById('agChat');
     if (!url || !host) return;
+    started = true;
     status('Connecting to the site agent…');
     try {
       const r = await fetch(url, { method: 'POST' });
@@ -141,24 +160,28 @@ export function initAgentPanel(deps: AgentDeps) {
       if (!r.ok || !t.token) throw new Error(t.error || `The token service answered ${r.status}.`);
       await loadWebChat();
       const WC = (window as any).WebChat;
+      userId = t.userId || userId;
       store = WC.createStore({}, ({ dispatch }: any) => (next: any) => (action: any) => {
+        // A question while the site has changed: the agent gets the new site first.
+        if (action.type === 'WEB_CHAT/SEND_MESSAGE' && connected) sendContext();
         if (action.type === 'DIRECT_LINE/CONNECT_FULFILLED') {
           connected = true;
           const ctx = deps.context();
-          if (ctx) {
-            lastSent = JSON.stringify(ctx);
-            dispatch({ type: 'WEB_CHAT/SEND_EVENT', payload: { name: 'allto.siteContext', value: ctx } });
-          }
+          if (ctx) setTimeout(sendContext, 0);
           dispatch({ type: 'WEB_CHAT/SEND_EVENT', payload: { name: 'startConversation', value: { locale: 'en-GB' } } });
           status(ctx ? 'Connected. The agent has this site.' : 'Connected. Analyse the site to give the agent its context.');
         }
         return next(action);
       });
-      const directLine = WC.createDirectLine({ token: t.token, domain: `${t.directLineDomain || 'https://directline.botframework.com'}/v3/directline` });
+      directLine = WC.createDirectLine({ token: t.token, domain: `${t.directLineDomain || 'https://directline.botframework.com'}/v3/directline` });
+      // Hide the site context messages and the agent's replies to them.
+      const isHidden = (a: any) => a?.channelData?.allto === 'site-context' || (a?.replyToId && hidden.has(a.replyToId)) || (typeof a?.text === 'string' && a.text.startsWith('[Ultrahand site context]'));
+      const activityMiddleware = () => (next: any) => (...args: any[]) => (isHidden(args[0]?.activity) ? false : next(...args));
       WC.renderWebChat(
         {
           directLine,
           store,
+          activityMiddleware,
           userID: t.userId,
           locale: 'en-GB',
           styleOptions: {
@@ -179,6 +202,7 @@ export function initAgentPanel(deps: AgentDeps) {
         host,
       );
     } catch (e) {
+      started = false;
       status((e as Error).message);
     }
   }
@@ -199,8 +223,9 @@ export function initAgentPanel(deps: AgentDeps) {
     close,
     /** Call when the analysis or selection changes: a connected agent gets the new picture. */
     contextChanged() {
-      if (connected) sendContext();
-      else if (!drawer.hidden) render();
+      if (started) return; // a connected agent gets the new site just before the next question
+      if (!drawer.hidden) render();
+      // A connected agent gets the new site just before the next question (see the store middleware).
     },
   };
 }
