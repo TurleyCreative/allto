@@ -5,9 +5,9 @@
  *   - Cloudflare Access in front (Zero Trust): Turley staff sign in with their @turley.co.uk address and a
  *     one-time code. When ACCESS_TEAM_DOMAIN and ACCESS_AUD are set, this Worker also checks the Access login
  *     itself on every server route, so nothing relies on Access alone.
- *   - Ultrahand is open to everyone at Turley. Consultation and Present are locked for now: /consultation and
- *     /present need a key (TEAM_KEY, a Worker secret). A correct key sets a signed, HttpOnly cookie for 30 days,
- *     tied to the person's Access login.
+ *   - Ultrahand is open to everyone at Turley. Everything else (the home page, Consultation, Present, the
+ *     examples) needs a key (TEAM_KEY, a Worker secret). A correct key sets a signed, HttpOnly cookie for 30 days,
+ *     tied to the person's Access login. With no key set, those pages stay locked (fail closed).
  *
  * Routes
  *   GET  /health                     what is configured (no secrets)
@@ -16,7 +16,7 @@
  *   GET  /inspire-parcels?bbox=…     HM Land Registry INSPIRE parcels map tile (Ultrahand)
  *   POST /unlock                     check the key, set the cookie
  *   GET  /lock                       forget the key on this browser
- *   everything else                  the app (static files); /consultation/* and /present/* behind the key
+ *   everything else                  the app (static files); all but Ultrahand behind the key
  *
  * Settings: ALLOWED_ORIGINS, DIRECTLINE_DOMAIN, COPILOT_TOKEN_ENDPOINT, ACCESS_TEAM_DOMAIN, ACCESS_AUD (vars);
  *           DIRECTLINE_SECRET, TEAM_KEY (secrets).
@@ -109,9 +109,9 @@ async function keyCookieValue(env, email, expires) {
   return `${expires}.${await hmac(env.TEAM_KEY, `allto-key|${email || ''}|${expires}`)}`;
 }
 
-/** Has this browser (and this person) unlocked Consultation and Present? True when no key is set. */
+/** Has this browser (and this person) unlocked the rest of allto? Never, while no key is set. */
 async function hasKey(request, env, email) {
-  if (!env.TEAM_KEY) return true;
+  if (!env.TEAM_KEY) return false;
   const v = cookie(request, KEY_COOKIE);
   if (!v) return false;
   const [exp, sig] = v.split('.');
@@ -119,12 +119,15 @@ async function hasKey(request, env, email) {
   return sameString(sig, (await keyCookieValue(env, email, Number(exp))).split('.')[1]);
 }
 
-const LOCKED = /^\/(consultation|present)(\/|$)/;
-const safeNextOf = (next) => (LOCKED.test(next) && !next.includes('//') ? next : '/consultation/index.html');
+// Open to everyone signed in: Ultrahand and the shared files it runs on. Everything else needs the key.
+const OPEN = /^\/(ultrahand(\/|$)|shared\/|assets\/|favicon|cdn-cgi\/)/;
+const API = /^\/(health|me|token|inspire-parcels|unlock|lock)$/;
+const isLocked = (path) => !OPEN.test(path) && !API.test(path);
+const safeNextOf = (next) => (next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') && isLocked(next) ? next : '/index.html');
 
-function unlockPage(message = '', next = '/consultation/index.html') {
+function unlockPage(message = '', next = '/index.html', keySet = true) {
   const safeNext = safeNextOf(next);
-  const which = safeNext.startsWith('/present') ? 'Present' : 'Consultation';
+  const which = safeNext.startsWith('/present') ? 'Present' : safeNext.startsWith('/consultation') ? 'Consultation' : 'allto';
   return new Response(
     `<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>allto: ${which}</title><link rel="icon" href="/shared/allto-logo.svg">
@@ -140,11 +143,12 @@ button{margin-top:12px;width:100%;padding:12px;background:#141414;color:#fff;bor
 .err{color:#d7262e;font-size:13.5px;margin:10px 0 0}.fine{font-size:12.5px;color:#6f6e6a;margin-top:22px}
 </style></head><body>
 <header><a href="/index.html"><img src="/shared/allto-logo.svg" alt="allto*"></a>${['Consultation', 'Present', 'Ultrahand'].map((n) => `<a href="/${n.toLowerCase()}/index.html"${n === which ? ' style="color:#141414;border-bottom:2px solid #141414;padding-bottom:3px"' : ''}>${n}</a>`).join('')}</header>
-<main><h1>${which}</h1><p>Consultation and Present are open to the team that uses them for now. Enter the key to carry on. Ultrahand is open to everyone at Turley.</p>
+<main><h1>${which}</h1><p>For now, everyone at Turley can use <a href="/ultrahand/index.html" style="color:#141414;font-weight:700">Ultrahand</a>. The rest of allto needs a key.</p>${keySet ? '' : '<p class="err">No key has been set up yet, so this part of allto is closed.</p>'}
 <form method="post" action="/unlock"><input type="hidden" name="next" value="${safeNext.replace(/"/g, '')}">
 <label for="k">Key</label><input id="k" name="key" type="password" autocomplete="current-password" autofocus required>
 <button type="submit">Open ${which}</button>${message ? `<p class="err">${message}</p>` : ''}</form>
-<p class="fine">Remembered on this browser for ${KEY_DAYS} days. Ask the allto team for the key.</p></main></body></html>`,
+<p class="fine">Remembered on this browser for ${KEY_DAYS} days. Ask the allto team for the key.</p>
+<p style="margin-top:28px"><a href="/ultrahand/index.html" style="display:inline-block;padding:11px 16px;border:1px solid #141414;color:#141414;text-decoration:none;font-weight:700">Go to Ultrahand</a></p></main></body></html>`,
     { status: message ? 401 : 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } },
   );
 }
@@ -222,10 +226,9 @@ export default {
     if (path === '/unlock' && request.method === 'POST') {
       const form = await request.formData().catch(() => null);
       const next = safeNextOf(String(form?.get('next') || ''));
-      if (!env.TEAM_KEY) return Response.redirect(new URL(next, url).href, 303);
-      if (!form || !sameString(String(form.get('key') || ''), env.TEAM_KEY)) {
+      if (!form || !env.TEAM_KEY || !sameString(String(form.get('key') || ''), env.TEAM_KEY)) {
         await new Promise((r) => setTimeout(r, 600)); // slow down guessing
-        return unlockPage('That key is not right.', next);
+        return unlockPage(env.TEAM_KEY ? 'That key is not right.' : 'No key has been set up yet.', next, !!env.TEAM_KEY);
       }
       const expires = Date.now() + KEY_DAYS * 86400_000;
       return new Response(null, {
@@ -241,8 +244,8 @@ export default {
       return new Response(null, { status: 303, headers: { Location: new URL('/index.html', url).href, 'Set-Cookie': `${KEY_COOKIE}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax` } });
     }
 
-    // Consultation and Present need the key; Ultrahand (and its token and parcels) are open to all of Turley.
-    const unlocked = LOCKED.test(path) ? await hasKey(request, env, login.email) : true;
+    // Ultrahand (and its token and parcels) are open to all of Turley; everything else needs the key.
+    const unlocked = isLocked(path) ? await hasKey(request, env, login.email) : true;
 
     if (path === '/inspire-parcels') {
       if (!headers) return json({ error: 'This site is not allowed to use this service.' }, 403);
@@ -266,10 +269,10 @@ export default {
     }
 
     // The app itself.
-    if (LOCKED.test(path) && !unlocked) return unlockPage('', /\/(consultation|present)\/?$/.test(path) ? `${path.replace(/\/$/, '')}/index.html` : path);
+    if (isLocked(path) && !unlocked) return unlockPage('', path.endsWith('/') ? `${path}index.html` : path, !!env.TEAM_KEY);
     if (!env.ASSETS) return json({ error: 'Not found' }, 404, headers || {});
     const res = await env.ASSETS.fetch(request);
-    if (LOCKED.test(path)) {
+    if (isLocked(path)) {
       const h = new Headers(res.headers);
       h.set('Cache-Control', 'private, no-store'); // never cache the locked pages at the edge
       return new Response(res.body, { status: res.status, headers: h });

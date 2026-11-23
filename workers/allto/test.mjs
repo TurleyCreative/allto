@@ -54,20 +54,20 @@ async function test(name, fn) {
   try { await fn(); results.push(`ok   ${name}`); } catch (e) { results.push(`FAIL ${name}: ${e.message}`); process.exitCode = 1; }
 }
 
-await test('Ultrahand and the home page are open without the key', async () => {
-  for (const p of ['/index.html', '/ultrahand/index.html', '/shared/allto.js']) {
+await test('Ultrahand and the files it runs on are open without the key', async () => {
+  for (const p of ['/ultrahand/index.html', '/ultrahand/', '/shared/allto.js', '/assets/ultrahand-abc.js']) {
     const r = await worker.fetch(req(p, { origin: null }), base);
     assert.equal(r.status, 200, p);
     assert.equal(await r.text(), `file ${p}`);
   }
 });
 
-await test('Consultation and Present ask for the key and serve no files without it', async () => {
-  for (const p of ['/consultation/index.html', '/consultation/', '/present/index.html', '/present']) {
+await test('everything else asks for the key and serves no files without it', async () => {
+  for (const p of ['/', '/index.html', '/consultation/index.html', '/consultation/', '/present/index.html', '/present', '/examples/thompsons-yard.html', '/robots.txt']) {
     const r = await worker.fetch(req(p, { origin: null }), base);
     const t = await r.text();
     assert.equal(r.status, 200, p);
-    assert.match(t, /Enter the key/);
+    assert.match(t, /needs a key/);
     assert.ok(!t.startsWith('file '), p);
   }
 });
@@ -94,16 +94,27 @@ await test('right key: cookie set (HttpOnly, Secure), then Consultation and Pres
 
 await test('a forged or expired cookie does not open them; changing the key locks everyone out', async () => {
   const forged = `allto_key=${encodeURIComponent(`${Date.now() + 1e9}.${'0'.repeat(64)}`)}`;
-  assert.match(await (await worker.fetch(req('/present/index.html', { cookie: forged }), base)).text(), /Enter the key/);
+  assert.match(await (await worker.fetch(req('/present/index.html', { cookie: forged }), base)).text(), /needs a key/);
   const { cookie } = await unlock(base);
-  assert.match(await (await worker.fetch(req('/present/index.html', { cookie }), { ...base, TEAM_KEY: 'new key' })).text(), /Enter the key/);
+  assert.match(await (await worker.fetch(req('/present/index.html', { cookie }), { ...base, TEAM_KEY: 'new key' })).text(), /needs a key/);
 });
 
-await test('unlock only redirects inside Consultation or Present', async () => {
-  const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next: 'https://evil.example/' }) }), base);
-  assert.equal(r.headers.get('Location'), `${APP}/consultation/index.html`);
-  const r2 = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next: '//evil.example/present/' }) }), base);
-  assert.equal(r2.headers.get('Location'), `${APP}/consultation/index.html`);
+await test('unlock only redirects to locked pages on this site', async () => {
+  for (const next of ['https://evil.example/', '//evil.example/present/', '/\\evil.example', '/ultrahand/index.html']) {
+    const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next }) }), base);
+    assert.equal(r.headers.get('Location'), `${APP}/index.html`, next);
+  }
+  const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: 'open sesame', next: '/examples/thompsons-yard.html' }) }), base);
+  assert.equal(r.headers.get('Location'), `${APP}/examples/thompsons-yard.html`);
+});
+
+await test('with no key set, everything but Ultrahand stays shut (fails closed)', async () => {
+  const noKey = { ...base, TEAM_KEY: undefined };
+  const page = await worker.fetch(req('/consultation/index.html', { origin: null }), noKey);
+  assert.match(await page.text(), /No key has been set up yet/);
+  const r = await worker.fetch(req('/unlock', { method: 'POST', body: form({ key: '', next: '/index.html' }) }), noKey);
+  assert.equal(r.headers.get('Set-Cookie'), null);
+  assert.equal(await (await worker.fetch(req('/ultrahand/index.html', { origin: null }), noKey)).text(), 'file /ultrahand/index.html');
 });
 
 await test('agent token for the app itself (same origin) and allowed sites; others refused', async () => {
@@ -150,7 +161,7 @@ await test('with Access configured: a good login works, /me says who, and the ke
   const { cookie } = await unlock(withAccess, { jwt: token });
   assert.equal(await (await worker.fetch(req('/present/index.html', { jwt: token, cookie }), withAccess)).text(), 'file /present/index.html');
   const someoneElse = await jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600, email: 'b.other@turley.co.uk' });
-  assert.match(await (await worker.fetch(req('/present/index.html', { jwt: someoneElse, cookie }), withAccess)).text(), /Enter the key/);
+  assert.match(await (await worker.fetch(req('/present/index.html', { jwt: someoneElse, cookie }), withAccess)).text(), /needs a key/);
 });
 
 await test('health reports configuration without secrets', async () => {
