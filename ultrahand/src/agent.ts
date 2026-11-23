@@ -75,7 +75,7 @@ export function initAgentPanel(deps: AgentDeps) {
         text: `[Ultrahand site context] The site the user is looking at in Ultrahand, as JSON. Not a question: reply only "OK".\n\n${body}`,
         channelData: { allto: 'site-context' },
       })
-      .subscribe({ next: (id: string) => hidden.add(id), error: () => {} });
+      .subscribe({ next: (id: string) => (hidden.add(id), status('Connected. The agent has this site.')), error: () => {} });
     store?.dispatch({ type: 'WEB_CHAT/SEND_EVENT', payload: { name: 'allto.siteContext', value: ctx } });
   };
   let userId = 'dl_ultrahand';
