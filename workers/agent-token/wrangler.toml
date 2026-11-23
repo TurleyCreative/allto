@@ -7,7 +7,7 @@ compatibility_date = "2025-06-01"
 ALLOWED_ORIGINS = "https://turleycreative.github.io,http://localhost:5173,http://localhost:4173"
 # Regional Direct Line address. Use the one for your Copilot Studio environment's region,
 # e.g. https://europe.directline.botframework.com for Europe.
-DIRECTLINE_DOMAIN = "https://directline.botframework.com"
+DIRECTLINE_DOMAIN = "https://europe.directline.botframework.com"
 # Only for an agent WITHOUT web channel security: paste Copilot Studio's token endpoint here.
 # COPILOT_TOKEN_ENDPOINT = ""
 

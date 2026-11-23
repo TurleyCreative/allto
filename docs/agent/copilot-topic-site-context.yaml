@@ -1,0 +1,16 @@
+# Copilot Studio topic: store the site Ultrahand sends.
+# In Copilot Studio: Topics > Add a topic > From blank > (top right ...) Open code editor,
+# replace everything with this, then Save. If the editor rejects it, build the same thing with the
+# menus: trigger "Event received" (event name allto.siteContext) and one "Set a variable value" node.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnEventActivity
+  id: main
+  eventName: allto.siteContext
+  actions:
+    - kind: SetVariable
+      id: setSiteContextText
+      variable: Global.SiteContextText
+      value: =JSON(System.Activity.Value)
+    - kind: EndDialog
+      id: endDialog
