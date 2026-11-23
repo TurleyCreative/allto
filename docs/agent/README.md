@@ -34,11 +34,10 @@ Menu names in Copilot Studio change from time to time; if a label below doesn't 
      Copilot Studio > Tools > New tool > Custom connector > Import an OpenAPI file). It needs no key.
    - If your organisation has MCP servers for planning data (e.g. a planning applications service), add them under
      Tools > Model Context Protocol so the agent can look up applications and appeals near the site.
-5. **The site context topic.** Create a topic triggered by an **event**:
-   - Trigger: *Event received* (sometimes *A custom client event occurs*), event name **`allto.siteContext`**.
-   - Node: *Set a variable value*: a global variable `Global.SiteContext`, value `System.Activity.Value`.
-   - Node: *Set a variable value*: a global variable `Global.SiteContextText`, value `JSON(System.Activity.Value)`.
-   - End the topic without sending a message (Ultrahand sends this again whenever the site changes).
+5. **The site context topic.** Topics > Add a topic > From blank > *Open code editor*, paste
+   [copilot-topic-site-context.yaml](copilot-topic-site-context.yaml), Save. It stores each site Ultrahand sends
+   in `Global.SiteContextText`. (Without the code editor: trigger *Event received*, event name **`allto.siteContext`**,
+   then *Set a variable value*: new global variable `Global.SiteContextText` = `JSON(System.Activity.Value)`.)
 6. **Use it.** In the agent's instructions, insert `Global.SiteContextText` where the instructions say
    *[site context goes here]* (type `/` to pick the variable). If your version can't put variables in the
    instructions, use a *Create generative answers* node in the topics that answer site questions, with
