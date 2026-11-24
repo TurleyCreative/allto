@@ -30,6 +30,8 @@ export interface AxoOpts {
   scaleBar?: boolean;
   labels?: boolean;
   clipBuildings?: boolean;
+  /** A hand-drawn look: lines wobble a little, on warm paper. */
+  sketch?: boolean;
 }
 
 export const LOOK = {
@@ -122,7 +124,11 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
 
   const out: string[] = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="'Plus Jakarta Sans', Helvetica, Arial, sans-serif">`);
-  if (o.background) out.push(`<rect width="${W}" height="${H}" fill="${o.background}"/>`);
+  if (o.background) out.push(`<rect width="${W}" height="${H}" fill="${o.sketch ? '#fbf8f1' : o.background}"/>`);
+  const skid = `sk${uid}`;
+  const skf = o.sketch ? ` filter="url(#${skid})"` : '';
+  // The filter works in drawing units (metres): a wobble of about 12 px wavelength and 2.5 px reach on the page.
+  if (o.sketch) out.push(`<defs><filter id="${skid}" x="-2%" y="-2%" width="104%" height="104%"><feTurbulence type="fractalNoise" baseFrequency="${f1(s / 12)}" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="${f1(2.5 / s)}" xChannelSelector="R" yChannelSelector="G"/></filter></defs>`);
   if (scene.clip) out.push(`<defs><clipPath id="${cid}"><path d="${scene.clip.map((pl) => polyPath(pl, 0)).join('')}" clip-rule="evenodd"/></clipPath></defs>`);
   out.push(`<g transform="matrix(${f1(s)} 0 0 ${f1(s)} ${f1(tx)} ${f1(ty)})" stroke-linejoin="round">`);
 
@@ -144,7 +150,7 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
   if (scene.clip) out.push(`<path id="ground" d="${scene.clip.map((pl) => polyPath(pl, 0)).join('')}" fill="${o.groundColor ?? '#ecebe7'}" fill-rule="evenodd"/>`);
 
   // ---- ground layers
-  out.push(`<g id="ground-layers"${scene.clip ? ` clip-path="url(#${cid})"` : ''}>`);
+  out.push(`<g${skf}><g id="ground-layers"${scene.clip ? ` clip-path="url(#${cid})"` : ''}>`);
   for (const g of scene.ground ?? []) {
     if ('polys' in g) {
       const d = g.polys.map((pl) => polyPath(pl, 0)).join('');
@@ -180,6 +186,7 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
   }
   out.push('</g>');
 
+  out.push('</g>');
   // ---- buildings, far to near
   const items = scene.buildings.map((bd) => {
     let cy = 0, n = 0;
@@ -188,9 +195,9 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
   });
   items.sort((x, y) => y.depth - x.depth || x.bd.z1 - y.bd.z1);
   const labels: string[] = [];
-  out.push(`<g id="buildings"${o.clipBuildings && scene.clip ? ` clip-path="url(#${cid})"` : ''}>`);
+  out.push(`<g id="buildings"${skf}${o.clipBuildings && scene.clip ? ` clip-path="url(#${cid})"` : ''}>`);
   for (const { bd } of items) {
-    const L = bd.look;
+    const L = o.sketch ? { ...bd.look, stroke: '#3a3833', strokeWidth: Math.max(0.9, bd.look.strokeWidth ?? 0.6) } : bd.look;
     const sw = L.strokeWidth ?? 0.6;
     if (k > 0.001) {
       const walls: { d: number; path: string; fill: string }[] = [];

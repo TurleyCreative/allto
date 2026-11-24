@@ -476,7 +476,7 @@ export function planGeoJSON(plan: Plan, selected: string | null) {
     plan.homes.flatMap((h) => {
       const t = houseType(h.type);
       const colour = h.tenure === 'affordable' ? AFFORDABLE_COLOUR : t.colour;
-      const props = { id: h.id, colour, selected: h.id === selected, tenure: h.tenure };
+      const props = { id: h.id, colour, wash: wash(colour), selected: h.id === selected, tenure: h.tenure };
       const walls = { ...h.shape, properties: { ...props, base: 0, top: h.ridge ? houseEave(t) : houseHeight(t) } };
       return [walls, ...roofSlices(h, t).map((r) => ({ ...r.shape, properties: { ...props, base: r.base, top: r.top } }))];
     }),
@@ -491,3 +491,161 @@ export function planGeoJSON(plan: Plan, selected: string | null) {
 
 /** Plot dividers for pairs, for the drawings and CAD. */
 export const homePartyLines = partyLines;
+
+// ------------------------------------------------------------------ sketch
+
+type XY = [number, number];
+
+/** A repeatable random sequence, so a sketch looks the same each time it is drawn. */
+function rng(seed: number) {
+  let s = seed >>> 0 || 1;
+  return () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296);
+}
+const hashOf = (str: string) => [...str].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) >>> 0, 7);
+
+/** Metres around a point, for drawing; small areas only. */
+function frameAt(p: Position) {
+  const kx = 111320 * Math.cos((p[1] * Math.PI) / 180), ky = 110574;
+  return { to: (q: Position): XY => [(q[0] - p[0]) * kx, (q[1] - p[1]) * ky], from: (q: XY): Position => [p[0] + q[0] / kx, p[1] + q[1] / ky] };
+}
+
+/** Split a closed ring into strokes at its corners (turns sharper than 25°); a smooth ring is one stroke. */
+function strokesOf(ring: XY[]): { pts: XY[]; closed: boolean }[] {
+  const r = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+  const n = r.length;
+  if (n < 3) return [];
+  const corner = r.map((p, i) => {
+    const a = r[(i - 1 + n) % n], b = r[(i + 1) % n];
+    const t1 = Math.atan2(p[1] - a[1], p[0] - a[0]), t2 = Math.atan2(b[1] - p[1], b[0] - p[0]);
+    let d = Math.abs(t2 - t1);
+    if (d > Math.PI) d = 2 * Math.PI - d;
+    return d > (25 * Math.PI) / 180;
+  });
+  const starts = corner.map((c, i) => (c ? i : -1)).filter((i) => i >= 0);
+  if (!starts.length) return [{ pts: [...r, r[0], r[1]], closed: true }];
+  return starts.map((s, k) => {
+    const e = starts[(k + 1) % starts.length];
+    const pts: XY[] = [];
+    for (let i = s; ; i = (i + 1) % n) {
+      pts.push(r[i]);
+      if (i === e && pts.length > 1) break;
+    }
+    return { pts, closed: false };
+  });
+}
+
+/** A hand-drawn version of a stroke: a slight bow, a little wobble, and an overshoot past each end. */
+function wobble(pts: XY[], rand: () => number, amp: number, over: number): XY[] {
+  if (pts.length < 2) return pts;
+  const out: XY[] = [];
+  const ext = (a: XY, b: XY, d: number): XY => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+    return [a[0] + ((a[0] - b[0]) / L) * d, a[1] + ((a[1] - b[1]) / L) * d];
+  };
+  const line = over ? [ext(pts[0], pts[1], over * (0.5 + rand())), ...pts, ext(pts[pts.length - 1], pts[pts.length - 2], over * (0.5 + rand()))] : pts;
+  const total = line.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - line[i][0], p[1] - line[i][1]), 0) || 1;
+  const bow = (rand() - 0.5) * Math.min(0.6, total * 0.012);
+  let run = 0;
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i], b = line[i + 1];
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const nx = -(b[1] - a[1]) / (L || 1), ny = (b[0] - a[0]) / (L || 1);
+    const steps = Math.max(1, Math.round(L / 2.5));
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps, s = (run + L * t) / total;
+      const off = Math.sin(Math.PI * s) * bow + (rand() - 0.5) * amp;
+      out.push([a[0] + (b[0] - a[0]) * t + nx * off, a[1] + (b[1] - a[1]) * t + ny * off]);
+    }
+    run += L;
+  }
+  const last = line[line.length - 1];
+  out.push([last[0] + (rand() - 0.5) * amp, last[1] + (rand() - 0.5) * amp]);
+  return out;
+}
+
+/** Parallel hatch lines across a polygon (local metres), at `angle` degrees, `gap` metres apart. */
+function hatch(rings: XY[][], angle: number, gap: number, rand: () => number): XY[][] {
+  const t = (angle * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
+  const rot = (p: XY): XY => [p[0] * c + p[1] * s, -p[0] * s + p[1] * c];
+  const back = (p: XY): XY => [p[0] * c - p[1] * s, p[0] * s + p[1] * c];
+  const R = rings.map((r) => r.map(rot));
+  const ys = R.flat().map((p) => p[1]);
+  const out: XY[][] = [];
+  for (let y = Math.min(...ys) + gap / 2; y < Math.max(...ys); y += gap) {
+    const xs: number[] = [];
+    for (const r of R)
+      for (let i = 0; i < r.length - 1; i++) {
+        const a = r[i], b = r[i + 1];
+        if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) xs.push(a[0] + ((y - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
+      }
+    xs.sort((p, q) => p - q);
+    for (let i = 0; i + 1 < xs.length; i += 2) {
+      const inset = 0.4 + rand() * 0.8; // hand hatching stops short of the edge
+      const x0 = xs[i] + inset, x1 = xs[i + 1] - inset * (0.5 + rand());
+      if (x1 - x0 > 0.8) out.push([back([x0, y + (rand() - 0.5) * 0.3]), back([x1, y + (rand() - 0.5) * 0.3])]);
+    }
+  }
+  return out;
+}
+
+const HATCH: Partial<Record<OpenType, { angle: number; gap: number; cross?: boolean }>> = {
+  park: { angle: 45, gap: 3.2 },
+  amenity: { angle: 45, gap: 5 },
+  natural: { angle: -40, gap: 2.2 },
+  play: { angle: 45, gap: 2.5, cross: true },
+  suds: { angle: 0, gap: 2.4 },
+  allotment: { angle: 90, gap: 3 },
+};
+const darker = (hex: string, t = 0.45) => '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - t)).toString(16).padStart(2, '0')).join('');
+
+/**
+ * The plan as a sketch: pencil strokes that wobble and overshoot their corners (two passes, one light),
+ * ridge lines on the roofs, light plot lines and hatched open space. `extra` adds outlines (e.g. blocks).
+ */
+export function sketchGeoJSON(plan: Plan, extra: Feature<Polygon>[] = []) {
+  const lines: Feature[] = [], hatches: Feature[] = [];
+  const pencil = '#2b2a27';
+  const add = (target: Feature[], coords: Position[], w: number, o: number, c = pencil) =>
+    coords.length > 1 && target.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: { w, o, c } });
+  const outline = (rings: Position[][], seed: string, o: { amp: number; over: number; passes: number; w?: number }) => {
+    if (!rings.length || !rings[0].length) return;
+    const F = frameAt(rings[0][0]);
+    const rand = rng(hashOf(seed));
+    for (const ring of rings)
+      for (const st of strokesOf(ring.map(F.to)))
+        for (let pass = 0; pass < o.passes; pass++) {
+          const pts = wobble(st.pts, rand, o.amp * (pass ? 1.6 : 1), st.closed ? 0 : o.over * (pass ? 1.3 : 1));
+          add(lines, pts.map(F.from), pass ? (o.w ?? 1) * 0.6 : o.w ?? 1, pass ? 0.35 : 0.85);
+        }
+  };
+  const ringsOf = (f: PolyF) => (f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat());
+
+  const land = streetLand(plan.streets);
+  if (land) outline(ringsOf(land), 'land', { amp: 0.25, over: 2.2, passes: 2, w: 1.1 });
+  for (const s of plan.streets) if (s.roundabout) outline([roundaboutIsland(s).geometry.coordinates[0]], s.id + 'i', { amp: 0.2, over: 0, passes: 2 });
+  for (const o of plan.open) {
+    outline([o.shape.geometry.coordinates[0]], o.id, { amp: 0.35, over: 2, passes: 2, w: 1 });
+    const h = HATCH[o.type];
+    if (!h) continue;
+    const F = frameAt(o.shape.geometry.coordinates[0][0]);
+    const rand = rng(hashOf(o.id + 'h'));
+    const rings = [o.shape.geometry.coordinates[0].map(F.to)];
+    const c = darker(openType(o.type).colour);
+    for (const l of hatch(rings, h.angle, h.gap, rand)) add(hatches, l.map(F.from), 0.6, 0.55, c);
+    if (h.cross) for (const l of hatch(rings, h.angle + 90, h.gap, rand)) add(hatches, l.map(F.from), 0.6, 0.45, c);
+  }
+  for (const h of plan.homes) {
+    outline([h.plot.geometry.coordinates[0]], h.id + 'p', { amp: 0.15, over: 0.6, passes: 1, w: 0.45 });
+    outline([h.shape.geometry.coordinates[0]], h.id, { amp: 0.12, over: 0.9, passes: 2, w: 1 });
+    if (h.ridge) {
+      const F = frameAt(h.ridge[0]);
+      add(lines, wobble([F.to(h.ridge[0]), F.to(h.ridge[1])], rng(hashOf(h.id + 'r')), 0.1, 0.5).map(F.from), 0.7, 0.7);
+    }
+  }
+  for (const [i, f] of extra.entries()) outline([f.geometry.coordinates[0]], `x${i}`, { amp: 0.2, over: 1.4, passes: 2, w: 1.1 });
+  const fc = (features: Feature[]): FeatureCollection => ({ type: 'FeatureCollection', features });
+  return { lines: fc(lines), hatches: fc(hatches) };
+}
+
+/** A watercolour wash of a colour: lighter, for sketch mode. */
+export const wash = (hex: string, t = 0.45) => '#' + [1, 3, 5].map((i) => { const v = parseInt(hex.slice(i, i + 2), 16); return Math.round(v + (255 - v) * t).toString(16).padStart(2, '0'); }).join('');

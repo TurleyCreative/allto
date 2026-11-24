@@ -14,7 +14,7 @@ import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
 import { siteDXF, siteOBJ, type ExportLine, type ExportBlock } from './export3d';
-import { roundedShape, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
+import { roundedShape, sketchGeoJSON, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
@@ -115,6 +115,7 @@ const S = {
   mpSel: null as string | null,
   mpAssume: { householdSize: 2.4, aptParking: 1 },
   targets: { ...DEFAULT_TARGETS, mix: { ...DEFAULT_TARGETS.mix } } as Targets,
+  sketch: false,
   atlas: null as AtlasLayout | null,
   metrics: null as Metrics | null,
   people: null as People | null,
@@ -171,8 +172,11 @@ const growExpr = (prop: string, T: number): any => [
 function addLayers() {
   styleBase();
   map.setFog(null as any); // fog greys out the pitched views; drawings want a clean white ground
-  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-land', 'mp-islands', 'mp-open', 'mp-homes', 'mp-plots', 'mp-gardens']) map.addSource(id, { type: 'geojson', data: empty });
+  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-land', 'mp-islands', 'mp-open', 'mp-homes', 'mp-plots', 'mp-gardens', 'mp-sk-lines', 'mp-sk-hatch', 'mp-paper']) map.addSource(id, { type: 'geojson', data: empty });
 
+  // Sketch mode lays paper over the base map, under everything Ultrahand draws.
+  (map.getSource('mp-paper') as mapboxgl.GeoJSONSource).setData(turf.bboxPolygon([-179, -85, 179, 85]));
+  map.addLayer({ id: 'mp-paper', type: 'fill', source: 'mp-paper', layout: { visibility: 'none' }, paint: { 'fill-color': '#f8f4eb', 'fill-opacity': 0.62 } });
   for (const d of DATASETS) {
     map.addSource(`ds-${d.id}`, { type: 'geojson', data: empty });
     if (d.kind === 'fill') {
@@ -227,6 +231,11 @@ function addLayers() {
   map.addLayer({ id: 'mp-street', type: 'line', source: 'mp-streets', filter: ['!', ['get', 'path']], layout: round, paint: { 'line-color': '#ffffff', 'line-width': streetW } });
   map.addLayer({ id: 'mp-path', type: 'line', source: 'mp-streets', filter: ['get', 'path'], layout: round, paint: { 'line-color': '#ffffff', 'line-width': pathW } });
   map.addLayer({ id: 'mp-islands', type: 'fill', source: 'mp-islands', paint: { 'fill-color': '#d3e2c4' } });
+  // Sketch: flat washed homes in plan (extrusions would hide the pencil lines), hatching, then pencil.
+  map.addLayer({ id: 'mp-homes-flat', type: 'fill', source: 'mp-homes', filter: ['==', ['get', 'base'], 0], layout: { visibility: 'none' }, paint: { 'fill-color': ['case', ['get', 'selected'], '#9aa3ff', ['get', 'wash']] as any, 'fill-opacity': 0.9 } });
+  const pencilW: any = ['interpolate', ['exponential', 1.6], ['zoom'], 14, ['*', ['get', 'w'], 0.35], 17, ['*', ['get', 'w'], 0.9], 20, ['*', ['get', 'w'], 2.2]];
+  map.addLayer({ id: 'mp-sk-hatch', type: 'line', source: 'mp-sk-hatch', layout: { visibility: 'none', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-width': pencilW, 'line-opacity': ['get', 'o'] } });
+  map.addLayer({ id: 'mp-sk-lines', type: 'line', source: 'mp-sk-lines', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-width': pencilW, 'line-opacity': ['get', 'o'] } });
   map.addLayer({ id: 'red-line', type: 'line', source: 'red', paint: { 'line-color': '#d7262e', 'line-width': 3 } });
   map.addLayer({ id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#2433e0', 'line-width': 3 } });
 
@@ -528,6 +537,7 @@ function renderBlocksSoon() {
 
 function renderBlocks() {
   (map.getSource('blocks') as mapboxgl.GeoJSONSource | undefined)?.setData(blocksGeoJSON(S.blocks, S.blockSel));
+  if (S.sketch) renderPlanMap();
   blockMarkers.forEach((m) => m.remove());
   blockMarkers = S.blocks.map((b) => {
     const el = document.createElement('span');
@@ -839,6 +849,11 @@ function renderPlanMap() {
   setSrc('mp-homes', g.homes);
   setSrc('mp-plots', g.plots);
   setSrc('mp-gardens', g.gardens);
+  if (S.sketch) {
+    const sk = sketchGeoJSON(S.plan, S.blocks.map((b) => b.shape));
+    setSrc('mp-sk-lines', sk.lines);
+    setSrc('mp-sk-hatch', sk.hatches);
+  }
 }
 
 function renderPlan() {
@@ -972,6 +987,7 @@ function renderPlan() {
   $('#homeList').querySelector('[data-act=clearaff]')?.addEventListener('click', () => (S.plan.homes.forEach((h) => (h.tenure = 'market')), renderPlan()));
   renderSchedule();
   renderLegend();
+  $('#mpKey').innerHTML = mpLegend((bg, extra = '') => `<span class="sw" style="background:${bg};${extra}"></span>`);
   saveProject();
   agent.contextChanged();
 }
@@ -983,8 +999,14 @@ function mpSchedule() {
 
 function renderSchedule() {
   const has = S.plan.streets.length || S.plan.open.length || S.plan.homes.length;
-  if (!has) return void ($('#mpSchedule').innerHTML = '');
+  if (!has && !S.blocks.length) return void (($('#mpSchedule').innerHTML = '<p class="hint">Draw streets, spaces, homes or blocks and the schedule fills in.</p>'), ($('#mpMini').textContent = ''));
   const s = mpSchedule();
+  $('#mpMini').textContent = [
+    S.plan.streets.length && `${S.plan.streets.length} street${S.plan.streets.length > 1 ? 's' : ''}`,
+    S.plan.open.length && `${S.plan.open.length} space${S.plan.open.length > 1 ? 's' : ''}`,
+    s.homes && `${s.homes} homes`,
+    s.grossDph != null && s.homes && `${Math.round(s.grossDph)} dph`,
+  ].filter(Boolean).join(' · ');
   const share = (x: number) => (s.siteM2 ? ` <span class="muted">${pct(x / s.siteM2)}</span>` : '');
   const ha = (x: number) => `${x.toFixed(2)} ha`;
   const rows: string[] = [];
@@ -1011,7 +1033,7 @@ function renderSchedule() {
   const bench = s.population
     ? s.openVsBenchmark.map((b) => `<tr><th>${esc(b.label)}</th><td class="${ok(b.providedHa >= b.benchmarkHa)}">${b.providedHa.toFixed(2)} of ${b.benchmarkHa.toFixed(2)} ha</td></tr>`).join('')
     : '';
-  $('#mpSchedule').innerHTML = `<h4>Schedule</h4><table class="metrics">${rows.join('')}${homes.join('')}</table>
+  $('#mpSchedule').innerHTML = `<table class="metrics">${rows.join('')}${homes.join('')}</table>
     ${targets}
     ${bench ? `<h4>Open space against Fields in Trust</h4><table class="metrics">${bench}</table><p class="hint">For about ${s.population.toLocaleString('en-GB')} people. Areas count inside the red line only.</p>` : ''}
     ${S.red ? '' : '<p class="hint">Draw a red line for site areas and density.</p>'}`;
@@ -1133,6 +1155,192 @@ function mpBuildings(frame: LocalFrame, white = false): AxoBuilding[] {
     };
   });
 }
+
+// ---------------------------------------------------------------- masterplan mode: the floating workspace
+// The masterplan has its own full-screen workspace with floating tool windows, kept apart from the
+// analysis panels. The controls live there; the analysis sidebar only opens it.
+
+/** Small drawings for the tool tiles. */
+const tileIcon = {
+  street: (w: number) => `<svg viewBox="0 0 40 26"><path d="M3 13h34" stroke="#c4c3be" stroke-width="${w + 2}" stroke-linecap="round"/><path d="M3 13h34" stroke="#fff" stroke-width="${w}" stroke-linecap="round"/>${w > 6 ? '<path d="M6 13h28" stroke="#9a9994" stroke-width="0.8" stroke-dasharray="3 2"/>' : ''}</svg>`,
+  roundabout: `<svg viewBox="0 0 40 26"><path d="M0 13h40M20 0v26" stroke="#c4c3be" stroke-width="7"/><path d="M0 13h40M20 0v26" stroke="#fff" stroke-width="5"/><circle cx="20" cy="13" r="8" fill="#fff" stroke="#c4c3be" stroke-width="7"/><circle cx="20" cy="13" r="8" fill="none" stroke="#fff" stroke-width="5"/><circle cx="20" cy="13" r="4" fill="#d3e2c4"/></svg>`,
+  space: (c: string, round: boolean) => `<svg viewBox="0 0 40 26"><rect x="6" y="3" width="28" height="20" rx="${round ? 9 : 0}" fill="${c}" stroke="${darkerHex(c)}" stroke-width="1"/></svg>`,
+  house: (t: HouseType) => {
+    const n = t.homes > 1 ? 2 : t.id.startsWith('terrace') || t.id === 'townhouse' ? 3 : 1;
+    const w = t.id === 'bungalow' ? 22 : t.id === 'detached' ? 18 : n === 3 ? 10 : 12;
+    const h = t.storeys === 1 ? 8 : t.storeys === 3 ? 15 : 11.5;
+    const x0 = 20 - (n * w) / 2;
+    let d = '';
+    for (let i = 0; i < n; i++) {
+      const x = x0 + i * w;
+      d += `<path d="M${x} 24V${24 - h}L${x + w / 2} ${24 - h - 6}L${x + w} ${24 - h}V24Z" fill="${t.colour}" stroke="#fff" stroke-width="0.8"/>`;
+    }
+    return `<svg viewBox="0 0 40 26">${d}</svg>`;
+  },
+};
+function darkerHex(hex: string) {
+  return '#' + [1, 3, 5].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * 0.6).toString(16).padStart(2, '0')).join('');
+}
+
+function renderTiles() {
+  const stT = $<HTMLSelectElement>('#stType').value, osT = $<HTMLSelectElement>('#osType').value, hoT = $<HTMLSelectElement>('#hoType').value;
+  const px: Record<string, number> = { primary: 9, residential: 6.5, shared: 5, mews: 4, path: 2 };
+  $('#stTiles').innerHTML =
+    STREET_TYPES.map((t) => `<button class="tile${t.id === stT && S.drawing === 'street' ? ' on' : ''}" data-st="${t.id}" title="${esc(t.note)}">${tileIcon.street(px[t.id])}${esc(t.label)}</button>`).join('') +
+    `<button class="tile${mpPick === 'roundabout' ? ' on' : ''}" data-ra="1" title="Click a junction">${tileIcon.roundabout}Roundabout</button>`;
+  $('#osTiles').innerHTML = OPEN_TYPES.map((t) => `<button class="tile${t.id === osT && S.drawing === 'open' ? ' on' : ''}" data-os="${t.id}">${tileIcon.space(t.colour, +$<HTMLInputElement>('#osRound').value > 0)}${esc(t.label)}</button>`).join('');
+  $('#hoTiles').innerHTML = HOUSE_TYPES.map((t) => `<button class="tile${t.id === hoT ? ' on' : ''}" data-ho="${t.id}">${tileIcon.house(t)}${esc(t.label)}</button>`).join('');
+  $('#stTiles').querySelectorAll<HTMLElement>('[data-st]').forEach((b) =>
+    b.addEventListener('click', () => {
+      $<HTMLSelectElement>('#stType').value = b.dataset.st!;
+      stNote();
+      $('#drawStreet').click();
+      renderTiles();
+    }),
+  );
+  $('#stTiles').querySelector('[data-ra]')!.addEventListener('click', () => ($('#addRoundabout').click(), renderTiles()));
+  $('#osTiles').querySelectorAll<HTMLElement>('[data-os]').forEach((b) =>
+    b.addEventListener('click', () => {
+      $<HTMLSelectElement>('#osType').value = b.dataset.os!;
+      $('#drawOpen').click();
+      renderTiles();
+    }),
+  );
+  $('#hoTiles').querySelectorAll<HTMLElement>('[data-ho]').forEach((b) =>
+    b.addEventListener('click', () => {
+      $<HTMLSelectElement>('#hoType').value = b.dataset.ho!;
+      hoNote();
+      renderTiles();
+    }),
+  );
+}
+renderTiles();
+$<HTMLInputElement>('#osRound').addEventListener('change', renderTiles);
+map.on('draw.create', () => setTimeout(renderTiles, 0));
+map.on('draw.modechange', () => setTimeout(renderTiles, 0));
+
+let mpModeOn = false;
+function setMpMode(on: boolean) {
+  mpModeOn = on;
+  document.body.classList.toggle('mp-mode', on);
+  $('#mpMode').hidden = !on;
+  setPick(null);
+  if (on) {
+    if (S.selected) select(null);
+    if (S.view === 'atlas') setView('plan');
+    if (!S.red && !S.study) toast('Draw a red line first (or a quick box) so the layout has a site to sit in.');
+  }
+  setTimeout(() => (map.resize(), drawLeader()), 0);
+  renderPlan();
+  renderTiles();
+}
+$('#mpOpen').onclick = () => setMpMode(true);
+$('#mpClose').onclick = () => setMpMode(false);
+document.querySelectorAll<HTMLButtonElement>('#mpViews [data-view]').forEach((b) => b.addEventListener('click', () => setView(b.dataset.view as View)));
+document.querySelectorAll<HTMLButtonElement>('[data-fold]').forEach((b) =>
+  b.addEventListener('click', () => {
+    const el = document.getElementById(b.dataset.fold!)!;
+    el.hidden = !el.hidden;
+    b.querySelector('span')!.textContent = el.hidden ? '+' : '−';
+  }),
+);
+$('#mpExport').onclick = async () => {
+  if (!S.model) {
+    if (!S.study) return toast('Draw a red line first.');
+    toast('Reading the site for the drawing…');
+    await analyse();
+  }
+  exportDrawing(S.view === 'plan' ? 'plan' : 'axo');
+};
+
+// ---- sketch
+S.sketch = (() => {
+  try {
+    return localStorage.getItem('ultrahand:sketch') === '1';
+  } catch {
+    return false;
+  }
+})();
+$<HTMLInputElement>('#mpSketch').checked = S.sketch;
+$<HTMLInputElement>('#mpSketch').onchange = (e) => {
+  S.sketch = (e.target as HTMLInputElement).checked;
+  try {
+    localStorage.setItem('ultrahand:sketch', S.sketch ? '1' : '0');
+  } catch { /* storage blocked */ }
+  renderPlanMap();
+  applyMpStyle();
+};
+
+/** Sketch mode: paper over the base map, pencil lines and washes; plain mode: the crisp drawing. */
+function applyMpStyle() {
+  if (!map.getLayer('mp-sk-lines')) return;
+  const vis = (id: string, on: boolean) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  const atlas = S.view === 'atlas';
+  const sk = S.sketch && !atlas;
+  const flatHomes = sk && S.view === 'plan';
+  vis('mp-paper', sk);
+  vis('mp-sk-lines', sk);
+  vis('mp-sk-hatch', sk);
+  vis('mp-homes-flat', flatHomes);
+  vis('mp-homes-3d', !atlas && !flatHomes);
+  for (const id of ['mp-plots', 'mp-land', 'mp-street-case', 'mp-open-l']) vis(id, !atlas && !sk);
+  map.setPaintProperty('mp-open-f', 'fill-opacity', sk ? 0.42 : 0.75);
+  map.setPaintProperty('mp-gardens', 'fill-opacity', sk ? 0.55 : 0.9);
+  map.setPaintProperty('mp-homes-3d', 'fill-extrusion-color', ['case', ['get', 'selected'], '#2433e0', ['get', sk ? 'wash' : 'colour']] as any);
+}
+
+// ---- undo and redo (streets, spaces, homes and blocks)
+const undoStack: string[] = [], redoStack: string[] = [];
+let restoring = false;
+const snapshot = () => JSON.stringify({ plan: S.plan, blocks: S.blocks });
+/** Called whenever the plan is saved: keeps a step if anything changed. */
+function recordHistory() {
+  if (restoring) return;
+  const now = snapshot();
+  if (undoStack[undoStack.length - 1] === now) return;
+  undoStack.push(now);
+  if (undoStack.length > 60) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoButtons();
+}
+function updateUndoButtons() {
+  $<HTMLButtonElement>('#mpUndo').disabled = undoStack.length < 2;
+  $<HTMLButtonElement>('#mpRedo').disabled = !redoStack.length;
+}
+function restore(state: string) {
+  restoring = true;
+  try {
+    const j = JSON.parse(state);
+    S.plan = upgradePlan(j.plan);
+    S.blocks = j.blocks ?? [];
+    S.mpSel = null;
+    S.blockSel = null;
+    renderPlan();
+    renderBlocks();
+  } finally {
+    restoring = false;
+  }
+  updateUndoButtons();
+}
+function undo() {
+  if (undoStack.length < 2) return;
+  redoStack.push(undoStack.pop()!);
+  restore(undoStack[undoStack.length - 1]);
+}
+function redo() {
+  const s = redoStack.pop();
+  if (!s) return;
+  undoStack.push(s);
+  restore(s);
+}
+$('#mpUndo').onclick = undo;
+$('#mpRedo').onclick = redo;
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+  if ((e.target as HTMLElement)?.closest('input,select,textarea') || S.drawing) return;
+  e.preventDefault();
+  e.shiftKey ? redo() : undo();
+});
 
 // ---------------------------------------------------------------- study area
 document.querySelectorAll<HTMLButtonElement>('#studyMode button').forEach((b) =>
@@ -1411,6 +1619,8 @@ function applyVisibility() {
   vis('pois-label', flat && S.visible.has('pois'));
   for (const id of ['red-fill', 'red-line', 'study-line', 'massing-3d', 'selected-line', 'blocks-3d', 'blocks-line', 'mp-gardens', 'mp-plots', 'mp-open-f', 'mp-open-l', 'mp-land', 'mp-street-sel', 'mp-path-sel', 'mp-street-case', 'mp-street', 'mp-path', 'mp-islands', 'mp-homes-3d']) vis(id, !atlas);
   [...blockMarkers, ...streetMarkers].forEach((mk) => (mk.getElement().style.display = atlas ? 'none' : ''));
+  vis('mp-homes-flat', false);
+  applyMpStyle();
   vis('atlas-labels', atlas);
   for (const l of map.getStyle()?.layers ?? []) if (l.type === 'symbol' && /road-label|road-number|road-exit|street/.test(l.id)) vis(l.id, !atlas && S.visible.has('labels'));
 }
@@ -1989,7 +2199,7 @@ async function setView(v: View, opts: { quiet?: boolean } = {}) {
   if (v === 'axo' && !S.study) toast('Draw a red line or a quick box first: the axonometric cuts out the study area.');
   S.view = v;
   if (prev === 'eye' && v !== 'eye') exitEye();
-  document.querySelectorAll('#views [data-view]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.view === v));
+  document.querySelectorAll('#views [data-view], #mpViews [data-view]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.view === v));
   map.setCamera({ 'camera-projection': v === 'axo' || v === 'plan' || v === 'atlas' ? 'orthographic' : 'perspective' });
   const isolate = (v === 'axo' || v === 'atlas') && !!S.model;
   map.setFilter('model-3d', isolate ? ['==', ['get', 'inStudy'], true] : null);
@@ -2359,7 +2569,7 @@ function exportDrawing(kind: 'axo' | 'plan') {
     {
       bearing: kind === 'plan' ? 0 : map.getBearing(), mode: kind === 'plan' ? 'ortho' : mode, pitch,
       width: 1800, plinth: kind === 'axo' && $<HTMLInputElement>('#optPlinth').checked ? 10 : 0,
-      background: '#ffffff', north: true, scaleBar: kind === 'plan' || mode === 'oblique', labels: $<HTMLInputElement>('#optLabels').checked,
+      background: '#ffffff', north: true, scaleBar: kind === 'plan' || mode === 'oblique', labels: $<HTMLInputElement>('#optLabels').checked, sketch: S.sketch,
     },
   );
   showExport(svg, `${slug(S.place || 'site')}-${kind}`);
@@ -2654,6 +2864,7 @@ try {
   localStorage.removeItem('site-lab:last');
 } catch { /* storage blocked */ }
 function saveProject() {
+  recordHistory();
   try {
     const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length;
     if (!S.red && !S.blocks.length && !hasPlan) return localStorage.removeItem(KEY);
@@ -2675,6 +2886,7 @@ function restoreProject() {
     if (j?.mpAssume) S.mpAssume = { ...S.mpAssume, ...j.mpAssume };
     bindMpInputs();
     setTimeout(renderPlan, 0);
+    setTimeout(() => ((undoStack.length = 0), (redoStack.length = 0), recordHistory()), 50); // a fresh history from the saved plan
     if (!j?.red) return;
     S.place = j.place ?? '';
     searchBox.value = S.place;
