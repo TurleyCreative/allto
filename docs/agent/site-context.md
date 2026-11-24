@@ -13,7 +13,7 @@ The same object can be copied as text or downloaded as JSON from the panel, whic
 in Copilot Studio's test pane before the Worker is up. A real example: [example-site-context.json](example-site-context.json)
 (Castlefield, Manchester, with LIDAR heights and one proposed block; about 8 KB).
 
-## Fields (`schema: "allto.ultrahand.site/2"`)
+## Fields (`schema: "allto.ultrahand.site/3"`)
 
 | Field | What it holds |
 |---|---|
@@ -35,6 +35,7 @@ in Copilot Studio's test pane before the Worker is up. A real example: [example-
 | `selectedBuilding` | If one is selected: `ref`, `name`, `heightM`, `heightRecorded`, `footprintM2`, `onSite`, `listed[]`, `designations[]` |
 | `proposedMassingHeightM` | The quick massing height over the red line, if set |
 | `proposedBlocks` | Drawn blocks (`name`, `use`, `storeys`, `heightM`, `fromM`, `footprintM2`, `floorAreaM2`), `totals` (floor area by use, homes, dwellings per hectare, plot ratio, coverage, tallest) and the `assumptions` used |
+| `masterplan` | The sketch layout, or null. `streets` (`name`, `type`, `corridorWidthM`, `lengthM`, `homes`), `openSpaces` (`name`, `type`, `areaM2`), `houses` by type (`buildings`, `homes`, `bedrooms`, `storeys`, `floorAreaM2`), a `schedule` (site and net developable hectares, street and open space areas, homes from houses and from blocks, gross and net dwellings per hectare, population and parking estimates), `openSpaceAgainstFieldsInTrust` (provided against benchmark hectares for that population) and the `assumptions`. Version 3 added this field. |
 | `sources[]`, `caveats[]` | Where the data comes from; what it is not |
 
 Bump `schema` (now `/2`; `/1` had no transport, flood, people, LIDAR or block fields) if fields are renamed or removed, so the agent's topic can tell versions apart.

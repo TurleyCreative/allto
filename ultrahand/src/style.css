@@ -264,3 +264,30 @@ h4.light { font-weight: 600; color: var(--muted); }
   .pp-sheet { width: auto; min-height: 0; padding: 12mm 14mm; }
 }
 .mapboxgl-ctrl-group:empty { display: none; }
+
+/* Masterplan */
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--muted); margin: 4px 0 6px; }
+.field select { width: 100%; color: var(--ink); }
+.solid.picking { background: var(--blue); }
+.mp-list { margin-top: 8px; }
+.mpr { border: 1px solid var(--line); padding: 7px 10px; display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+.mpr + .mpr { border-top: 0; }
+.mpr.on { border-color: var(--ink); box-shadow: inset 3px 0 0 var(--blue); }
+.mpr .sw { width: 10px; height: 10px; flex: none; }
+.mpr .grow { flex: 1; min-width: 0; }
+.mpr .grow b { font-weight: 600; }
+.mpr .grow small { display: block; color: var(--muted); font-size: 12px; }
+.mpr select { padding: 3px 5px; font-size: 12px; max-width: 120px; }
+.mpr .link { font-size: 12px; padding: 0; white-space: nowrap; }
+#mpSchedule { margin-top: 14px; }
+#mpSchedule h4 { font-size: 13px; font-weight: 700; margin: 0 0 4px; }
+#mpSchedule table.metrics { width: 100%; border-collapse: collapse; font-size: 13px; margin: 2px 0 8px; }
+#mpSchedule table.metrics th { text-align: left; font-weight: 400; color: var(--muted); padding: 3px 8px 3px 0; }
+#mpSchedule table.metrics th.ind { padding-left: 12px; }
+#mpSchedule table.metrics td { padding: 3px 0; text-align: right; white-space: nowrap; }
+#mpSchedule table.metrics tr.tot th, #mpSchedule table.metrics tr.tot td { color: var(--ink); font-weight: 600; border-top: 1px solid var(--line); }
+#mpSchedule .sw { width: 9px; height: 9px; display: inline-block; margin-right: 6px; }
+#mpSchedule .short { color: #b4471c; }
+#mpSchedule .met { color: #3f7a2c; }
+.street-ref { font: 600 11px/1 var(--font, 'Plus Jakarta Sans'), sans-serif; }
+#mpTool button { white-space: nowrap; font-size: 12px; }

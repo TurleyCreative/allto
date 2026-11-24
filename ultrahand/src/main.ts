@@ -4,7 +4,7 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import * as turf from '@turf/turf';
 import * as SunCalc from 'suncalc';
-import type { Feature, FeatureCollection, Polygon, MultiPolygon } from 'geojson';
+import type { Feature, FeatureCollection, Polygon, MultiPolygon, LineString } from 'geojson';
 import './style.css';
 
 import { DATASETS, fetchDataset, fetchPlanningAuthority, describe, entityUrl } from './planning';
@@ -13,7 +13,8 @@ import { buildGraph, walkFrom, walkPieces, distanceTo, WALK_SPEED, BANDS } from 
 import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
-import { siteDXF, siteOBJ } from './export3d';
+import { siteDXF, siteOBJ, type ExportLine } from './export3d';
+import { STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, streetType, openType, houseType, houseHeight, emptyPlan, newId, corridor, lineStreet, placeHome, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
@@ -95,7 +96,7 @@ const S = {
   bufferM: 200,
   walkMin: 10,
   walk: empty as FeatureCollection,
-  drawing: null as null | 'red' | 'study' | 'box' | 'massing' | 'section',
+  drawing: null as null | 'red' | 'study' | 'box' | 'massing' | 'section' | 'street' | 'open',
   model: null as SiteModel | null,
   modelFC: empty as FeatureCollection,
   designations: empty as FeatureCollection,
@@ -110,6 +111,9 @@ const S = {
   blocks: [] as Block[],
   blockSel: null as string | null,
   assume: { ...DEFAULT_ASSUMPTIONS },
+  plan: emptyPlan() as Plan,
+  mpSel: null as string | null,
+  mpAssume: { householdSize: 2.4, aptParking: 1 },
   atlas: null as AtlasLayout | null,
   metrics: null as Metrics | null,
   people: null as People | null,
@@ -166,7 +170,7 @@ const growExpr = (prop: string, T: number): any => [
 function addLayers() {
   styleBase();
   map.setFog(null as any); // fog greys out the pitched views; drawings want a clean white ground
-  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels']) map.addSource(id, { type: 'geojson', data: empty });
+  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-centre', 'mp-open', 'mp-homes']) map.addSource(id, { type: 'geojson', data: empty });
 
   for (const d of DATASETS) {
     map.addSource(`ds-${d.id}`, { type: 'geojson', data: empty });
@@ -195,6 +199,12 @@ function addLayers() {
   map.addLayer({ id: 'section-line', type: 'line', source: 'section-line', paint: { 'line-color': '#141414', 'line-width': 2, 'line-dasharray': [4, 2] } });
   map.addLayer({ id: 'study-line', type: 'line', source: 'study', paint: { 'line-color': '#141414', 'line-width': 1.1, 'line-dasharray': [7, 3, 1, 3] } });
   map.addLayer({ id: 'red-fill', type: 'fill', source: 'red', paint: { 'fill-color': '#d7262e', 'fill-opacity': 0.06 } });
+  // Masterplan ground: open space, then street corridors over it, then centrelines.
+  map.addLayer({ id: 'mp-open-f', type: 'fill', source: 'mp-open', paint: { 'fill-color': ['get', 'colour'], 'fill-opacity': 0.75 } });
+  map.addLayer({ id: 'mp-open-l', type: 'line', source: 'mp-open', paint: { 'line-color': ['case', ['get', 'selected'], '#2433e0', ['get', 'colour']], 'line-width': ['case', ['get', 'selected'], 2.5, 1] } });
+  map.addLayer({ id: 'mp-streets-f', type: 'fill', source: 'mp-streets', paint: { 'fill-color': '#efeee9', 'fill-opacity': 1 } });
+  map.addLayer({ id: 'mp-streets-l', type: 'line', source: 'mp-streets', paint: { 'line-color': ['case', ['get', 'selected'], '#2433e0', '#9a9994'], 'line-width': ['case', ['get', 'selected'], 2.5, 0.8] } });
+  map.addLayer({ id: 'mp-centre', type: 'line', source: 'mp-centre', paint: { 'line-color': '#9a9994', 'line-width': 1, 'line-dasharray': [4, 3] } });
   map.addLayer({ id: 'red-line', type: 'line', source: 'red', paint: { 'line-color': '#d7262e', 'line-width': 3 } });
   map.addLayer({ id: 'selected-line', type: 'line', source: 'selected', paint: { 'line-color': '#2433e0', 'line-width': 3 } });
 
@@ -207,6 +217,7 @@ function addLayers() {
   map.addLayer({ id: 'model-3d', type: 'fill-extrusion', source: 'model', paint: { 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': ['get', 'minH'], 'fill-extrusion-opacity': 0.97 } });
   map.addLayer({ id: 'blocks-3d', type: 'fill-extrusion', source: 'blocks', paint: { 'fill-extrusion-color': ['get', 'colour'], 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-opacity': 0.9 } });
   map.addLayer({ id: 'blocks-line', type: 'line', source: 'blocks', paint: { 'line-color': ['case', ['get', 'selected'], '#141414', ['get', 'colour']], 'line-width': ['case', ['get', 'selected'], 3, 1.5] } });
+  map.addLayer({ id: 'mp-homes-3d', type: 'fill-extrusion', source: 'mp-homes', paint: { 'fill-extrusion-color': ['case', ['get', 'selected'], '#2433e0', ['get', 'colour']], 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-opacity': 0.95 } });
   map.addLayer({ id: 'massing-3d', type: 'fill-extrusion', source: 'massing', paint: { 'fill-extrusion-color': '#e6262e', 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.75 } });
 
   map.addLayer({
@@ -314,7 +325,7 @@ $('#example').onclick = () => {
 $('#reset').onclick = () => resetAll(true);
 
 // ---------------------------------------------------------------- drawing
-function startDraw(kind: 'red' | 'study' | 'massing') {
+function startDraw(kind: 'red' | 'study' | 'massing' | 'open') {
   draw.deleteAll();
   S.drawing = kind;
   if (S.view !== 'plan') setView('plan');
@@ -397,6 +408,11 @@ window.addEventListener('keydown', (e) => {
 });
 
 function finishDraw() {
+  if (S.drawing === 'street') {
+    const l = draw.getAll().features[0] as Feature<LineString> | undefined;
+    if (l?.geometry.type === 'LineString' && l.geometry.coordinates.length >= 2) addStreet(l);
+    return;
+  }
   const f = draw.getAll().features[0] as PolyF | undefined;
   if (!f || f.geometry.type !== 'Polygon' || f.geometry.coordinates[0].length < 4) return;
   const clean = turf.polygon(f.geometry.coordinates) as PolyF;
@@ -412,7 +428,7 @@ function finishDraw() {
       S.blockSel = nb.id;
     }
     renderBlocks();
-  }
+  } else if (S.drawing === 'open') addOpen(clean as Feature<Polygon>);
 }
 map.on('draw.create', () => {
   lastDrawEnd = Date.now();
@@ -420,7 +436,7 @@ map.on('draw.create', () => {
   draw.deleteAll();
   S.drawing = null;
 });
-map.on('draw.update', finishDraw);
+map.on('draw.update', () => S.drawing !== 'street' && S.drawing !== 'open' && finishDraw());
 map.on('draw.modechange', (e: any) => {
   if (e.mode === 'simple_select' && S.drawing && S.drawing !== 'box') {
     finishDraw();
@@ -557,6 +573,7 @@ function renderBlocks() {
       </table>
       <p class="hint">${S.red ? 'Against the red line.' : 'Draw a red line to see density, plot ratio and coverage.'} Homes assume ${Math.round(S.assume.netToGross * 100)}% net to gross and ${S.assume.homeSizeM2} m² homes.</p>`
     : '';
+  renderSchedule();
   saveProject();
   agent.contextChanged();
 }
@@ -574,6 +591,354 @@ function lookForColour(c: string): import('./axo').Look {
   const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
   const mixc = (a: string, b: string, t: number) => '#' + hex(a).map((v, i) => Math.round(v + (hex(b)[i] - v) * t).toString(16).padStart(2, '0')).join('');
   return { roof: c, wallLight: mixc(c, '#ffffff', 0.3), wallDark: mixc(c, '#000000', 0.35), stroke: mixc(c, '#000000', 0.55), strokeWidth: 0.7 };
+}
+
+// ---------------------------------------------------------------- masterplan: streets, open space, homes
+type MpTool = 'streets' | 'open' | 'homes' | 'blocks';
+let mpTool: MpTool = 'streets';
+let mpPick: null | 'line' | 'place' = null; // waiting for a click on the map: a street to line, or a spot for a home
+let streetMarkers: mapboxgl.Marker[] = [];
+
+const fillSelect = (sel: string, items: { id: string; label: string }[], value: string) => {
+  $<HTMLSelectElement>(sel).innerHTML = items.map((t) => `<option value="${t.id}"${t.id === value ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
+};
+fillSelect('#stType', STREET_TYPES, 'residential');
+fillSelect('#osType', OPEN_TYPES, 'park');
+fillSelect('#hoType', HOUSE_TYPES, 'semi');
+const stNote = () => {
+  const t = streetType($<HTMLSelectElement>('#stType').value as StreetType);
+  $('#stNote').textContent = `${t.widthM} m wide: ${t.note}.`;
+};
+const hoNote = () => {
+  const t = houseType($<HTMLSelectElement>('#hoType').value as HouseTypeId);
+  $('#hoNote').textContent = `${t.frontageM} m frontage, ${t.depthM} m deep, ${t.storeys} storey${t.storeys > 1 ? 's' : ''}${t.homes > 1 ? `, ${t.homes} homes` : ''}; ${t.gapM ? `${t.gapM} m between` : 'joined in a row'}.`;
+};
+$<HTMLSelectElement>('#stType').onchange = stNote;
+$<HTMLSelectElement>('#hoType').onchange = hoNote;
+stNote();
+hoNote();
+
+function setMpTool(t: MpTool) {
+  mpTool = t;
+  setPick(null);
+  document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.classList.toggle('on', b.dataset.t === t));
+  document.querySelectorAll<HTMLElement>('[data-mp]').forEach((el) => (el.hidden = el.dataset.mp !== t));
+}
+document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.addEventListener('click', () => setMpTool(b.dataset.t as MpTool)));
+
+function setPick(p: typeof mpPick) {
+  mpPick = p;
+  $('#lineStreet').classList.toggle('picking', p === 'line');
+  $('#placeHome').classList.toggle('picking', p === 'place');
+  $('#lineStreet').textContent = p === 'line' ? 'Click a street…' : 'Line a street';
+  $('#placeHome').textContent = p === 'place' ? 'Done placing' : 'Place homes';
+  map.getCanvas().style.cursor = p ? 'crosshair' : '';
+}
+
+$('#drawStreet').onclick = () => {
+  draw.deleteAll();
+  setPick(null);
+  S.drawing = 'street';
+  if (S.view !== 'plan') setView('plan');
+  draw.changeMode('draw_line_string');
+  toast('Click along the street centreline. Double-click to finish.');
+};
+$('#drawOpen').onclick = () => (setPick(null), startDraw('open'), toast('Click each corner of the open space. Double-click to finish.'));
+$('#lineStreet').onclick = () => {
+  if (!S.plan.streets.length) return toast('Draw a street first, in Streets.');
+  setPick(mpPick === 'line' ? null : 'line');
+  if (mpPick) toast('Click the street to line with homes.');
+};
+$('#placeHome').onclick = () => {
+  setPick(mpPick === 'place' ? null : 'place');
+  if (mpPick) toast('Click where each home goes. It turns to face the nearest street.');
+};
+$('#clearHomes').onclick = () => {
+  if (!S.plan.homes.length) return;
+  if (!confirm(`Remove all ${S.plan.homes.length} house footprints?`)) return;
+  S.plan.homes = [];
+  renderPlan();
+};
+
+/** Everything a new home has to keep clear of. */
+function mpObstacles(): Obstacles {
+  const shapes: Feature<Polygon | MultiPolygon>[] = [
+    ...S.plan.streets.map(corridor),
+    ...S.plan.open.map((o) => o.shape),
+    ...S.plan.homes.map((h) => h.shape),
+    ...S.blocks.map((b) => b.shape),
+  ];
+  if ($<HTMLInputElement>('#hoAvoid').checked && S.model) for (const b of S.model.buildings) if (b.inStudy) shapes.push(b.feature as Feature<Polygon | MultiPolygon>);
+  return { boundary: S.red, shapes };
+}
+const homeOpts = () => {
+  const gap = $<HTMLInputElement>('#hoGap').value;
+  return {
+    side: $<HTMLSelectElement>('#hoSide').value as 'both' | 'left' | 'right',
+    setbackM: Math.max(0, +$<HTMLInputElement>('#hoSetback').value || 0),
+    gapM: gap === '' ? undefined : Math.max(0, +gap),
+  };
+};
+
+function lineThisStreet(s: Street, typeId = $<HTMLSelectElement>('#hoType').value as HouseTypeId) {
+  const added = lineStreet(s, typeId, homeOpts(), mpObstacles(), S.plan.homes);
+  S.plan.homes.push(...added);
+  renderPlan();
+  toast(added.length ? `${added.length} ${houseType(typeId).label.split(',')[0].toLowerCase()}${added.length > 1 ? ' footprints' : ''} along ${s.name}.` : `No room for that house type along ${s.name}: check the red line, set back and anything in the way.`);
+}
+
+/** A new street or open space clears the homes it lands on. */
+function clearHomesUnder(shape: Feature<Polygon | MultiPolygon>) {
+  const before = S.plan.homes.length;
+  S.plan.homes = S.plan.homes.filter((h) => !turf.booleanIntersects(h.shape, shape));
+  const n = before - S.plan.homes.length;
+  if (n) toast(`${n} home${n > 1 ? 's' : ''} under it removed.`);
+}
+
+function addStreet(line: Feature<LineString>) {
+  if (turf.length(line, { units: 'meters' }) < 8) return toast('That street is too short.');
+  const s: Street = { id: newId('S', S.plan.streets), name: `Street ${S.plan.streets.length + 1}`, type: $<HTMLSelectElement>('#stType').value as StreetType, line: turf.lineString(line.geometry.coordinates) as Feature<LineString> };
+  S.plan.streets.push(s);
+  S.mpSel = s.id;
+  clearHomesUnder(corridor(s));
+  renderPlan();
+}
+function addOpen(shape: Feature<Polygon>) {
+  const o: OpenSpace = { id: newId('O', S.plan.open), name: `${openType($<HTMLSelectElement>('#osType').value as OpenType).label}`, type: $<HTMLSelectElement>('#osType').value as OpenType, shape };
+  S.plan.open.push(o);
+  S.mpSel = o.id;
+  clearHomesUnder(shape);
+  renderPlan();
+}
+
+function deleteMp(id: string) {
+  const s = S.plan.streets.find((x) => x.id === id);
+  if (s) {
+    const n = S.plan.homes.filter((h) => h.streetId === id).length;
+    S.plan.streets = S.plan.streets.filter((x) => x !== s);
+    S.plan.homes = S.plan.homes.filter((h) => h.streetId !== id);
+    if (n) toast(`${s.name} and its ${n} home${n > 1 ? 's' : ''} removed.`);
+  }
+  S.plan.open = S.plan.open.filter((x) => x.id !== id);
+  S.plan.homes = S.plan.homes.filter((x) => x.id !== id);
+  if (S.mpSel === id) S.mpSel = null;
+  renderPlan();
+}
+
+function selectMp(id: string | null) {
+  S.mpSel = id;
+  if (id?.startsWith('S')) setMpTool('streets');
+  else if (id?.startsWith('O')) setMpTool('open');
+  else if (id?.startsWith('H')) setMpTool('homes');
+  renderPlan();
+  if (id) document.querySelector(`.mp-list [data-id="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+let planQueued = false;
+function renderPlanSoon() {
+  if (planQueued) return;
+  planQueued = true;
+  setTimeout(() => ((planQueued = false), renderPlan()), 0);
+}
+
+function renderPlan() {
+  const g = planGeoJSON(S.plan, S.mpSel);
+  (map.getSource('mp-streets') as mapboxgl.GeoJSONSource | undefined)?.setData(g.streets);
+  (map.getSource('mp-centre') as mapboxgl.GeoJSONSource | undefined)?.setData(g.centrelines);
+  (map.getSource('mp-open') as mapboxgl.GeoJSONSource | undefined)?.setData(g.open);
+  (map.getSource('mp-homes') as mapboxgl.GeoJSONSource | undefined)?.setData(g.homes);
+
+  streetMarkers.forEach((m) => m.remove());
+  streetMarkers = S.plan.streets.map((s) => {
+    const el = document.createElement('span');
+    el.className = 'block-ref street-ref';
+    el.textContent = s.name;
+    const mid = turf.along(s.line, Math.min(40, turf.length(s.line, { units: 'meters' }) * 0.3), { units: 'meters' }); // near the start, clear of junctions in the middle
+    return new mapboxgl.Marker({ element: el }).setLngLat(mid.geometry.coordinates as [number, number]).addTo(map);
+  });
+  if (S.view === 'atlas') streetMarkers.forEach((m) => (m.getElement().style.display = 'none'));
+
+  const on = (id: string) => (id === S.mpSel ? ' on' : '');
+  $('#streetList').innerHTML = S.plan.streets
+    .map((s) => {
+      const homes = S.plan.homes.filter((h) => h.streetId === s.id).length;
+      return `<div class="mpr${on(s.id)}" data-id="${s.id}">
+        <span class="grow"><b>${esc(s.name)}</b><small>${Math.round(turf.length(s.line, { units: 'meters' }))} m${homes ? ` · ${homes} homes` : ''}</small></span>
+        <select data-f="type" aria-label="Street type">${STREET_TYPES.map((t) => `<option value="${t.id}"${t.id === s.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select>
+        <button class="link" data-act="line">Line it</button><button class="link" data-act="del">Delete</button>
+      </div>`;
+    })
+    .join('');
+  $('#openList').innerHTML = S.plan.open
+    .map((o) => `<div class="mpr${on(o.id)}" data-id="${o.id}">
+        <span class="sw" style="background:${openType(o.type).colour}"></span>
+        <span class="grow"><b>${esc(o.name)}</b><small>${m2(turf.area(o.shape))}</small></span>
+        <select data-f="type" aria-label="Open space type">${OPEN_TYPES.map((t) => `<option value="${t.id}"${t.id === o.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select>
+        <button class="link" data-act="del">Delete</button>
+      </div>`)
+    .join('');
+  const sel = S.plan.homes.find((h) => h.id === S.mpSel);
+  $('#homeList').innerHTML =
+    HOUSE_TYPES.map((t) => ({ t, n: S.plan.homes.filter((h) => h.type === t.id).length }))
+      .filter((x) => x.n)
+      .map(({ t, n }) => `<div class="mpr" data-type="${t.id}"><span class="sw" style="background:${t.colour}"></span><span class="grow"><b>${esc(t.label)}</b><small>${n} ${t.homes > 1 ? `pairs, ${n * t.homes} homes` : n > 1 ? 'homes' : 'home'}</small></span><button class="link" data-act="deltype">Remove</button></div>`)
+      .join('') +
+    (sel ? `<div class="mpr on" data-id="${sel.id}"><span class="grow"><b>Selected: ${esc(houseType(sel.type).label)}</b><small>Press Delete to remove it</small></span><select data-f="htype" aria-label="House type">${HOUSE_TYPES.map((t) => `<option value="${t.id}"${t.id === sel.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select><button class="link" data-act="del">Delete</button></div>` : '');
+
+  document.querySelectorAll<HTMLElement>('.mp-list .mpr[data-id]').forEach((row) => {
+    const id = row.dataset.id!;
+    row.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('select,button')) return;
+      selectMp(S.mpSel === id ? null : id);
+    });
+    row.querySelector('[data-act=del]')?.addEventListener('click', () => deleteMp(id));
+    row.querySelector('[data-act=line]')?.addEventListener('click', () => {
+      const s = S.plan.streets.find((x) => x.id === id);
+      if (s) (setMpTool('homes'), lineThisStreet(s));
+    });
+    row.querySelector<HTMLSelectElement>('[data-f=type]')?.addEventListener('change', (e) => {
+      const v = (e.target as HTMLSelectElement).value;
+      const s = S.plan.streets.find((x) => x.id === id);
+      const o = S.plan.open.find((x) => x.id === id);
+      if (s) {
+        s.type = v as StreetType;
+        // A wider or narrower street moves its homes: line it again with the type most used along it.
+        const mine = S.plan.homes.filter((h) => h.streetId === id);
+        if (mine.length) {
+          const counts = new Map<HouseTypeId, number>();
+          for (const h of mine) counts.set(h.type, (counts.get(h.type) ?? 0) + 1);
+          const top = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+          S.plan.homes = S.plan.homes.filter((h) => h.streetId !== id);
+          return lineThisStreet(s, top);
+        }
+        clearHomesUnder(corridor(s));
+      }
+      if (o) ((o.type = v as OpenType), (o.name = openType(o.type).label));
+      renderPlanSoon();
+    });
+    row.querySelector<HTMLSelectElement>('[data-f=htype]')?.addEventListener('change', (e) => {
+      const h = S.plan.homes.find((x) => x.id === id);
+      if (!h) return;
+      const c = turf.centroid(h.shape).geometry.coordinates as [number, number];
+      const others = S.plan.homes.filter((x) => x !== h);
+      const o = mpObstacles();
+      o.shapes = o.shapes.filter((f) => f !== h.shape);
+      const nh = placeHome(c, (e.target as HTMLSelectElement).value as HouseTypeId, S.plan.streets, o, others);
+      if (!nh) return (toast('That house type does not fit there.'), renderPlanSoon());
+      Object.assign(h, { type: nh.type, shape: nh.shape });
+      renderPlanSoon();
+    });
+  });
+  document.querySelectorAll<HTMLElement>('#homeList .mpr[data-type] [data-act=deltype]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const t = (b.closest('.mpr') as HTMLElement).dataset.type;
+      S.plan.homes = S.plan.homes.filter((h) => h.type !== t);
+      renderPlan();
+    }),
+  );
+  renderSchedule();
+  saveProject();
+  agent.contextChanged();
+}
+
+function mpSchedule() {
+  const t = massTotals(S.blocks, S.red, S.assume);
+  return schedule(S.plan, S.red, t.homes ?? 0, (t.homes ?? 0) * S.mpAssume.aptParking, S.mpAssume.householdSize);
+}
+
+function renderSchedule() {
+  const has = S.plan.streets.length || S.plan.open.length || S.plan.homes.length;
+  if (!has) return void ($('#mpSchedule').innerHTML = '');
+  const s = mpSchedule();
+  const share = (x: number) => (s.siteM2 ? ` <span class="muted">${pct(x / s.siteM2)}</span>` : '');
+  const ha = (x: number) => `${x.toFixed(2)} ha`;
+  const rows: string[] = [];
+  if (s.siteM2) rows.push(`<tr><th>Site (red line)</th><td>${ha(s.siteM2 / 10000)}</td></tr>`);
+  if (s.streetsM2) rows.push(`<tr><th>Streets</th><td>${m2(s.streetsM2)}${share(s.streetsM2)}</td></tr>`);
+  for (const [k, v] of Object.entries(s.streetLengthM)) rows.push(`<tr><th class="ind">${esc(k)}</th><td>${Math.round(v)} m</td></tr>`);
+  for (const t of OPEN_TYPES) if (s.openM2[t.id]) rows.push(`<tr><th><span class="sw" style="background:${t.colour}"></span>${esc(t.label)}</th><td>${m2(s.openM2[t.id]!)}${share(s.openM2[t.id]!)}</td></tr>`);
+  if (s.netM2 != null) rows.push(`<tr class="tot"><th>Net developable</th><td>${ha(s.netM2 / 10000)}${share(s.netM2)}</td></tr>`);
+  const homes: string[] = s.houses.map((h) => `<tr><th><span class="sw" style="background:${houseType(h.type).colour}"></span>${esc(h.label)}</th><td>${h.homes}</td></tr>`);
+  if (s.apartmentHomes) homes.push(`<tr><th>Apartments (blocks)</th><td>about ${s.apartmentHomes}</td></tr>`);
+  homes.push(`<tr class="tot"><th>Homes</th><td>${s.homes.toLocaleString('en-GB')}</td></tr>`);
+  if (s.grossDph != null && s.homes) homes.push(`<tr><th>Gross density</th><td>${Math.round(s.grossDph)} dph</td></tr>`);
+  if (s.netDph != null && s.homes) homes.push(`<tr><th>Net density</th><td>${Math.round(s.netDph)} dph</td></tr>`);
+  if (s.homes) homes.push(`<tr><th>People, about</th><td>${s.population.toLocaleString('en-GB')}</td></tr>`, `<tr><th>Parking, about</th><td>${s.parking} spaces</td></tr>`);
+  const bench = s.population
+    ? s.openVsBenchmark.map((b) => `<tr><th>${esc(b.label)}</th><td class="${b.providedHa >= b.benchmarkHa ? 'met' : 'short'}">${b.providedHa.toFixed(2)} of ${b.benchmarkHa.toFixed(2)} ha</td></tr>`).join('')
+    : '';
+  $('#mpSchedule').innerHTML = `<h4>Schedule</h4><table class="metrics">${rows.join('')}${homes.join('')}</table>
+    ${bench ? `<h4>Open space against Fields in Trust</h4><table class="metrics">${bench}</table><p class="hint">For about ${s.population.toLocaleString('en-GB')} people. Areas count inside the red line only.</p>` : ''}
+    ${S.red ? '' : '<p class="hint">Draw a red line for site areas and density.</p>'}`;
+}
+
+const mpAssumeIn = (id: string, get: () => number, set: (v: number) => void) => {
+  const el = $<HTMLInputElement>(id);
+  el.value = String(get());
+  el.onchange = () => (set(+el.value), renderPlanSoon());
+};
+mpAssumeIn('#aHh', () => S.mpAssume.householdSize, (v) => (S.mpAssume.householdSize = Math.max(1, Math.min(5, v || 2.4))));
+mpAssumeIn('#aAptPk', () => S.mpAssume.aptParking, (v) => (S.mpAssume.aptParking = Math.max(0, Math.min(3, v))));
+
+/** A click on the map while the masterplan is waiting for one. Returns true if it was used. */
+function mpClick(e: mapboxgl.MapMouseEvent): boolean {
+  if (mpPick === 'line') {
+    const f = map.queryRenderedFeatures([[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]], { layers: ['mp-streets-f'] })[0];
+    const s = f && S.plan.streets.find((x) => x.id === f.properties?.id);
+    if (!s) return (toast('Click on one of your streets.'), true);
+    lineThisStreet(s);
+    setPick(null);
+    return true;
+  }
+  if (mpPick === 'place') {
+    const h = placeHome([e.lngLat.lng, e.lngLat.lat], $<HTMLSelectElement>('#hoType').value as HouseTypeId, S.plan.streets, mpObstacles(), S.plan.homes);
+    if (!h) return (toast(S.red && !turf.booleanPointInPolygon([e.lngLat.lng, e.lngLat.lat], S.red) ? 'Homes go inside the red line.' : 'Something is in the way there.'), true);
+    S.plan.homes.push(h);
+    S.mpSel = h.id;
+    renderPlan();
+    return true;
+  }
+  const hit = map.queryRenderedFeatures(e.point, { layers: ['mp-homes-3d', 'mp-open-f', 'mp-streets-f'].filter((l) => map.getLayer(l)) })[0];
+  if (hit) {
+    selectMp(String(hit.properties?.id));
+    return true;
+  }
+  if (S.mpSel) selectMp(null);
+  return false;
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.target as HTMLElement)?.closest('input,select,textarea')) return;
+  if ((e.key === 'Delete' || e.key === 'Backspace') && S.mpSel) (e.preventDefault(), deleteMp(S.mpSel));
+  if (e.key === 'Escape' && mpPick) setPick(null);
+});
+
+const mpExportBlocks = () =>
+  S.plan.homes.map((h) => {
+    const t = houseType(h.type);
+    return { name: h.id, use: t.label, shape: h.shape, base: 0, top: houseHeight(t), layer: 'UH_MP_HOMES' };
+  });
+const mpExportLines = (): ExportLine[] => [
+  ...S.plan.streets.flatMap((s) => {
+    const c = corridor(s);
+    const rings = c.geometry.type === 'Polygon' ? [c.geometry.coordinates[0]] : c.geometry.coordinates.map((p) => p[0]);
+    return [...rings.map((r) => ({ layer: 'UH_MP_STREETS', coords: r, closed: true })), { layer: 'UH_MP_CENTRELINES', coords: s.line.geometry.coordinates, closed: false }];
+  }),
+  ...S.plan.open.map((o) => ({ layer: 'UH_MP_OPEN_SPACE', coords: o.shape.geometry.coordinates[0], closed: true })),
+];
+/** Streets and open space as ground for the SVG drawings; homes as buildings. */
+function mpGround(frame: LocalFrame): GroundPolys[] {
+  const out: GroundPolys[] = [];
+  const streets = S.plan.streets.flatMap((s) => toLocalPolys(corridor(s).geometry, frame));
+  for (const o of S.plan.open) out.push({ polys: toLocalPolys(o.shape.geometry, frame), fill: openType(o.type).colour, opacity: 0.7, stroke: openType(o.type).colour, strokeWidth: 0.8 });
+  if (streets.length) out.push({ polys: streets, fill: '#efeee9', opacity: 1, stroke: '#9a9994', strokeWidth: 0.6 });
+  return out;
+}
+function mpBuildings(frame: LocalFrame, white = false): AxoBuilding[] {
+  return S.plan.homes.map((h) => {
+    const t = houseType(h.type);
+    return { polys: toLocalPolys(h.shape.geometry, frame), z0: 0, z1: houseHeight(t), look: white ? { roof: '#f6c9cb', wallLight: '#ffffff', wallDark: '#ffffff', stroke: '#6f6e6a', strokeWidth: 0.6 } : lookForColour(t.colour) };
+  });
 }
 
 // ---------------------------------------------------------------- study area
@@ -752,12 +1117,14 @@ function resetAll(home: boolean) {
   if (map.getLayer('contours')) map.setLayoutProperty('contours', 'visibility', 'none');
   (map.getSource('contours') as mapboxgl.GeoJSONSource | undefined)?.setData(empty);
   editingBlock = null;
+  setPick(null);
   setTimeout(renderBlocks, 0);
+  setTimeout(renderPlan, 0);
   select(null);
   draw.deleteAll();
   Object.assign(S, {
     red: null, study: null, drawnStudy: null, drawnBox: null, drawing: null, model: null, modelFC: empty, designations: empty,
-    pois: [], place: '', lpa: null, walk: empty, massing: 0, atlas: null, atlasT: 0, metrics: null, blocks: [], blockSel: null, people: null,
+    pois: [], place: '', lpa: null, walk: empty, massing: 0, atlas: null, atlasT: 0, metrics: null, blocks: [], blockSel: null, people: null, plan: emptyPlan(), mpSel: null,
   });
   for (const id of ['mask', 'red', 'study', 'walk', 'model', 'pois', 'selected', 'massing', 'imd', 'atlas-labels', ...DATASETS.map((d) => `ds-${d.id}`)])
     (map.getSource(id) as mapboxgl.GeoJSONSource | undefined)?.setData(empty);
@@ -849,8 +1216,8 @@ function applyVisibility() {
   if (wp && walkMarker) wp.hidden = atlas;
   vis('pois', flat && S.visible.has('pois'));
   vis('pois-label', flat && S.visible.has('pois'));
-  for (const id of ['red-fill', 'red-line', 'study-line', 'massing-3d', 'selected-line', 'blocks-3d', 'blocks-line']) vis(id, !atlas);
-  blockMarkers.forEach((mk) => (mk.getElement().style.display = atlas ? 'none' : ''));
+  for (const id of ['red-fill', 'red-line', 'study-line', 'massing-3d', 'selected-line', 'blocks-3d', 'blocks-line', 'mp-open-f', 'mp-open-l', 'mp-streets-f', 'mp-streets-l', 'mp-centre', 'mp-homes-3d']) vis(id, !atlas);
+  [...blockMarkers, ...streetMarkers].forEach((mk) => (mk.getElement().style.display = atlas ? 'none' : ''));
   vis('atlas-labels', atlas);
   for (const l of map.getStyle()?.layers ?? []) if (l.type === 'symbol' && /road-label|road-number|road-exit|street/.test(l.id)) vis(l.id, !atlas && S.visible.has('labels'));
 }
@@ -1161,6 +1528,7 @@ map.on('mouseleave', 'model-3d', () => {
 let lastDrawEnd = 0; // the click that finishes a drawing must not also start a walk
 map.on('click', (e) => {
   if (S.drawing || eye.dragged || Date.now() - lastDrawEnd < 400) return;
+  if (S.view !== 'atlas' && mpClick(e)) return;
   const bh = map.queryRenderedFeatures(e.point, { layers: ['blocks-3d'] })[0];
   if (bh) {
     S.blockSel = String(bh.properties?.id);
@@ -1751,12 +2119,13 @@ function exportDrawing(kind: 'axo' | 'plan') {
   const buildings: AxoBuilding[] = m.buildings.filter((b) => b.cut).map((b) => ({ polys: b.cut!, z0: b.minH, z1: b.h, label: b.ref, look: lookFor(b) }));
   if (S.massing > 0 && m.redPolys) buildings.push({ polys: m.redPolys, z0: 0, z1: S.massing, look: LOOK.massing, label: 'Proposed' });
   for (const b of S.blocks) buildings.push({ polys: toLocalPolys(b.shape.geometry, m.frame), z0: b.baseM, z1: b.baseM + heightOf(b), look: lookForColour(useOf(b.use).colour), label: b.name });
+  buildings.push(...mpBuildings(m.frame));
   const pitch = kind === 'plan' ? 0 : S.view === 'axo' || S.view === '3d' ? map.getPitch() : 55;
   const svg = renderAxo(
     {
       buildings: kind === 'plan' ? buildings.map((b) => ({ ...b, z1: b.z0 })) : buildings,
       clip: m.studyPolys,
-      ground: [...groundLayers(m, GREEN), ...overlayPolys()],
+      ground: [...groundLayers(m, GREEN), ...mpGround(m.frame), ...overlayPolys()],
       shadows: $<HTMLInputElement>('#sunOn').checked && s.alt > 0 ? { toSun: s.toSun, alt: s.alt } : undefined,
     },
     {
@@ -1795,24 +2164,25 @@ $('#expSun').onclick = () => {
   const xs = m.studyPolys.flatMap((p) => p[0].map((q) => q[0])), ys = m.studyPolys.flatMap((p) => p[0].map((q) => q[1]));
   const buildings: AxoBuilding[] = m.buildings.filter((b) => b.cut).map((b) => ({ polys: b.cut!, z0: b.minH, z1: b.h, look: { roof: b.inSite ? '#f6c9cb' : '#ffffff', wallLight: '#ffffff', wallDark: '#ffffff', stroke: '#6f6e6a', strokeWidth: 0.6 } }));
   for (const b of S.blocks) buildings.push({ polys: toLocalPolys(b.shape.geometry, m.frame), z0: b.baseM, z1: b.baseM + heightOf(b), look: { ...lookForColour(useOf(b.use).colour), strokeWidth: 0.8 } });
+  buildings.push(...mpBuildings(m.frame, true));
   const red: GroundPolys[] = m.redPolys ? [{ polys: m.redPolys, fill: '#d7262e', opacity: 0.06, stroke: '#d7262e', strokeWidth: 1.6 }] : [];
   const c = turf.centroid(S.red ?? S.study!).geometry.coordinates;
   const svg = sunStudySVG({
-    lat: c[1], lng: c[0], buildings, ground: [...groundLayers(m, GREEN), ...red], clip: m.studyPolys,
+    lat: c[1], lng: c[0], buildings, ground: [...groundLayers(m, GREEN), ...mpGround(m.frame), ...red], clip: m.studyPolys,
     frame: { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) },
-    title: `Sun study${S.place ? ` · ${esc(S.place)}` : ''}${S.blocks.length ? ' · with proposed blocks' : ''}`,
+    title: `Sun study${S.place ? ` · ${esc(S.place)}` : ''}${S.blocks.length || S.plan.homes.length ? ' · with the proposals' : ''}`,
   });
   showExport(svg, `${slug(S.place || 'site')}-sun-study`);
 };
 const exportBlocks = () => S.blocks.map((b) => ({ name: b.name, use: useOf(b.use).label, shape: b.shape, base: b.baseM, top: b.baseM + heightOf(b) }));
 $('#expDxf').onclick = () => {
   if (!S.model) return;
-  download(new Blob([siteDXF(S.model, { massing: S.massing, blocks: exportBlocks() })], { type: 'application/dxf' }), `${slug(S.place || 'site')}-bng.dxf`);
+  download(new Blob([siteDXF(S.model, { massing: S.massing, blocks: [...exportBlocks(), ...mpExportBlocks()], lines: mpExportLines() })], { type: 'application/dxf' }), `${slug(S.place || 'site')}-bng.dxf`);
   toast('DXF on British National Grid, in metres. Buildings carry their heights as elevation and thickness.');
 };
 $('#expObj').onclick = () => {
   if (!S.model) return;
-  const { obj, origin } = siteOBJ(S.model, { massing: S.massing, context: false, blocks: exportBlocks() });
+  const { obj, origin } = siteOBJ(S.model, { massing: S.massing, context: false, blocks: [...exportBlocks(), ...mpExportBlocks()] });
   download(new Blob([obj], { type: 'text/plain' }), `${slug(S.place || 'site')}-E${origin[0]}-N${origin[1]}.obj`);
   toast(`OBJ in metres, Z up, origin at British National Grid E ${origin[0]} N ${origin[1]}.`);
 };
@@ -1879,7 +2249,7 @@ function siteContext() {
     ({ landM2: r0(s.areaM2), buildings: s.buildings, coverage: r1(s.coverage * 100) / 100, plotRatioEstimate: r1(s.plotRatio), floorAreaEstimateM2: r0(s.gfaM2), meanStoreys: r1(s.meanStoreys) });
   const sel = S.selected;
   return {
-    schema: 'allto.ultrahand.site/2',
+    schema: 'allto.ultrahand.site/3',
     generatedAt: new Date().toISOString(),
     place: S.place || null,
     localPlanningAuthority: S.lpa,
@@ -1946,6 +2316,33 @@ function siteContext() {
           };
         })()
       : null,
+    masterplan:
+      S.plan.streets.length || S.plan.open.length || S.plan.homes.length
+        ? (() => {
+            const sc = mpSchedule();
+            return {
+              streets: S.plan.streets.map((x) => ({ name: x.name, type: streetType(x.type).label, corridorWidthM: streetType(x.type).widthM, lengthM: r0(turf.length(x.line, { units: 'meters' })), homes: S.plan.homes.filter((h) => h.streetId === x.id).length })),
+              openSpaces: S.plan.open.map((o) => ({ name: o.name, type: openType(o.type).label, areaM2: r0(turf.area(o.shape)) })),
+              houses: sc.houses.map((h) => ({ type: h.label, buildings: h.buildings, homes: h.homes, bedrooms: h.beds, storeys: houseType(h.type).storeys, floorAreaM2: r0(h.giaM2) })),
+              schedule: {
+                siteHa: sc.siteM2 != null ? Math.round(sc.siteM2 / 100) / 100 : null,
+                streetsM2: r0(sc.streetsM2),
+                openSpaceM2: Object.fromEntries(Object.entries(sc.openM2).map(([k, v]) => [openType(k as OpenType).label, r0(v!)])),
+                netDevelopableHa: sc.netM2 != null ? Math.round(sc.netM2 / 100) / 100 : null,
+                houseHomes: sc.houseHomes,
+                apartmentHomesFromBlocks: sc.apartmentHomes,
+                homes: sc.homes,
+                grossDwellingsPerHa: sc.grossDph != null ? r0(sc.grossDph) : null,
+                netDwellingsPerHa: sc.netDph != null ? r0(sc.netDph) : null,
+                populationEstimate: sc.population,
+                parkingSpacesEstimate: sc.parking,
+              },
+              openSpaceAgainstFieldsInTrust: sc.openVsBenchmark.map((b) => ({ type: b.label, providedHa: Math.round(b.providedHa * 100) / 100, benchmarkHa: Math.round(b.benchmarkHa * 100) / 100 })),
+              assumptions: { peoplePerHome: S.mpAssume.householdSize, parkingPerApartment: S.mpAssume.aptParking, visitorParkingPerHome: 0.2 },
+              note: 'A sketch layout from typical UK dimensions, not a design. Areas count inside the red line.',
+            };
+          })()
+        : null,
     sources: ['Heights and ground levels: Environment Agency LIDAR 1 m (where measured)', 'Buildings and streets: OpenStreetMap via Mapbox', 'Designations: planning.data.gov.uk', 'Places: OpenStreetMap', 'Walking: street network at 4.8 km/h'],
     caveats: ['Heights are from OpenStreetMap where recorded; others are drawn at 6 m.', 'Floor areas and plot ratios are estimates at 3.2 m a storey.', 'Drawn from open data: not a measured survey or a flood risk assessment.'],
   };
@@ -1996,6 +2393,14 @@ function siteSummary(): string {
     L.push(`Proposed blocks: ${c.proposedBlocks.blocks.map((b) => `${b.name} (${b.use}, ${b.storeys} storeys, ${b.heightM} m)`).join('; ')}`);
     L.push(`Proposed totals: ${m2(t.floorAreaM2)} floor area${t.homes ? `, about ${t.homes} homes` : ''}${t.dwellingsPerHectare ? `, about ${t.dwellingsPerHectare} homes per hectare` : ''}${t.plotRatio != null ? `, plot ratio ${t.plotRatio}` : ''}${t.coverage != null ? `, coverage ${Math.round(t.coverage * 100)}%` : ''}`);
   }
+  if (c.masterplan) {
+    const mp = c.masterplan, sc = mp.schedule;
+    if (mp.streets.length) L.push(`Masterplan streets: ${mp.streets.map((x) => `${x.name} (${x.type}, ${x.corridorWidthM} m, ${x.lengthM} m long)`).join('; ')}`);
+    if (mp.openSpaces.length) L.push(`Masterplan open space: ${mp.openSpaces.map((o) => `${o.name} ${m2(o.areaM2)}`).join('; ')}`);
+    if (mp.houses.length) L.push(`Masterplan houses: ${mp.houses.map((h) => `${h.homes} × ${h.type}`).join('; ')}`);
+    L.push(`Masterplan schedule: ${sc.homes} homes (${sc.houseHomes} houses, ${sc.apartmentHomesFromBlocks} apartments)${sc.grossDwellingsPerHa != null ? `, ${sc.grossDwellingsPerHa} dph gross` : ''}${sc.netDwellingsPerHa != null ? `, ${sc.netDwellingsPerHa} dph net` : ''}, about ${sc.populationEstimate} people, about ${sc.parkingSpacesEstimate} parking spaces${sc.netDevelopableHa != null ? `; net developable ${sc.netDevelopableHa} ha of ${sc.siteHa} ha` : ''}`);
+    if (mp.openSpaceAgainstFieldsInTrust.length) L.push(`Open space against Fields in Trust: ${mp.openSpaceAgainstFieldsInTrust.map((b) => `${b.type} ${b.providedHa} of ${b.benchmarkHa} ha`).join('; ')}`);
+  }
   L.push('', ...c.caveats);
   return L.join('\n');
 }
@@ -2013,8 +2418,9 @@ try {
 } catch { /* storage blocked */ }
 function saveProject() {
   try {
-    if (!S.red && !S.blocks.length) return localStorage.removeItem(KEY);
-    localStorage.setItem(KEY, JSON.stringify({ red: S.red, place: S.place, bufferM: S.bufferM, blocks: S.blocks, assume: S.assume }));
+    const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length;
+    if (!S.red && !S.blocks.length && !hasPlan) return localStorage.removeItem(KEY);
+    localStorage.setItem(KEY, JSON.stringify({ red: S.red, place: S.place, bufferM: S.bufferM, blocks: S.blocks, assume: S.assume, plan: S.plan, mpAssume: S.mpAssume }));
   } catch { /* storage blocked */ }
 }
 let restored = false;
@@ -2027,6 +2433,11 @@ function restoreProject() {
     if (Array.isArray(j?.blocks)) S.blocks = j.blocks;
     if (j?.assume) S.assume = { ...DEFAULT_ASSUMPTIONS, ...j.assume };
     if (S.blocks.length) setTimeout(renderBlocks, 0);
+    if (j?.plan?.streets) S.plan = { ...emptyPlan(), ...j.plan };
+    if (j?.mpAssume) S.mpAssume = { ...S.mpAssume, ...j.mpAssume };
+    $<HTMLInputElement>('#aHh').value = String(S.mpAssume.householdSize);
+    $<HTMLInputElement>('#aAptPk').value = String(S.mpAssume.aptParking);
+    setTimeout(renderPlan, 0);
     if (!j?.red) return;
     S.place = j.place ?? '';
     searchBox.value = S.place;

@@ -71,16 +71,65 @@
       </section>
 
       <section class="step" id="massingStep">
-        <h3>4 · Massing</h3>
-        <p class="hint">Draw proposed blocks, then set each one's use and storeys. The totals update as you go.</p>
-        <div class="row"><button id="drawBlock" class="solid">Draw a block</button></div>
-        <div id="blockList"></div>
-        <div id="massTotals"></div>
+        <h3>4 · Masterplan</h3>
+        <p class="hint">Lay out streets, open space and homes, and add blocks for apartments and other uses. The schedule updates as you go.</p>
+        <div class="seg" id="mpTool">
+          <button data-t="streets" class="on">Streets</button>
+          <button data-t="open">Open space</button>
+          <button data-t="homes">Homes</button>
+          <button data-t="blocks">Blocks</button>
+        </div>
+
+        <div data-mp="streets">
+          <label class="field">Street type <select id="stType"></select></label>
+          <p class="hint" id="stNote"></p>
+          <div class="row"><button id="drawStreet" class="solid">Draw a street</button></div>
+          <div id="streetList" class="mp-list"></div>
+        </div>
+
+        <div data-mp="open" hidden>
+          <label class="field">Type <select id="osType"></select></label>
+          <div class="row"><button id="drawOpen" class="solid">Draw open space</button></div>
+          <div id="openList" class="mp-list"></div>
+        </div>
+
+        <div data-mp="homes" hidden>
+          <label class="field">House type <select id="hoType"></select></label>
+          <p class="hint" id="hoNote"></p>
+          <div class="row wrap">
+            <label class="inline">Set back <input id="hoSetback" type="number" min="0" max="30" step="0.5" value="4" /> m</label>
+            <label class="inline">Gap <input id="hoGap" type="number" min="0" max="20" step="0.5" placeholder="auto" /> m</label>
+            <label class="inline"><select id="hoSide"><option value="both">Both sides</option><option value="left">Left side</option><option value="right">Right side</option></select></label>
+          </div>
+          <label class="inline"><input id="hoAvoid" type="checkbox" checked /> Keep clear of existing buildings</label>
+          <div class="row wrap">
+            <button id="lineStreet" class="solid">Line a street</button>
+            <button id="placeHome" class="ghost">Place homes</button>
+            <button id="clearHomes" class="ghost">Clear all</button>
+          </div>
+          <p class="hint" id="hoHint">Line a street: click a street and homes fill both sides, facing it. Place homes: click where each one goes.</p>
+          <div id="homeList" class="mp-list"></div>
+        </div>
+
+        <div data-mp="blocks" hidden>
+          <p class="hint">Draw a block, then set its use and storeys.</p>
+          <div class="row"><button id="drawBlock" class="solid">Draw a block</button></div>
+          <div id="blockList"></div>
+          <div id="massTotals"></div>
+          <details class="assume">
+            <summary>Block assumptions</summary>
+            <label class="inline">Residential net to gross <input id="aNtg" type="number" min="50" max="100" step="1" /> %</label>
+            <label class="inline">Average home <input id="aHome" type="number" min="25" max="200" step="1" /> m² net</label>
+            <p class="hint">Storey heights by use: residential 3.15 m, workspace 4.0 m, retail and food 4.5 m, community 4.0 m, other 3.5 m.</p>
+          </details>
+        </div>
+
+        <div id="mpSchedule"></div>
         <details class="assume">
-          <summary>Assumptions</summary>
-          <label class="inline">Residential net to gross <input id="aNtg" type="number" min="50" max="100" step="1" /> %</label>
-          <label class="inline">Average home <input id="aHome" type="number" min="25" max="200" step="1" /> m² net</label>
-          <p class="hint">Storey heights by use: residential 3.15 m, workspace 4.0 m, retail and food 4.5 m, community 4.0 m, other 3.5 m.</p>
+          <summary>Schedule assumptions</summary>
+          <label class="inline">People per home <input id="aHh" type="number" min="1" max="5" step="0.1" /></label>
+          <label class="inline">Parking per apartment <input id="aAptPk" type="number" min="0" max="3" step="0.1" /></label>
+          <p class="hint">Houses take the parking of their type (2 spaces, bungalows 1), plus 0.2 visitor spaces a home. Open space is compared with Fields in Trust benchmarks per 1,000 people; the local plan's standard may differ.</p>
         </details>
       </section>
 

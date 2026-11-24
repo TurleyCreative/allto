@@ -9,7 +9,9 @@ import type { SiteModel, Bldg } from './model';
 const en = (p: Position): [number, number] => toBNG(p);
 
 type PolyF = Feature<Polygon | MultiPolygon>;
-export interface ExportBlock { name: string; use: string; shape: Feature<Polygon>; base: number; top: number }
+export interface ExportBlock { name: string; use: string; shape: Feature<Polygon>; base: number; top: number; layer?: string }
+/** Flat linework on its own layer, e.g. masterplan streets and open space. */
+export interface ExportLine { layer: string; coords: Position[]; closed: boolean }
 const polysOf = (f: PolyF) => (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates);
 const f3 = (n: number) => (Math.round(n * 1000) / 1000).toString();
 
@@ -26,9 +28,13 @@ const LAYERS: [string, number][] = [
   ['UH_REFS', 7],
   ['UH_MASSING', 1],
   ['UH_PROPOSED', 1],
+  ['UH_MP_STREETS', 8],
+  ['UH_MP_CENTRELINES', 9],
+  ['UH_MP_OPEN_SPACE', 3],
+  ['UH_MP_HOMES', 1],
 ];
 
-export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBlock[] }): string {
+export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBlock[]; lines?: ExportLine[] }): string {
   const out: string[] = [];
   const put = (...pairs: (string | number)[]) => {
     for (let i = 0; i < pairs.length; i += 2) out.push(String(pairs[i]), String(pairs[i + 1]));
@@ -65,10 +71,12 @@ export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBl
     if (opts.massing > 0) for (const p of polysOf(m.red)) poly('UH_MASSING', ring(p[0]), true, 0, opts.massing);
   }
   for (const b of opts.blocks ?? []) {
-    for (const r of b.shape.geometry.coordinates) poly('UH_PROPOSED', ring(r), true, b.base, b.top - b.base);
+    const layer = b.layer ?? 'UH_PROPOSED';
+    for (const r of b.shape.geometry.coordinates) poly(layer, ring(r), true, b.base, b.top - b.base);
     const c = en(b.shape.geometry.coordinates[0][0]);
-    put(0, 'TEXT', 8, 'UH_PROPOSED', 10, f3(c[0]), 20, f3(c[1]), 30, f3(b.top), 40, 1.5, 1, `${b.name} (${b.use})`);
+    if (layer === 'UH_PROPOSED') put(0, 'TEXT', 8, layer, 10, f3(c[0]), 20, f3(c[1]), 30, f3(b.top), 40, 1.5, 1, `${b.name} (${b.use})`);
   }
+  for (const l of opts.lines ?? []) poly(l.layer, l.closed ? ring(l.coords) : l.coords.map(en), l.closed);
   for (const p of polysOf(m.study)) for (const r of p) poly('UH_STUDY_AREA', ring(r), true);
   for (const r of m.roads) for (const l of r.lines) poly('UH_ROADS', l.map((q) => en(m.frame.toLngLat(q))), false);
 
