@@ -3,7 +3,8 @@
 import type { LocalPoly, XY } from './geo';
 
 export interface Look { roof: string; wallLight: string; wallDark: string; stroke: string; strokeWidth?: number; roofStroke?: string; roofStrokeWidth?: number }
-export interface AxoBuilding { polys: LocalPoly[]; z0: number; z1: number; look: Look; label?: string }
+/** ridge: a gable roof over a rectangular footprint, from the eaves (z1) up to z at the ridge a–b. */
+export interface AxoBuilding { polys: LocalPoly[]; z0: number; z1: number; look: Look; label?: string; ridge?: { a: XY; b: XY; z: number } }
 export interface GroundPolys { polys: LocalPoly[]; fill: string; stroke?: string; strokeWidth?: number; dash?: string; opacity?: number }
 export interface GroundLines { lines: XY[][]; stroke: string; widthM?: number; widthPx?: number; dash?: string; cap?: string }
 
@@ -78,7 +79,7 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
     for (const [x, y] of [[F.minX, F.minY], [F.maxX, F.minY], [F.maxX, F.maxY], [F.minX, F.maxY]] as XY[]) grow(P(x, y, 0));
   } else {
     if (scene.clip) for (const pl of scene.clip) for (const q of pl[0]) (grow(P(q[0], q[1], 0)), grow(P(q[0], q[1], -plinth)));
-    for (const bd of scene.buildings) for (const pl of bd.polys) for (const q of pl[0]) (grow(P(q[0], q[1], bd.z0)), grow(P(q[0], q[1], bd.z1)));
+    for (const bd of scene.buildings) for (const pl of bd.polys) for (const q of pl[0]) (grow(P(q[0], q[1], bd.z0)), grow(P(q[0], q[1], bd.ridge?.z ?? bd.z1)));
   }
   if (!isFinite(minX)) return '<svg xmlns="http://www.w3.org/2000/svg"/>';
   const pad = o.padding ?? 40;
@@ -90,6 +91,34 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
   const polyPath = (pl: LocalPoly, z: number) => pl.map((r) => ringPath(r, z)).join('');
   const linePath = (l: XY[]) => l.map((q, i) => { const v = P(q[0], q[1], 0); return `${i ? 'L' : 'M'}${f1(v[0])} ${f1(v[1])}`; }).join('');
   const nss = 'vector-effect="non-scaling-stroke"';
+
+  const pathOf = (pts: [XY, number][]) => `M${pts.map(([q, z]) => { const v = P(q[0], q[1], z); return `${f1(v[0])} ${f1(v[1])}`; }).join('L')}Z`;
+  /** Roof slopes (farther first), then the gable ends that face the viewer. */
+  function gableRoof(bd: AxoBuilding, L: Look, sw: number): string[] {
+    const { a, b, z } = bd.ridge!;
+    const r = bd.polys[0][0];
+    const near = (q: XY) => (Math.hypot(q[0] - a[0], q[1] - a[1]) < Math.hypot(q[0] - b[0], q[1] - b[1]) ? a : b);
+    const slopes: { d: number; path: string; fill: string }[] = [], gables: string[] = [];
+    for (let i = 0; i < r.length; i++) {
+      const A = r[i], B = r[(i + 1) % r.length];
+      const RA = near(A), RB = near(B);
+      const ra = rot(...A), rb = rot(...B);
+      if (RA === RB) {
+        // A gable end: the wall's triangle up to the ridge, when that wall faces the viewer.
+        if (k > 0.001 && rb[0] - ra[0] > 1e-6) {
+          const len = Math.hypot(rb[0] - ra[0], rb[1] - ra[1]);
+          const fill = mix(L.wallDark, L.wallLight, (1 - (rb[1] - ra[1]) / len) / 2);
+          gables.push(`<path d="${pathOf([[A, bd.z1], [B, bd.z1], [RA, z]])}" fill="${fill}" stroke="${L.stroke}" stroke-width="${sw}" ${nss}/>`);
+        }
+      } else {
+        const len = Math.hypot(rb[0] - ra[0], rb[1] - ra[1]) || 1;
+        const facing = (rb[0] - ra[0]) / len; // 1: the eave runs across the view, slope toward the viewer
+        slopes.push({ d: (ra[1] + rb[1]) / 2, fill: mix(L.roof, L.wallDark, facing > 0 ? 0.08 : 0.3), path: pathOf([[A, bd.z1], [B, bd.z1], [RB, z], [RA, z]]) });
+      }
+    }
+    slopes.sort((x, y) => y.d - x.d);
+    return [...slopes.map((s) => `<path d="${s.path}" fill="${s.fill}" stroke="${L.roofStroke ?? L.stroke}" stroke-width="${L.roofStrokeWidth ?? sw}" ${nss}/>`), ...gables];
+  }
 
   const out: string[] = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="'Plus Jakarta Sans', Helvetica, Arial, sans-serif">`);
@@ -181,8 +210,11 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
       walls.sort((x, y) => y.d - x.d);
       for (const w of walls) out.push(`<path d="${w.path}" fill="${w.fill}" stroke="${L.stroke}" stroke-width="${sw}" ${nss}/>`);
     }
-    const roof = bd.polys.map((pl) => polyPath(pl, bd.z1)).join('');
-    out.push(`<path d="${roof}" fill="${L.roof}" fill-rule="evenodd" stroke="${L.roofStroke ?? L.stroke}" stroke-width="${L.roofStrokeWidth ?? sw}" ${nss}/>`);
+    if (bd.ridge) out.push(...gableRoof(bd, L, sw));
+    else {
+      const roof = bd.polys.map((pl) => polyPath(pl, bd.z1)).join('');
+      out.push(`<path d="${roof}" fill="${L.roof}" fill-rule="evenodd" stroke="${L.roofStroke ?? L.stroke}" stroke-width="${L.roofStrokeWidth ?? sw}" ${nss}/>`);
+    }
     if (o.labels && bd.label) {
       let cx = 0, cy = 0, n = 0;
       for (const q of bd.polys[0][0]) {
@@ -214,8 +246,11 @@ export function renderAxo(scene: Scene, o: AxoOpts): string {
 }
 
 /** Ground layers (landuse, water, roads) in a consistent diagram style. */
+/** Widths (m) the drawings give each road class. */
+export const ROAD_WIDTH_M: Record<string, number> = { motorway: 14, trunk: 12, primary: 11, secondary: 9, tertiary: 8, street: 6.5, street_limited: 5, service: 4, pedestrian: 4, track: 3, path: 1.6 };
+
 export function groundLayers(m: { roads: { cls: string; lines: XY[][] }[]; landuse: { cls: string; polys: LocalPoly[] }[]; water: LocalPoly[][] }, green: Set<string>) {
-  const W: Record<string, number> = { motorway: 14, trunk: 12, primary: 11, secondary: 9, tertiary: 8, street: 6.5, street_limited: 5, service: 4, pedestrian: 4, track: 3, path: 1.6 };
+  const W = ROAD_WIDTH_M;
   const layers: (GroundPolys | GroundLines)[] = [];
   layers.push({ polys: m.landuse.filter((l) => green.has(l.cls)).flatMap((l) => l.polys), fill: '#d3e2c4' });
   layers.push({ polys: m.water.flat(), fill: '#c4d9ea' });

@@ -83,7 +83,13 @@
         <div data-mp="streets">
           <label class="field">Street type <select id="stType"></select></label>
           <p class="hint" id="stNote"></p>
+          <label class="inline"><input id="stCurve" type="checkbox" checked /> Smooth into a curve</label>
           <div class="row"><button id="drawStreet" class="solid">Draw a street</button></div>
+          <p class="hint">Ends within 15 m of another street join it as a junction.</p>
+          <div class="row">
+            <select id="raType"></select>
+            <button id="addRoundabout" class="ghost">Add a roundabout</button>
+          </div>
           <div id="streetList" class="mp-list"></div>
         </div>
 
@@ -97,7 +103,8 @@
           <label class="field">House type <select id="hoType"></select></label>
           <p class="hint" id="hoNote"></p>
           <div class="row wrap">
-            <label class="inline">Set back <input id="hoSetback" type="number" min="0" max="30" step="0.5" value="4" /> m</label>
+            <label class="inline">Front garden <input id="hoSetback" type="number" min="0" max="30" step="0.5" value="3" /> m</label>
+            <label class="inline">Rear garden <input id="hoGarden" type="number" min="0" max="40" step="0.5" value="10.5" /> m</label>
             <label class="inline">Gap <input id="hoGap" type="number" min="0" max="20" step="0.5" placeholder="auto" /> m</label>
             <label class="inline"><select id="hoSide"><option value="both">Both sides</option><option value="left">Left side</option><option value="right">Right side</option></select></label>
           </div>
@@ -109,6 +116,7 @@
           </div>
           <p class="hint" id="hoHint">Line a street: click a street and homes fill both sides, facing it. Place homes: click where each one goes.</p>
           <div id="homeList" class="mp-list"></div>
+          <div class="row"><button id="spreadAff" class="ghost">Spread affordable homes to the target</button></div>
         </div>
 
         <div data-mp="blocks" hidden>
@@ -129,6 +137,18 @@
           <summary>Schedule assumptions</summary>
           <label class="inline">People per home <input id="aHh" type="number" min="1" max="5" step="0.1" /></label>
           <label class="inline">Parking per apartment <input id="aAptPk" type="number" min="0" max="3" step="0.1" /></label>
+          <label class="inline">Apartments that are 1 bed <input id="tApt1" type="number" min="0" max="100" step="5" /> %</label>
+        </details>
+        <details class="assume">
+          <summary>Targets</summary>
+          <label class="inline">Affordable homes <input id="tAff" type="number" min="0" max="100" step="5" /> %</label>
+          <div class="mix-in">Housing mix
+            <label>1 bed <input id="tMix1" type="number" min="0" max="100" step="5" />%</label>
+            <label>2 bed <input id="tMix2" type="number" min="0" max="100" step="5" />%</label>
+            <label>3 bed <input id="tMix3" type="number" min="0" max="100" step="5" />%</label>
+            <label>4+ bed <input id="tMix4" type="number" min="0" max="100" step="5" />%</label>
+          </div>
+          <p class="hint">Set these from the local plan or the brief. The schedule shows how the layout compares.</p>
           <p class="hint">Houses take the parking of their type (2 spaces, bungalows 1), plus 0.2 visitor spaces a home. Open space is compared with Fields in Trust benchmarks per 1,000 people; the local plan's standard may differ.</p>
         </details>
       </section>

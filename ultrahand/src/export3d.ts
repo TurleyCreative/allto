@@ -9,7 +9,21 @@ import type { SiteModel, Bldg } from './model';
 const en = (p: Position): [number, number] => toBNG(p);
 
 type PolyF = Feature<Polygon | MultiPolygon>;
-export interface ExportBlock { name: string; use: string; shape: Feature<Polygon>; base: number; top: number; layer?: string }
+export interface ExportBlock { name: string; use: string; shape: Feature<Polygon>; base: number; top: number; layer?: string; ridge?: { a: Position; b: Position; top: number } }
+
+/** A gable roof over a rectangular footprint: [corners at the eaves or the ridge, as [point, z]] per face. */
+function roofFaces(b: ExportBlock): [Position, number][][] {
+  if (!b.ridge) return [];
+  const { a, b: rb, top } = b.ridge;
+  const r = b.shape.geometry.coordinates[0].slice(0, -1);
+  const d = (p: Position, q: Position) => Math.hypot(p[0] - q[0], p[1] - q[1]);
+  const near = (p: Position) => (d(p, a) < d(p, rb) ? a : rb);
+  return r.map((A, i) => {
+    const B = r[(i + 1) % r.length];
+    const RA = near(A), RB = near(B);
+    return RA === RB ? [[A, b.top], [B, b.top], [RA, top]] : [[A, b.top], [B, b.top], [RB, top], [RA, top]];
+  });
+}
 /** Flat linework on its own layer, e.g. masterplan streets and open space. */
 export interface ExportLine { layer: string; coords: Position[]; closed: boolean }
 const polysOf = (f: PolyF) => (f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates);
@@ -32,6 +46,9 @@ const LAYERS: [string, number][] = [
   ['UH_MP_CENTRELINES', 9],
   ['UH_MP_OPEN_SPACE', 3],
   ['UH_MP_HOMES', 1],
+  ['UH_MP_ROOFS', 1],
+  ['UH_MP_PLOTS', 8],
+  ['UH_MP_GARDENS', 3],
 ];
 
 export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBlock[]; lines?: ExportLine[] }): string {
@@ -74,6 +91,11 @@ export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBl
     const layer = b.layer ?? 'UH_PROPOSED';
     for (const r of b.shape.geometry.coordinates) poly(layer, ring(r), true, b.base, b.top - b.base);
     const c = en(b.shape.geometry.coordinates[0][0]);
+    for (const f of roofFaces(b)) {
+      const q = f.map(([p, z]) => [...en(p), z]);
+      if (q.length === 3) q.push(q[2]);
+      put(0, '3DFACE', 8, 'UH_MP_ROOFS', ...q.flatMap((v, i) => [10 + i, f3(v[0]), 20 + i, f3(v[1]), 30 + i, f3(v[2])]));
+    }
     if (layer === 'UH_PROPOSED') put(0, 'TEXT', 8, layer, 10, f3(c[0]), 20, f3(c[1]), 30, f3(b.top), 40, 1.5, 1, `${b.name} (${b.use})`);
   }
   for (const l of opts.lines ?? []) poly(l.layer, l.closed ? ring(l.coords) : l.coords.map(en), l.closed);
@@ -143,7 +165,17 @@ export function siteOBJ(m: SiteModel, opts: { massing: number; context: boolean;
 
   for (const b of m.buildings) if (b.inStudy || opts.context) solid(`${b.ref}${b.inSite ? '_site' : ''}${b.listed.length ? '_listed' : ''}`, b.feature, b.minH, b.h);
   if (m.red && opts.massing > 0) solid('Proposed_massing', m.red, 0, opts.massing);
-  for (const b of opts.blocks ?? []) solid(`Proposed_${b.name.replace(/\W+/g, '_')}_${b.use.replace(/\W+/g, '_')}`, b.shape, b.base, b.top);
+  for (const b of opts.blocks ?? []) {
+    solid(`Proposed_${b.name.replace(/\W+/g, '_')}_${b.use.replace(/\W+/g, '_')}`, b.shape, b.base, b.top);
+    for (const f of roofFaces(b)) {
+      const idx = f.map(([p, z]) => {
+        const q = local(p);
+        v.push(`v ${f3(q[0])} ${f3(q[1])} ${f3(z)}`);
+        return ++n;
+      });
+      faces.push(`f ${idx.join(' ')}`);
+    }
+  }
 
   // The study area as a ground plate.
   faces.push('o Study_area');
