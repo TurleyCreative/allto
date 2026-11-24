@@ -68,11 +68,11 @@ export interface Street {
   name: string;
   type: StreetType;
   pts: Position[]; // the points drawn (the centre, for a roundabout)
-  curved: boolean;
-  line: Feature<LineString>; // the centreline: smoothed through pts when curved; the ring for a roundabout
+  curve: number; // 0: straight between the points; up to 1: a spline through them, more curved
+  line: Feature<LineString>; // the centreline; the ring for a roundabout
   roundabout?: { diameterM: number };
 }
-export interface OpenSpace { id: string; name: string; type: OpenType; shape: Feature<Polygon> }
+export interface OpenSpace { id: string; name: string; type: OpenType; pts: Position[]; round: number; shape: Feature<Polygon> } // pts: the corners drawn; round 0–1
 export type Tenure = 'market' | 'affordable';
 export interface Home {
   id: string;
@@ -96,33 +96,35 @@ export const newId = (prefix: string, existing: { id: string }[]) => {
 /** A plan saved by an earlier version: fill in what it lacks. */
 export function upgradePlan(p: any): Plan {
   const plan = { ...emptyPlan(), ...(p ?? {}) } as Plan;
-  plan.streets = plan.streets.map((s: any) => ({ ...s, pts: s.pts ?? s.line.geometry.coordinates, curved: !!s.curved }));
+  plan.streets = plan.streets.map(({ curved, ...s }: any) => ({ ...s, pts: s.pts ?? s.line.geometry.coordinates, curve: s.curve ?? (curved ? 0.85 : 0) }));
+  plan.open = plan.open.map((o: any) => ({ ...o, pts: o.pts ?? o.shape.geometry.coordinates[0], round: o.round ?? 0 }));
   plan.homes = plan.homes.map((h: any) => ({ ...h, type: HOUSE_TYPES.some((t) => t.id === h.type) ? h.type : 'terrace', plot: h.plot ?? h.shape, garden: h.garden ?? null, ridge: h.ridge ?? null, tenure: h.tenure ?? 'market' }));
   return plan;
 }
 
 // ------------------------------------------------------------------ street geometry
 
-export function streetLine(pts: Position[], curved: boolean): Feature<LineString> {
+export function streetLine(pts: Position[], curve: number): Feature<LineString> {
   const l = turf.lineString(pts);
-  if (!curved || pts.length < 3) return l;
+  if (!(curve > 0) || pts.length < 3) return l;
   try {
-    return turf.bezierSpline(l, { resolution: 10000, sharpness: 0.85 }) as Feature<LineString>;
+    // turf reads a sharpness of 0 as "use the default", so keep it just above.
+    return turf.bezierSpline(l, { resolution: 10000, sharpness: Math.max(0.03, 0.85 * Math.min(1, curve)) }) // past 0.85 the curve overshoots the points as Feature<LineString>;
   } catch {
     return l;
   }
 }
 
-export function newStreet(plan: Plan, type: StreetType, pts: Position[], curved: boolean): Street {
+export function newStreet(plan: Plan, type: StreetType, pts: Position[], curve: number): Street {
   const snapped = snapEnds(pts, plan.streets);
-  return { id: newId('S', plan.streets), name: `Street ${plan.streets.filter((s) => !s.roundabout).length + 1}`, type, pts: snapped, curved, line: streetLine(snapped, curved) };
+  return { id: newId('S', plan.streets), name: `Street ${plan.streets.filter((s) => !s.roundabout).length + 1}`, type, pts: snapped, curve, line: streetLine(snapped, curve) };
 }
 
 export function newRoundabout(plan: Plan, at: Position, type: StreetType, diameterM: number): Street {
   const centre = roundaboutSpot(at, plan.streets);
   const ring = turf.circle(centre, ringR(diameterM), { units: 'meters', steps: 64 }).geometry.coordinates[0];
   const n = plan.streets.filter((s) => s.roundabout).length + 1;
-  return { id: newId('S', plan.streets), name: `Roundabout ${n}`, type, pts: [centre], curved: false, line: turf.lineString(ring), roundabout: { diameterM } };
+  return { id: newId('S', plan.streets), name: `Roundabout ${n}`, type, pts: [centre], curve: 0, line: turf.lineString(ring), roundabout: { diameterM } };
 }
 
 /** Ends of a new street within 15 m of another street join it, making a junction. */
@@ -214,6 +216,26 @@ export function streetLand(streets: Street[]): PolyF | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Round a polygon's corners by cutting them again and again (Chaikin). round 0 keeps the corners;
+ * 1 gives a smooth, pebble-like outline. The shape shrinks a little as its corners go.
+ */
+export function roundedShape(ring: Position[], round: number): Feature<Polygon> {
+  let pts = ring.slice(0, -1);
+  const closed = (p: Position[]) => turf.polygon([[...p, p[0]]]);
+  if (!(round > 0) || pts.length < 3) return closed(pts);
+  const r = 0.25 * Math.min(1, round);
+  for (let it = 0; it < 4; it++) {
+    const next: Position[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i], b = pts[(i + 1) % pts.length];
+      next.push([a[0] + (b[0] - a[0]) * r, a[1] + (b[1] - a[1]) * r], [a[0] + (b[0] - a[0]) * (1 - r), a[1] + (b[1] - a[1]) * (1 - r)]);
+    }
+    pts = next;
+  }
+  return closed(pts);
 }
 
 // ------------------------------------------------------------------ homes

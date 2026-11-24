@@ -301,3 +301,11 @@ h4.light { font-weight: 600; color: var(--muted); }
 .mpr.wrap .grow { flex-basis: 100%; }
 .mpr.wrap .sw + .grow { flex-basis: calc(100% - 18px); }
 .mpr.wrap .grow + select { margin-left: auto; }
+.walkbtn { position: absolute; right: 14px; top: 14px; z-index: 3; background: #fff; border: 1px solid var(--ink); padding: 8px 12px; font-size: 12.5px; font-weight: 600; letter-spacing: var(--track); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); }
+.walkbtn:hover { background: #f4f3ef; }
+.walkbtn.on { background: var(--ink); color: #fff; }
+.inline.slider { display: flex; }
+.inline.slider input[type='range'] { flex: 1; min-width: 0; }
+.mpr label.slide { flex: 1; min-width: 160px; }
+.mpr label.slide input { flex: 1; min-width: 0; }
+.mpr label.slide span { min-width: 52px; }

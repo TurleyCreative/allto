@@ -83,7 +83,7 @@
         <div data-mp="streets">
           <label class="field">Street type <select id="stType"></select></label>
           <p class="hint" id="stNote"></p>
-          <label class="inline"><input id="stCurve" type="checkbox" checked /> Smooth into a curve</label>
+          <label class="inline slider">How curved <input id="stCurve" type="range" min="0" max="100" step="5" value="60" /> <span id="stCurveLbl" class="stat">60%</span></label>
           <div class="row"><button id="drawStreet" class="solid">Draw a street</button></div>
           <p class="hint">Ends within 15 m of another street join it as a junction.</p>
           <div class="row">
@@ -95,6 +95,7 @@
 
         <div data-mp="open" hidden>
           <label class="field">Type <select id="osType"></select></label>
+          <label class="inline slider">Round the corners <input id="osRound" type="range" min="0" max="100" step="5" value="0" /> <span id="osRoundLbl" class="stat">square</span></label>
           <div class="row"><button id="drawOpen" class="solid">Draw open space</button></div>
           <div id="openList" class="mp-list"></div>
         </div>
@@ -179,6 +180,7 @@
       <div id="map"></div>
       <div id="toast" hidden></div>
       <div id="walkPanel" hidden></div>
+      <button id="walkBtn" class="walkbtn" title="Click, then click a spot on the map to see 5, 10 and 15 minute walks from it">Walk from a point</button>
     </main>
 
     <aside id="info">

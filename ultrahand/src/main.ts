@@ -14,7 +14,7 @@ import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
 import { siteDXF, siteOBJ, type ExportLine, type ExportBlock } from './export3d';
-import { STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
+import { roundedShape, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
@@ -652,6 +652,7 @@ document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.
 
 function setPick(p: typeof mpPick) {
   mpPick = p;
+  if (p && walkPick) setWalkPick(false);
   $('#lineStreet').classList.toggle('picking', p === 'line');
   $('#placeHome').classList.toggle('picking', p === 'place');
   $('#addRoundabout').classList.toggle('picking', p === 'roundabout');
@@ -668,7 +669,7 @@ $('#drawStreet').onclick = () => {
   S.drawing = 'street';
   if (S.view !== 'plan') setView('plan');
   draw.changeMode('draw_line_string');
-  toast($<HTMLInputElement>('#stCurve').checked ? 'Click points along the street; it is smoothed through them. Double-click to finish.' : 'Click along the street. Double-click to finish.');
+  toast(+$<HTMLInputElement>('#stCurve').value ? 'Click points along the street; it bends smoothly through them. Double-click to finish.' : 'Click along the street. Double-click to finish.');
 };
 $('#addRoundabout').onclick = () => {
   setPick(mpPick === 'roundabout' ? null : 'roundabout');
@@ -753,16 +754,16 @@ function clearHomesUnder(shape: Feature<Polygon | MultiPolygon>, quiet = false) 
 function addStreet(line: Feature<LineString>) {
   const pts = line.geometry.coordinates;
   if (turf.length(line, { units: 'meters' }) < 8) return toast('That street is too short.');
-  const curved = $<HTMLInputElement>('#stCurve').checked;
+  const curve = +$<HTMLInputElement>('#stCurve').value / 100;
   if (editingStreet) {
     const s = S.plan.streets.find((x) => x.id === editingStreet);
     editingStreet = null;
     if (!s) return;
     s.pts = snapEnds(pts, S.plan.streets.filter((x) => x !== s));
-    s.line = streetLine(s.pts, s.curved);
+    s.line = streetLine(s.pts, s.curve);
     return relineStreet(s);
   }
-  const s = newStreet(S.plan, $<HTMLSelectElement>('#stType').value as StreetType, pts, curved);
+  const s = newStreet(S.plan, $<HTMLSelectElement>('#stType').value as StreetType, pts, curve);
   S.plan.streets.push(s);
   S.mpSel = s.id;
   clearHomesUnder(corridor(s, S.plan.streets));
@@ -779,7 +780,10 @@ function addRoundabout(at: Position) {
   renderPlan();
 }
 function addOpen(shape: Feature<Polygon>) {
-  const o: OpenSpace = { id: newId('O', S.plan.open), name: `${openType($<HTMLSelectElement>('#osType').value as OpenType).label}`, type: $<HTMLSelectElement>('#osType').value as OpenType, shape };
+  const round = +$<HTMLInputElement>('#osRound').value / 100;
+  const pts = shape.geometry.coordinates[0];
+  const o: OpenSpace = { id: newId('O', S.plan.open), name: `${openType($<HTMLSelectElement>('#osType').value as OpenType).label}`, type: $<HTMLSelectElement>('#osType').value as OpenType, pts, round, shape: roundedShape(pts, round) };
+  shape = o.shape;
   S.plan.open.push(o);
   S.mpSel = o.id;
   clearHomesUnder(shape);
@@ -818,7 +822,15 @@ function renderPlanSoon() {
 
 const setSrc = (id: string, data: FeatureCollection) => (map.getSource(id) as mapboxgl.GeoJSONSource | undefined)?.setData(data);
 
-function renderPlan() {
+const curveLabel = (c: number) => (c ? `${Math.round(c * 100)}%` : 'straight');
+const roundLabel = (r: number) => (r ? `${Math.round(r * 100)}%` : 'square');
+for (const [id, lbl, fmt] of [['#stCurve', '#stCurveLbl', curveLabel], ['#osRound', '#osRoundLbl', roundLabel]] as const) {
+  const el = $<HTMLInputElement>(id);
+  el.addEventListener('input', () => ($(lbl).textContent = fmt(+el.value / 100)));
+}
+
+/** Just the map: quick enough to run while a slider moves. */
+function renderPlanMap() {
   const g = planGeoJSON(S.plan, S.mpSel);
   setSrc('mp-streets', g.streets);
   setSrc('mp-land', g.land);
@@ -827,6 +839,10 @@ function renderPlan() {
   setSrc('mp-homes', g.homes);
   setSrc('mp-plots', g.plots);
   setSrc('mp-gardens', g.gardens);
+}
+
+function renderPlan() {
+  renderPlanMap();
 
   streetMarkers.forEach((m) => m.remove());
   streetMarkers = S.plan.streets.map((s) => {
@@ -845,8 +861,9 @@ function renderPlan() {
       const len = s.roundabout ? `${s.roundabout.diameterM} m across` : `${Math.round(turf.length(s.line, { units: 'meters' }))} m`;
       return `<div class="mpr wrap${on(s.id)}" data-id="${s.id}">
         <span class="grow"><input class="mp-name" value="${esc(s.name)}" aria-label="Name"><small>${len}${homes ? ` · ${homes} homes` : ''}</small></span>
+        ${s.roundabout ? '' : `<label class="tiny slide">Curve <input type="range" data-f="curve" min="0" max="100" step="5" value="${Math.round(s.curve * 100)}"><span>${curveLabel(s.curve)}</span></label>`}
         <select data-f="type" aria-label="Street type">${STREET_TYPES.filter((t) => !s.roundabout || t.id !== 'path').map((t) => `<option value="${t.id}"${t.id === s.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select>
-        ${s.roundabout ? '' : `<label class="tiny"><input type="checkbox" data-f="curved"${s.curved ? ' checked' : ''}>Curve</label><button class="link" data-act="edit">Edit</button>`}
+        ${s.roundabout ? '' : `<button class="link" data-act="edit">Edit</button>`}
         <button class="link" data-act="line">Line it</button><button class="link" data-act="del">Delete</button>
       </div>`;
     })
@@ -855,6 +872,7 @@ function renderPlan() {
     .map((o) => `<div class="mpr wrap${on(o.id)}" data-id="${o.id}">
         <span class="sw" style="background:${openType(o.type).colour}"></span>
         <span class="grow"><input class="mp-name" value="${esc(o.name)}" aria-label="Name"><small>${m2(turf.area(o.shape))}</small></span>
+        <label class="tiny slide">Corners <input type="range" data-f="round" min="0" max="100" step="5" value="${Math.round(o.round * 100)}"><span>${roundLabel(o.round)}</span></label>
         <select data-f="type" aria-label="Open space type">${OPEN_TYPES.map((t) => `<option value="${t.id}"${t.id === o.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select>
         <button class="link" data-act="del">Delete</button>
       </div>`)
@@ -902,13 +920,29 @@ function renderPlan() {
       draw.changeMode('direct_select', { featureId: fid });
       toast('Drag the points. Click the map away from the street when done; its homes are laid out again.');
     });
-    row.querySelector<HTMLInputElement>('[data-f=curved]')?.addEventListener('change', (e) => {
+    // Sliders redraw the map as they move, and lay the homes out again when let go.
+    const curveIn = row.querySelector<HTMLInputElement>('[data-f=curve]');
+    curveIn?.addEventListener('input', () => {
       if (!s) return;
-      s.curved = (e.target as HTMLInputElement).checked;
-      s.line = streetLine(s.pts, s.curved);
-      if (s.curved && s.pts.length < 3) toast('A curve needs three or more points: edit the street to add some.');
+      s.curve = +curveIn.value / 100;
+      s.line = streetLine(s.pts, s.curve);
+      (curveIn.nextElementSibling as HTMLElement).textContent = curveLabel(s.curve);
+      renderPlanMap();
+    });
+    curveIn?.addEventListener('change', () => {
+      if (!s) return;
+      if (s.curve && s.pts.length < 3) toast('A curve needs three or more points: edit the street to add some.');
       relineStreet(s);
     });
+    const roundIn = row.querySelector<HTMLInputElement>('[data-f=round]');
+    roundIn?.addEventListener('input', () => {
+      if (!o) return;
+      o.round = +roundIn.value / 100;
+      o.shape = roundedShape(o.pts, o.round);
+      (roundIn.nextElementSibling as HTMLElement).textContent = roundLabel(o.round);
+      renderPlanMap();
+    });
+    roundIn?.addEventListener('change', () => o && (clearHomesUnder(o.shape), renderPlan()));
     row.querySelector<HTMLSelectElement>('[data-f=type]')?.addEventListener('change', (e) => {
       const v = (e.target as HTMLSelectElement).value;
       if (s) return ((s.type = v as StreetType), relineStreet(s));
@@ -1698,9 +1732,32 @@ map.on('mouseleave', 'model-3d', () => {
   if (hoverId !== null) map.setFeatureState({ source: 'model', id: hoverId }, { hover: false });
   hoverId = null;
 });
+let walkPick = false;
+function setWalkPick(on: boolean) {
+  walkPick = on;
+  if (on) setPick(null);
+  const b = $('#walkBtn');
+  b.classList.toggle('on', on);
+  b.textContent = on ? 'Click a spot on the map…' : 'Walk from a point';
+  map.getCanvas().style.cursor = on ? 'crosshair' : '';
+}
+$('#walkBtn').onclick = () => {
+  if (walkPick) return setWalkPick(false);
+  if (!S.study) return toast('Draw a red line or a study area first, then walk from a point in it.');
+  if (S.view === 'atlas' || S.view === 'eye') setView('plan');
+  setWalkPick(true);
+  toast('Click a spot to see 5, 10 and 15 minute walks from it. Esc to cancel.');
+};
+document.addEventListener('keydown', (e) => e.key === 'Escape' && walkPick && setWalkPick(false));
 let lastDrawEnd = 0; // the click that finishes a drawing must not also start a walk
 map.on('click', (e) => {
   if (S.drawing || eye.dragged || Date.now() - lastDrawEnd < 400) return;
+  // Walking distances only once "Walk from a point" has been pressed: the next click is the start.
+  if (walkPick) {
+    setWalkPick(false);
+    walkFromPoint([e.lngLat.lng, e.lngLat.lat]);
+    return;
+  }
   if (S.view !== 'atlas' && mpClick(e)) return;
   const bh = map.queryRenderedFeatures(e.point, { layers: ['blocks-3d'] })[0];
   if (bh) {
@@ -1711,8 +1768,6 @@ map.on('click', (e) => {
   }
   const hit = S.model ? map.queryRenderedFeatures(e.point, { layers: ['model-3d'] })[0] : undefined;
   if (S.model) select(hit ? S.model.buildings[hit.id as number] : null);
-  // An empty spot: walk from here (not in the atlas, where the buildings are out of place, or at eye level).
-  if (!hit && S.view !== 'atlas' && S.view !== 'eye') walkFromPoint([e.lngLat.lng, e.lngLat.lat]);
 });
 
 let osmSeq = 0;
@@ -2178,7 +2233,7 @@ function renderWalkKey() {
       `<div class="wpal">${Object.entries(WALK_PALETTES)
         .map(([name, c]) => `<button data-pal="${name}" title="${name}" aria-label="${name} colours" style="background:linear-gradient(90deg,${c[0]} 0 33%,${c[1]} 33% 66%,${c[2]} 66%)"></button>`)
         .join('')}</div>` +
-      `<p class="muted">Along streets and footpaths at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Click another spot to walk from there.</p>`,
+      `<p class="muted">Along streets and footpaths at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Press Walk from a point to start somewhere else.</p>`,
   );
   const el = $('#walkPanel');
   el.querySelectorAll<HTMLInputElement>('[data-band]').forEach((cb) =>
@@ -2495,12 +2550,12 @@ function siteContext() {
             const sc = mpSchedule();
             return {
               streets: S.plan.streets.map((x) => ({
-                name: x.name, type: streetType(x.type).label, widthM: streetType(x.type).widthM, curved: x.curved,
+                name: x.name, type: streetType(x.type).label, widthM: streetType(x.type).widthM, curve: x.curve,
                 roundaboutDiameterM: x.roundabout?.diameterM ?? null,
                 lengthM: x.roundabout ? null : r0(streetPieces(x, S.plan.streets).reduce((a, p) => a + turf.length(turf.lineString(p), { units: 'meters' }), 0)),
                 homes: S.plan.homes.filter((h) => h.streetId === x.id).length,
               })),
-              openSpaces: S.plan.open.map((o) => ({ name: o.name, type: openType(o.type).label, areaM2: r0(turf.area(o.shape)) })),
+              openSpaces: S.plan.open.map((o) => ({ name: o.name, type: openType(o.type).label, areaM2: r0(turf.area(o.shape)), roundedCorners: o.round })),
               houses: sc.houses.map((h) => ({ type: h.label, buildings: h.buildings, homes: h.homes, bedrooms: h.beds, storeys: houseType(h.type).storeys, floorAreaM2: r0(h.giaM2) })),
               schedule: {
                 siteHa: sc.siteM2 != null ? Math.round(sc.siteM2 / 100) / 100 : null,
@@ -2576,7 +2631,7 @@ function siteSummary(): string {
   }
   if (c.masterplan) {
     const mp = c.masterplan, sc = mp.schedule;
-    if (mp.streets.length) L.push(`Masterplan streets: ${mp.streets.map((x) => (x.roundaboutDiameterM ? `${x.name} (${x.roundaboutDiameterM} m roundabout)` : `${x.name} (${x.type}, ${x.widthM} m wide${x.curved ? ', curved' : ''}, ${x.lengthM} m long)`)).join('; ')}`);
+    if (mp.streets.length) L.push(`Masterplan streets: ${mp.streets.map((x) => (x.roundaboutDiameterM ? `${x.name} (${x.roundaboutDiameterM} m roundabout)` : `${x.name} (${x.type}, ${x.widthM} m wide${x.curve ? `, curved ${Math.round(x.curve * 100)}%` : ''}, ${x.lengthM} m long)`)).join('; ')}`);
     if (mp.openSpaces.length) L.push(`Masterplan open space: ${mp.openSpaces.map((o) => `${o.name} ${m2(o.areaM2)}`).join('; ')}`);
     if (mp.houses.length) L.push(`Masterplan houses: ${mp.houses.map((h) => `${h.homes} × ${h.type}`).join('; ')}`);
     L.push(`Masterplan schedule: ${sc.homes} homes (${sc.houseHomes} houses, ${sc.apartmentHomesFromBlocks} apartments)${sc.grossDwellingsPerHa != null ? `, ${sc.grossDwellingsPerHa} dph gross` : ''}${sc.netDwellingsPerHa != null ? `, ${sc.netDwellingsPerHa} dph net` : ''}, about ${sc.populationEstimate} people, about ${sc.parkingSpacesEstimate} parking spaces${sc.netDevelopableHa != null ? `; net developable ${sc.netDevelopableHa} ha of ${sc.siteHa} ha` : ''}`);
