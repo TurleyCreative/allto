@@ -16,7 +16,7 @@ import { computeMetrics, pct, ratio, type Metrics } from './metrics';
 import { siteDXF, siteOBJ, type ExportLine, type ExportBlock } from './export3d';
 import { createPen, type Snap, type SnapSources, type Editable } from './pen';
 import { bezierPath, autoHandles, nearestOnPath, splitAt, samePlace, cloneNodes, node as penNode, type PenNode } from './bezier';
-import { roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
+import { TREE_TYPES, treeType, newTree, canopyR, treeSlices, plantAlong, fillWithTrees, treesGeoJSON, canopyShape, type TreeType, roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
@@ -269,7 +269,7 @@ const growExpr = (prop: string, T: number): any => [
 function addLayers() {
   styleBase();
   map.setFog(null as any); // fog greys out the pitched views; drawings want a clean white ground
-  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-land', 'mp-islands', 'mp-open', 'mp-homes', 'mp-plots', 'mp-gardens', 'mp-sk-lines', 'mp-sk-hatch', 'mp-paper']) map.addSource(id, { type: 'geojson', data: empty });
+  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-land', 'mp-islands', 'mp-open', 'mp-homes', 'mp-plots', 'mp-gardens', 'mp-sk-lines', 'mp-sk-hatch', 'mp-paper', 'mp-trees']) map.addSource(id, { type: 'geojson', data: empty });
 
   // Sketch mode lays paper over the base map, under everything Ultrahand draws.
   (map.getSource('mp-paper') as mapboxgl.GeoJSONSource).setData(turf.bboxPolygon([-179, -85, 179, 85]));
@@ -331,6 +331,7 @@ function addLayers() {
   // Sketch: flat washed homes in plan (extrusions would hide the pencil lines), hatching, then pencil.
   map.addLayer({ id: 'mp-homes-flat', type: 'fill', source: 'mp-homes', filter: ['==', ['get', 'base'], 0], layout: { visibility: 'none' }, paint: { 'fill-color': ['case', ['get', 'selected'], '#9aa3ff', ['get', 'wash']] as any, 'fill-opacity': 0.9 } });
   const pencilW: any = ['interpolate', ['exponential', 1.6], ['zoom'], 14, ['*', ['get', 'w'], 0.35], 17, ['*', ['get', 'w'], 0.9], 20, ['*', ['get', 'w'], 2.2]];
+  map.addLayer({ id: 'mp-trees-flat', type: 'fill', source: 'mp-trees', filter: ['get', 'flat'], layout: { visibility: 'none' }, paint: { 'fill-color': ['case', ['get', 'selected'], '#9aa3ff', ['get', 'wash']] as any, 'fill-opacity': 0.8 } });
   map.addLayer({ id: 'mp-sk-hatch', type: 'line', source: 'mp-sk-hatch', layout: { visibility: 'none', 'line-cap': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-width': pencilW, 'line-opacity': ['get', 'o'] } });
   map.addLayer({ id: 'mp-sk-lines', type: 'line', source: 'mp-sk-lines', layout: { visibility: 'none', 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-width': pencilW, 'line-opacity': ['get', 'o'] } });
   map.addLayer({ id: 'red-line', type: 'line', source: 'red', paint: { 'line-color': '#d7262e', 'line-width': 3 } });
@@ -345,6 +346,7 @@ function addLayers() {
   map.addLayer({ id: 'model-3d', type: 'fill-extrusion', source: 'model', paint: { 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-base': ['get', 'minH'], 'fill-extrusion-opacity': 0.97 } });
   map.addLayer({ id: 'blocks-3d', type: 'fill-extrusion', source: 'blocks', paint: { 'fill-extrusion-color': ['get', 'colour'], 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-opacity': 0.9 } });
   map.addLayer({ id: 'blocks-line', type: 'line', source: 'blocks', paint: { 'line-color': ['case', ['get', 'selected'], '#141414', ['get', 'colour']], 'line-width': ['case', ['get', 'selected'], 3, 1.5] } });
+  map.addLayer({ id: 'mp-trees-3d', type: 'fill-extrusion', source: 'mp-trees', filter: ['!', ['get', 'flat']], paint: { 'fill-extrusion-color': ['case', ['get', 'selected'], '#2433e0', ['get', 'colour']], 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-opacity': 0.95 } });
   map.addLayer({ id: 'mp-homes-3d', type: 'fill-extrusion', source: 'mp-homes', paint: { 'fill-extrusion-color': ['case', ['get', 'selected'], '#2433e0', ['get', 'colour']], 'fill-extrusion-height': ['get', 'top'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-opacity': 0.95 } });
   map.addLayer({ id: 'massing-3d', type: 'fill-extrusion', source: 'massing', paint: { 'fill-extrusion-color': '#e6262e', 'fill-extrusion-height': ['get', 'h'], 'fill-extrusion-opacity': 0.75 } });
 
@@ -724,9 +726,9 @@ function lookForColour(c: string): import('./axo').Look {
 }
 
 // ---------------------------------------------------------------- masterplan: streets, open space, homes
-type MpTool = 'streets' | 'open' | 'homes' | 'blocks';
+type MpTool = 'streets' | 'open' | 'homes' | 'trees' | 'blocks';
 let mpTool: MpTool = 'streets';
-let mpPick: null | 'line' | 'place' | 'roundabout' = null; // waiting for a click on the map
+let mpPick: null | 'line' | 'place' | 'roundabout' | 'tree' | 'treeline' = null; // waiting for a click on the map
 let streetMarkers: mapboxgl.Marker[] = [];
 
 const fillSelect = (sel: string, items: { id: string; label: string }[], value: string) => {
@@ -764,6 +766,10 @@ function setPick(p: typeof mpPick) {
   $('#lineStreet').classList.toggle('picking', p === 'line');
   $('#placeHome').classList.toggle('picking', p === 'place');
   $('#addRoundabout').classList.toggle('picking', p === 'roundabout');
+  $('#plopTrees').classList.toggle('picking', p === 'tree');
+  $('#plopTrees').textContent = p === 'tree' ? 'Done planting' : 'Plop trees';
+  $('#treeLine').classList.toggle('picking', p === 'treeline');
+  $('#treeLine').textContent = p === 'treeline' ? 'Click a street…' : 'Along a street';
   $('#lineStreet').textContent = p === 'line' ? 'Click a street…' : 'Line a street';
   $('#placeHome').textContent = p === 'place' ? 'Done placing' : 'Place homes';
   $('#addRoundabout').textContent = p === 'roundabout' ? 'Click a junction…' : 'Add a roundabout';
@@ -910,6 +916,7 @@ function deleteMp(id: string) {
   }
   S.plan.open = S.plan.open.filter((x) => x.id !== id);
   S.plan.homes = S.plan.homes.filter((x) => x.id !== id);
+  S.plan.trees = S.plan.trees.filter((x) => x.id !== id);
   if (S.mpSel === id) S.mpSel = null;
   renderPlan();
 }
@@ -919,6 +926,7 @@ function selectMp(id: string | null) {
   if (id?.startsWith('S')) setMpTool('streets');
   else if (id?.startsWith('O')) setMpTool('open');
   else if (id?.startsWith('H')) setMpTool('homes');
+  else if (id?.startsWith('T')) setMpTool('trees');
   renderPlan();
   if (id) document.querySelector(`.mp-list [data-id="${id}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
@@ -949,6 +957,7 @@ function renderPlanMap() {
   setSrc('mp-homes', g.homes);
   setSrc('mp-plots', g.plots);
   setSrc('mp-gardens', g.gardens);
+  setSrc('mp-trees', treesGeoJSON(S.plan.trees, S.mpSel));
   updateEditables();
   if (S.sketch) {
     const sk = sketchGeoJSON(S.plan, S.blocks.map((b) => b.shape));
@@ -1082,6 +1091,7 @@ function renderPlan() {
     }),
   );
   $('#homeList').querySelector('[data-act=clearaff]')?.addEventListener('click', () => (S.plan.homes.forEach((h) => (h.tenure = 'market')), renderPlan()));
+  renderTreeList();
   renderSchedule();
   renderLegend();
   renderMpContext();
@@ -1096,7 +1106,7 @@ function mpSchedule() {
 }
 
 function renderSchedule() {
-  const has = S.plan.streets.length || S.plan.open.length || S.plan.homes.length;
+  const has = S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length;
   if (!has && !S.blocks.length) return void (($('#mpSchedule').innerHTML = '<p class="hint">Draw streets, spaces, homes or blocks and the schedule fills in.</p>'), ($('#mpMini').textContent = ''));
   const s = mpSchedule();
   $('#mpMini').textContent = [
@@ -1119,6 +1129,10 @@ function renderSchedule() {
   homes.push(`<tr class="tot"><th>Homes</th><td>${s.homes.toLocaleString('en-GB')}</td></tr>`);
   if (s.grossDph != null && s.homes) homes.push(`<tr><th>Gross density</th><td>${Math.round(s.grossDph)} dph</td></tr>`);
   if (s.netDph != null && s.homes) homes.push(`<tr><th>Net density</th><td>${Math.round(s.netDph)} dph</td></tr>`);
+  if (s.trees.count) {
+    homes.push(`<tr class="tot"><th>Trees</th><td>${s.trees.count}</td></tr>`);
+    homes.push(`<tr><th>Canopy cover</th><td>${m2(s.trees.canopyM2)}${s.trees.canopyShare != null ? ` <span class="muted">${pct(s.trees.canopyShare)}</span>` : ''}</td></tr>`);
+  }
   if (s.homes) homes.push(`<tr><th>People, about</th><td>${s.population.toLocaleString('en-GB')}</td></tr>`, `<tr><th>Parking, about</th><td>${s.parking} spaces</td></tr>`);
   const ok = (good: boolean) => (good ? 'met' : 'short');
   const a = s.affordable;
@@ -1156,6 +1170,18 @@ bindMpInputs();
 function mpClick(e: mapboxgl.MapMouseEvent): boolean {
   const box: [mapboxgl.PointLike, mapboxgl.PointLike] = [[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]];
   const at: Position = [e.lngLat.lng, e.lngLat.lat];
+  if (mpPick === 'tree') return true; // the brush plants on mousedown
+  if (mpPick === 'treeline') {
+    let s: Street | undefined, best = 25;
+    for (const x of S.plan.streets) {
+      const d = turf.nearestPointOnLine(x.line, at, { units: 'meters' }).properties.dist ?? 99;
+      if (d < best) ((best = d), (s = x));
+    }
+    if (!s) return (toast('Click on one of your streets.'), true);
+    plantAlongStreet(s);
+    setPick(null);
+    return true;
+  }
   if (mpPick === 'roundabout') {
     addRoundabout(at);
     setPick(null);
@@ -1185,7 +1211,7 @@ function mpClick(e: mapboxgl.MapMouseEvent): boolean {
     renderPlan();
     return true;
   }
-  const hit = map.queryRenderedFeatures(e.point, { layers: ['mp-homes-3d', 'mp-open-f'] })[0] ?? map.queryRenderedFeatures(box, { layers: ['mp-street', 'mp-path', 'mp-islands'] })[0];
+  const hit = map.queryRenderedFeatures(e.point, { layers: ['mp-trees-3d', 'mp-trees-flat', 'mp-homes-3d', 'mp-homes-flat', 'mp-open-f'].filter((l) => map.getLayer(l) && map.getLayoutProperty(l, 'visibility') !== 'none') })[0] ?? map.queryRenderedFeatures(box, { layers: ['mp-street', 'mp-path', 'mp-islands'] })[0];
   if (hit?.properties?.id) {
     selectMp(String(hit.properties.id));
     return true;
@@ -1221,6 +1247,7 @@ const mpExportLines = (): ExportLine[] => {
     ...S.plan.homes.map((h) => ({ layer: 'UH_MP_PLOTS', coords: h.plot.geometry.coordinates[0], closed: true })),
     ...S.plan.homes.flatMap((h) => homePartyLines(h).map((l) => ({ layer: 'UH_MP_PLOTS', coords: l, closed: false }))),
     ...S.plan.homes.filter((h) => h.garden).map((h) => ({ layer: 'UH_MP_GARDENS', coords: h.garden!.geometry.coordinates[0], closed: true })),
+    ...S.plan.trees.map((t) => ({ layer: 'UH_MP_TREES', coords: canopyShape(t).geometry.coordinates[0], closed: true })),
   ];
 };
 /** Gardens, open space and streets as ground for the SVG drawings, drawn like the streets around them. */
@@ -1254,6 +1281,130 @@ function mpBuildings(frame: LocalFrame, white = false): AxoBuilding[] {
   });
 }
 
+// ---------------------------------------------------------------- trees: the tree plopper
+fillSelect('#trType', TREE_TYPES, 'medium');
+const trNote = () => {
+  const t = treeType($<HTMLSelectElement>('#trType').value as TreeType);
+  $('#trNote').textContent = `About ${t.heightM} m tall with a ${t.canopyM} m crown; ${t.note}.`;
+};
+trNote();
+const trSpacing = () => +$<HTMLInputElement>('#trSpace').value;
+$<HTMLInputElement>('#trSpace').addEventListener('input', () => ($('#trSpaceLbl').textContent = `${trSpacing()} m`));
+const trTypeNow = () => $<HTMLSelectElement>('#trType').value as TreeType;
+
+$('#plopTrees').onclick = () => {
+  setPick(mpPick === 'tree' ? null : 'tree');
+  if (mpPick) {
+    if (S.view !== 'plan' && S.view !== '3d') setView('plan');
+    toast('Click to plop a tree, or hold and drag to paint them. Hold Alt and drag to rub trees out. Esc when done.');
+  }
+};
+$('#treeLine').onclick = () => {
+  if (!S.plan.streets.length) return toast('Draw a street first.');
+  setPick(mpPick === 'treeline' ? null : 'treeline');
+  if (mpPick) toast('Click a street for a row of trees on each side.');
+};
+$('#treeFill').onclick = () =>
+  penDraw('open', true, (nodes) => {
+    const shape = turf.polygon([bezierPath(nodes, true)]) as Feature<Polygon>;
+    const added = fillWithTrees(shape, S.plan, trTypeNow(), trSpacing());
+    S.plan.trees.push(...added);
+    renderPlan();
+    toast(added.length ? `${added.length} trees planted, about ${trSpacing()} m apart.` : 'No room for trees there.');
+  }, 'Draw the area to plant: click each corner (drag to curve); click the first corner or press Enter to finish.');
+$('#clearTrees').onclick = () => {
+  if (!S.plan.trees.length) return;
+  if (!confirm(`Remove all ${S.plan.trees.length} trees?`)) return;
+  S.plan.trees = [];
+  renderPlan();
+};
+
+function plantAlongStreet(s: Street) {
+  const added = plantAlong(s, S.plan, trTypeNow(), trSpacing(), S.red);
+  S.plan.trees.push(...added);
+  renderPlan();
+  toast(added.length ? `${added.length} trees along ${s.name}.` : `No room for trees along ${s.name}.`);
+}
+
+// Painting: hold and drag to plop trees about a spacing apart; with Alt, rub them out.
+let brush: { last: Position | null; erase: boolean; changed: boolean } | null = null;
+let brushFrame = 0;
+const renderTreesSoon = () => {
+  if (brushFrame) return;
+  brushFrame = requestAnimationFrame(() => {
+    brushFrame = 0;
+    setSrc('mp-trees', treesGeoJSON(S.plan.trees, S.mpSel));
+  });
+};
+function brushAt(p: Position) {
+  if (!brush) return;
+  if (brush.erase) {
+    const before = S.plan.trees.length;
+    S.plan.trees = S.plan.trees.filter((t) => turf.distance(t.p, p, { units: 'meters' }) > Math.max(3, canopyR(t)));
+    if (S.plan.trees.length !== before) ((brush.changed = true), renderTreesSoon());
+    return;
+  }
+  const type = trTypeNow();
+  const gap = Math.max(2, Math.min(trSpacing(), treeType(type).canopyM * 0.9));
+  if (brush.last && turf.distance(brush.last, p, { units: 'meters' }) < gap) return;
+  if (brush.last && S.plan.trees.some((t) => turf.distance(t.p, p, { units: 'meters' }) < gap * 0.7)) return;
+  S.plan.trees.push(newTree(S.plan, p, type));
+  brush.last = p;
+  brush.changed = true;
+  renderTreesSoon();
+}
+map.on('mousedown', (e) => {
+  if (mpPick !== 'tree' || e.originalEvent.button !== 0) return;
+  e.preventDefault(); // painting, not panning
+  brush = { last: null, erase: e.originalEvent.altKey, changed: false };
+  brushAt([e.lngLat.lng, e.lngLat.lat]);
+});
+map.on('mousemove', (e) => {
+  if (brush) brushAt([e.lngLat.lng, e.lngLat.lat]);
+});
+map.on('mouseup', () => {
+  if (!brush) return;
+  const changed = brush.changed;
+  brush = null;
+  if (changed) renderPlan();
+});
+
+function renderTreeList() {
+  const sel = S.plan.trees.find((t) => t.id === S.mpSel);
+  $('#treeList').innerHTML =
+    TREE_TYPES.map((t) => ({ t, n: S.plan.trees.filter((x) => x.type === t.id).length }))
+      .filter((x) => x.n)
+      .map(({ t, n }) => `<div class="mpr" data-ttype="${t.id}"><span class="sw" style="background:${t.colour};border-radius:50%"></span><span class="grow"><b>${esc(t.label)}</b><small>${n} tree${n > 1 ? 's' : ''}</small></span><button class="link" data-act="deltt">Remove</button></div>`)
+      .join('') +
+    (sel
+      ? `<div class="mpr on wrap" data-id="${sel.id}"><span class="grow"><b>Selected tree</b><small>Change its type; press Delete to remove it</small></span>
+          <select data-f="ttype" aria-label="Tree type">${TREE_TYPES.map((t) => `<option value="${t.id}"${t.id === sel.type ? ' selected' : ''}>${esc(t.label)}</option>`).join('')}</select>
+          <button class="link" data-act="del">Delete</button></div>`
+      : '');
+  $('#treeList').querySelectorAll<HTMLElement>('[data-act=deltt]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const t = (b.closest('.mpr') as HTMLElement).dataset.ttype;
+      S.plan.trees = S.plan.trees.filter((x) => x.type !== t);
+      renderPlan();
+    }),
+  );
+  $('#treeList').querySelector('[data-act=del]')?.addEventListener('click', () => sel && deleteMp(sel.id));
+  $('#treeList').querySelector<HTMLSelectElement>('[data-f=ttype]')?.addEventListener('change', (e) => {
+    if (sel) sel.type = (e.target as HTMLSelectElement).value as TreeType;
+    renderPlan();
+  });
+}
+
+/** Trees in the drawings: their trunk and crown slices, shaded green. */
+function treeBuildings(frame: LocalFrame, white = false): AxoBuilding[] {
+  return S.plan.trees.flatMap((t) =>
+    treeSlices(t).map((sl) => ({
+      polys: toLocalPolys(sl.shape.geometry, frame), z0: sl.base, z1: sl.top,
+      look: sl.trunk ? { roof: '#7a6a55', wallLight: '#8c7b65', wallDark: '#5e5040', stroke: '#4a3f33', strokeWidth: 0.4 } : white ? { roof: '#e4eedb', wallLight: '#eef4e8', wallDark: '#cfdcc4', stroke: '#6f8a62', strokeWidth: 0.4 } : { ...lookForColour(treeType(t.type).colour), strokeWidth: 0.35 },
+    })),
+  );
+}
+
 // ---------------------------------------------------------------- masterplan mode: the floating workspace
 // The masterplan has its own full-screen workspace with floating tool windows, kept apart from the
 // analysis panels. The controls live there; the analysis sidebar only opens it.
@@ -1261,6 +1412,11 @@ function mpBuildings(frame: LocalFrame, white = false): AxoBuilding[] {
 /** Small drawings for the tool tiles. */
 const tileIcon = {
   street: (w: number) => `<svg viewBox="0 0 40 26"><path d="M3 13h34" stroke="#c4c3be" stroke-width="${w + 2}" stroke-linecap="round"/><path d="M3 13h34" stroke="#fff" stroke-width="${w}" stroke-linecap="round"/>${w > 6 ? '<path d="M6 13h28" stroke="#9a9994" stroke-width="0.8" stroke-dasharray="3 2"/>' : ''}</svg>`,
+  tree: (t: { canopyM: number; heightM: number; shape: string; colour: string }) => {
+    const h = Math.min(24, 8 + t.heightM * 0.8), w = Math.min(30, 6 + t.canopyM * 1.4), cy = 25 - h + (t.shape === 'cone' ? 0 : w / 2.6);
+    const crown = t.shape === 'cone' ? `<path d="M${20 - w / 2} ${25 - h * 0.25}L20 ${25 - h}L${20 + w / 2} ${25 - h * 0.25}Z" fill="${t.colour}"/>` : t.shape === 'column' ? `<ellipse cx="20" cy="${25 - h / 2 - 1}" rx="${w / 2}" ry="${h / 2 - 1}" fill="${t.colour}"/>` : `<ellipse cx="20" cy="${cy}" rx="${w / 2}" ry="${Math.min(w / 2.2, h / 2)}" fill="${t.colour}"/>`;
+    return `<svg viewBox="0 0 40 26"><path d="M20 25V${25 - h * 0.45}" stroke="#7a6a55" stroke-width="1.6"/>${crown}</svg>`;
+  },
   roundabout: `<svg viewBox="0 0 40 26"><path d="M0 13h40M20 0v26" stroke="#c4c3be" stroke-width="7"/><path d="M0 13h40M20 0v26" stroke="#fff" stroke-width="5"/><circle cx="20" cy="13" r="8" fill="#fff" stroke="#c4c3be" stroke-width="7"/><circle cx="20" cy="13" r="8" fill="none" stroke="#fff" stroke-width="5"/><circle cx="20" cy="13" r="4" fill="#d3e2c4"/></svg>`,
   space: (c: string, round: boolean) => `<svg viewBox="0 0 40 26"><rect x="6" y="3" width="28" height="20" rx="${round ? 9 : 0}" fill="${c}" stroke="${darkerHex(c)}" stroke-width="1"/></svg>`,
   house: (t: HouseType) => {
@@ -1287,6 +1443,15 @@ function renderTiles() {
     STREET_TYPES.map((t) => `<button class="tile${t.id === stT && S.drawing === 'street' ? ' on' : ''}" data-st="${t.id}" title="${esc(t.note)}">${tileIcon.street(px[t.id])}${esc(t.label)}</button>`).join('') +
     `<button class="tile${mpPick === 'roundabout' ? ' on' : ''}" data-ra="1" title="Click a junction">${tileIcon.roundabout}Roundabout</button>`;
   $('#osTiles').innerHTML = OPEN_TYPES.map((t) => `<button class="tile${t.id === osT && S.drawing === 'open' ? ' on' : ''}" data-os="${t.id}">${tileIcon.space(t.colour, +$<HTMLInputElement>('#osRound').value > 0)}${esc(t.label)}</button>`).join('');
+  const trT = $<HTMLSelectElement>('#trType').value;
+  $('#trTiles').innerHTML = TREE_TYPES.map((t) => `<button class="tile${t.id === trT ? ' on' : ''}" data-tr="${t.id}" title="${esc(t.note)}">${tileIcon.tree(t)}${esc(t.label)}</button>`).join('');
+  $('#trTiles').querySelectorAll<HTMLElement>('[data-tr]').forEach((b) =>
+    b.addEventListener('click', () => {
+      $<HTMLSelectElement>('#trType').value = b.dataset.tr!;
+      trNote();
+      renderTiles();
+    }),
+  );
   $('#hoTiles').innerHTML = HOUSE_TYPES.map((t) => `<button class="tile${t.id === hoT ? ' on' : ''}" data-ho="${t.id}">${tileIcon.house(t)}${esc(t.label)}</button>`).join('');
   $('#stTiles').querySelectorAll<HTMLElement>('[data-st]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -1382,6 +1547,8 @@ function applyMpStyle() {
   vis('mp-sk-hatch', sk);
   vis('mp-homes-flat', flatHomes);
   vis('mp-homes-3d', !atlas && !flatHomes);
+  vis('mp-trees-flat', flatHomes);
+  vis('mp-trees-3d', !atlas && !flatHomes);
   for (const id of ['mp-plots', 'mp-land', 'mp-street-case', 'mp-open-l']) vis(id, !atlas && !sk);
   map.setPaintProperty('mp-open-f', 'fill-opacity', sk ? 0.42 : 0.75);
   map.setPaintProperty('mp-gardens', 'fill-opacity', sk ? 0.55 : 0.9);
@@ -1716,7 +1883,7 @@ function applyVisibility() {
   if (wp && walkMarker) wp.hidden = atlas;
   vis('pois', flat && S.visible.has('pois'));
   vis('pois-label', flat && S.visible.has('pois'));
-  for (const id of ['red-fill', 'red-line', 'study-line', 'massing-3d', 'selected-line', 'blocks-3d', 'blocks-line', 'mp-gardens', 'mp-plots', 'mp-open-f', 'mp-open-l', 'mp-land', 'mp-street-sel', 'mp-path-sel', 'mp-street-case', 'mp-street', 'mp-path', 'mp-islands', 'mp-homes-3d']) vis(id, !atlas);
+  for (const id of ['red-fill', 'red-line', 'study-line', 'massing-3d', 'selected-line', 'blocks-3d', 'blocks-line', 'mp-gardens', 'mp-plots', 'mp-open-f', 'mp-open-l', 'mp-land', 'mp-street-sel', 'mp-path-sel', 'mp-street-case', 'mp-street', 'mp-path', 'mp-islands', 'mp-homes-3d', 'mp-trees-3d']) vis(id, !atlas);
   [...blockMarkers, ...streetMarkers].forEach((mk) => (mk.getElement().style.display = atlas ? 'none' : ''));
   vis('mp-homes-flat', false);
   applyMpStyle();
@@ -2041,13 +2208,14 @@ function renderLegend() {
 /** Key for the masterplan: only what is on the drawing. */
 function mpLegend(sw: (bg: string, extra?: string) => string) {
   const P = S.plan;
-  if (!P.streets.length && !P.open.length && !P.homes.length) return '';
+  if (!P.streets.length && !P.open.length && !P.homes.length && !P.trees.length) return '';
   const rows: string[] = [];
   if (P.streets.length) rows.push(`<div class="lg">${sw('#ebebeb', 'border:1px solid #c9c8c3')}Proposed streets</div>`);
   for (const t of HOUSE_TYPES) if (P.homes.some((h) => h.type === t.id && h.tenure === 'market')) rows.push(`<div class="lg">${sw(t.colour)}${esc(t.label)}</div>`);
   if (P.homes.some((h) => h.tenure === 'affordable')) rows.push(`<div class="lg">${sw(AFFORDABLE_COLOUR)}Affordable homes</div>`);
   if (P.homes.some((h) => h.garden)) rows.push(`<div class="lg">${sw('#e3ecd8', 'border:1px solid #b9b8b2')}Gardens and plots</div>`);
   for (const t of OPEN_TYPES) if (P.open.some((o) => o.type === t.id)) rows.push(`<div class="lg">${sw(t.colour)}${esc(t.label)}</div>`);
+  for (const t of TREE_TYPES) if (P.trees.some((x) => x.type === t.id)) rows.push(`<div class="lg">${sw(t.colour, 'border-radius:50%;width:11px;height:11px')}${esc(t.label)}</div>`);
   return `<div class="lg"><b>Masterplan</b></div>${rows.join('')}`;
 }
 
@@ -2681,7 +2849,7 @@ function exportDrawing(kind: 'axo' | 'plan') {
   const buildings: AxoBuilding[] = m.buildings.filter((b) => b.cut).map((b) => ({ polys: b.cut!, z0: b.minH, z1: b.h, label: b.ref, look: lookFor(b) }));
   if (S.massing > 0 && m.redPolys) buildings.push({ polys: m.redPolys, z0: 0, z1: S.massing, look: LOOK.massing, label: 'Proposed' });
   for (const b of S.blocks) buildings.push({ polys: toLocalPolys(b.shape.geometry, m.frame), z0: b.baseM, z1: b.baseM + heightOf(b), look: lookForColour(useOf(b.use).colour), label: b.name });
-  buildings.push(...mpBuildings(m.frame));
+  buildings.push(...mpBuildings(m.frame), ...treeBuildings(m.frame));
   const pitch = kind === 'plan' ? 0 : S.view === 'axo' || S.view === '3d' ? map.getPitch() : 55;
   const svg = renderAxo(
     {
@@ -2726,7 +2894,7 @@ $('#expSun').onclick = () => {
   const xs = m.studyPolys.flatMap((p) => p[0].map((q) => q[0])), ys = m.studyPolys.flatMap((p) => p[0].map((q) => q[1]));
   const buildings: AxoBuilding[] = m.buildings.filter((b) => b.cut).map((b) => ({ polys: b.cut!, z0: b.minH, z1: b.h, look: { roof: b.inSite ? '#f6c9cb' : '#ffffff', wallLight: '#ffffff', wallDark: '#ffffff', stroke: '#6f6e6a', strokeWidth: 0.6 } }));
   for (const b of S.blocks) buildings.push({ polys: toLocalPolys(b.shape.geometry, m.frame), z0: b.baseM, z1: b.baseM + heightOf(b), look: { ...lookForColour(useOf(b.use).colour), strokeWidth: 0.8 } });
-  buildings.push(...mpBuildings(m.frame, true));
+  buildings.push(...mpBuildings(m.frame, true), ...treeBuildings(m.frame, true));
   const red: GroundPolys[] = m.redPolys ? [{ polys: m.redPolys, fill: '#d7262e', opacity: 0.06, stroke: '#d7262e', strokeWidth: 1.6 }] : [];
   const c = turf.centroid(S.red ?? S.study!).geometry.coordinates;
   const svg = sunStudySVG({
@@ -2744,7 +2912,7 @@ $('#expDxf').onclick = () => {
 };
 $('#expObj').onclick = () => {
   if (!S.model) return;
-  const { obj, origin } = siteOBJ(S.model, { massing: S.massing, context: false, blocks: [...exportBlocks(), ...mpExportBlocks()] });
+  const { obj, origin } = siteOBJ(S.model, { massing: S.massing, context: false, blocks: [...exportBlocks(), ...mpExportBlocks(), ...S.plan.trees.flatMap((t) => treeSlices(t).map((sl, i) => ({ name: `${t.id}_${i}`, use: treeType(t.type).label, shape: sl.shape, base: sl.base, top: sl.top, layer: 'UH_MP_TREES' })))] });
   download(new Blob([obj], { type: 'text/plain' }), `${slug(S.place || 'site')}-E${origin[0]}-N${origin[1]}.obj`);
   toast(`OBJ in metres, Z up, origin at British National Grid E ${origin[0]} N ${origin[1]}.`);
 };
@@ -2879,7 +3047,7 @@ function siteContext() {
         })()
       : null,
     masterplan:
-      S.plan.streets.length || S.plan.open.length || S.plan.homes.length
+      S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length
         ? (() => {
             const sc = mpSchedule();
             return {
@@ -2907,6 +3075,7 @@ function siteContext() {
               affordable: { homes: sc.affordable.homes, share: Math.round(sc.affordable.share * 100) / 100, targetPct: sc.affordable.targetPct },
               bedroomMix: sc.mix.map((m) => ({ bedrooms: m.beds === 4 ? '4+' : m.beds, homes: m.homes, share: Math.round(m.share * 100) / 100, targetPct: m.targetPct })),
               plots: { frontGardenM: homeOpts().setbackM, rearGardenM: homeOpts().gardenM },
+              trees: { count: sc.trees.count, byType: Object.fromEntries(sc.trees.byType.map((x) => [x.label, x.n])), canopyCoverM2: r0(sc.trees.canopyM2), canopyCoverShareOfSite: sc.trees.canopyShare != null ? Math.round(sc.trees.canopyShare * 1000) / 1000 : null },
               openSpaceAgainstFieldsInTrust: sc.openVsBenchmark.map((b) => ({ type: b.label, providedHa: Math.round(b.providedHa * 100) / 100, benchmarkHa: Math.round(b.benchmarkHa * 100) / 100 })),
               assumptions: { peoplePerHome: S.mpAssume.householdSize, parkingPerApartment: S.mpAssume.aptParking, visitorParkingPerHome: 0.2 },
               note: 'A sketch layout from typical UK dimensions, not a design. Street widths are the land each street takes. Areas count inside the red line. Apartments are split by the 1 bed share assumed.',
@@ -2968,6 +3137,7 @@ function siteSummary(): string {
     if (mp.streets.length) L.push(`Masterplan streets: ${mp.streets.map((x) => (x.roundaboutDiameterM ? `${x.name} (${x.roundaboutDiameterM} m roundabout)` : `${x.name} (${x.type}, ${x.widthM} m wide${x.curve ? `, curved ${Math.round(x.curve * 100)}%` : ''}, ${x.lengthM} m long)`)).join('; ')}`);
     if (mp.openSpaces.length) L.push(`Masterplan open space: ${mp.openSpaces.map((o) => `${o.name} ${m2(o.areaM2)}`).join('; ')}`);
     if (mp.houses.length) L.push(`Masterplan houses: ${mp.houses.map((h) => `${h.homes} × ${h.type}`).join('; ')}`);
+    if (mp.trees.count) L.push(`Trees: ${mp.trees.count} (${Object.entries(mp.trees.byType).map(([k, v]) => `${v} ${k.toLowerCase()}`).join(', ')}); canopy cover ${m2(mp.trees.canopyCoverM2)}${mp.trees.canopyCoverShareOfSite != null ? `, ${Math.round(mp.trees.canopyCoverShareOfSite * 100)}% of the site` : ''}`);
     L.push(`Masterplan schedule: ${sc.homes} homes (${sc.houseHomes} houses, ${sc.apartmentHomesFromBlocks} apartments)${sc.grossDwellingsPerHa != null ? `, ${sc.grossDwellingsPerHa} dph gross` : ''}${sc.netDwellingsPerHa != null ? `, ${sc.netDwellingsPerHa} dph net` : ''}, about ${sc.populationEstimate} people, about ${sc.parkingSpacesEstimate} parking spaces${sc.netDevelopableHa != null ? `; net developable ${sc.netDevelopableHa} ha of ${sc.siteHa} ha` : ''}`);
     L.push(`Affordable: ${mp.affordable.homes} homes, ${Math.round(mp.affordable.share * 100)}% against a ${mp.affordable.targetPct}% target. Mix: ${mp.bedroomMix.map((m) => `${m.bedrooms} bed ${Math.round(m.share * 100)}% (target ${m.targetPct}%)`).join(', ')}`);
     if (mp.openSpaceAgainstFieldsInTrust.length) L.push(`Open space against Fields in Trust: ${mp.openSpaceAgainstFieldsInTrust.map((b) => `${b.type} ${b.providedHa} of ${b.benchmarkHa} ha`).join('; ')}`);
@@ -2990,7 +3160,7 @@ try {
 function saveProject() {
   recordHistory();
   try {
-    const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length;
+    const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length;
     if (!S.red && !S.blocks.length && !hasPlan) return localStorage.removeItem(KEY);
     localStorage.setItem(KEY, JSON.stringify({ red: S.red, place: S.place, bufferM: S.bufferM, blocks: S.blocks, assume: S.assume, plan: S.plan, mpAssume: S.mpAssume, targets: S.targets }));
   } catch { /* storage blocked */ }

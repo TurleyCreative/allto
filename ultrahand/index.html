@@ -121,6 +121,7 @@
             <button data-t="streets" class="on">Streets</button>
             <button data-t="open">Spaces</button>
             <button data-t="homes">Homes</button>
+            <button data-t="trees">Trees</button>
             <button data-t="blocks">Blocks</button>
           </div>
           <div class="mp-scroll">
@@ -168,6 +169,23 @@
               <div class="mp-h">On the plan</div>
               <div id="homeList" class="mp-list"></div>
               <div class="row wrap"><button id="spreadAff" class="ghost">Spread affordable to the target</button><button id="clearHomes" class="ghost">Clear all</button></div>
+            </div>
+
+            <div data-mp="trees" hidden>
+              <div class="mp-h">Tree</div>
+              <div class="tiles" id="trTiles"></div>
+              <select id="trType" hidden></select>
+              <p class="hint" id="trNote"></p>
+              <div class="row wrap">
+                <button id="plopTrees" class="solid">Plop trees</button>
+                <button id="treeLine" class="ghost">Along a street</button>
+                <button id="treeFill" class="ghost">Fill an area</button>
+              </div>
+              <p class="hint">Plop: click for one tree, or hold and drag to paint them; hold Alt to rub them out. Along a street: click a street for a row on each side. Fill an area: draw a shape for a wood or an orchard.</p>
+              <label class="inline slider">Spacing <input id="trSpace" type="range" min="4" max="30" step="1" value="12" /> <span id="trSpaceLbl" class="stat">12 m</span></label>
+              <div class="mp-h">On the plan</div>
+              <div id="treeList" class="mp-list"></div>
+              <div class="row"><button id="clearTrees" class="ghost">Clear all trees</button></div>
             </div>
 
             <div data-mp="blocks" hidden>

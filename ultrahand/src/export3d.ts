@@ -49,6 +49,7 @@ const LAYERS: [string, number][] = [
   ['UH_MP_ROOFS', 1],
   ['UH_MP_PLOTS', 8],
   ['UH_MP_GARDENS', 3],
+  ['UH_MP_TREES', 3],
 ];
 
 export function siteDXF(m: SiteModel, opts: { massing: number; blocks?: ExportBlock[]; lines?: ExportLine[] }): string {

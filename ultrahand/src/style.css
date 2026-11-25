@@ -334,7 +334,7 @@ body.mp-mode #side, body.mp-mode #info, body.mp-mode #leader, body.mp-mode #walk
 
 .mp-tools { position: absolute; left: 14px; top: 14px; bottom: 40px; width: 316px; display: flex; flex-direction: column; }
 .mp-tabs { display: flex; gap: 4px; padding: 10px; border-bottom: 1px solid var(--line); }
-.mp-tabs button { flex: 1; padding: 7px 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); border: 1px solid transparent; }
+.mp-tabs button { flex: 1; padding: 7px 2px; font-size: 12px; font-weight: 600; color: var(--muted); border: 1px solid transparent; }
 .mp-tabs button:hover { color: var(--ink); }
 .mp-tabs button.on { background: var(--ink); color: #fff; }
 .mp-scroll { overflow-y: auto; padding: 4px 14px 14px; flex: 1; }
@@ -370,3 +370,8 @@ body.mp-mode #toast { bottom: 22px; }
 .mp-ctx { padding: 10px 14px 12px; }
 .mp-ctx .hint { margin: 0 0 8px; }
 .mp-ctx .ghost { width: 100%; padding: 8px 10px; font-size: 12.5px; }
+/* The right column scrolls as a whole when its cards don't fit. */
+.mp-right { overflow-y: auto; scrollbar-width: thin; }
+.mp-right > .mp-card { flex: none; }
+.mp-right > .mp-card:first-child { overflow: visible; }
+.mp-card #mpSchedule { overflow: visible; }

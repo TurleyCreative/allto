@@ -87,8 +87,128 @@ export interface Home {
   streetId: string | null;
   tenure: Tenure;
 }
-export interface Plan { streets: Street[]; open: OpenSpace[]; homes: Home[] }
-export const emptyPlan = (): Plan => ({ streets: [], open: [], homes: [] });
+export interface Plan { streets: Street[]; open: OpenSpace[]; homes: Home[]; trees: Tree[] }
+export const emptyPlan = (): Plan => ({ streets: [], open: [], homes: [], trees: [] });
+
+// ------------------------------------------------------------------ trees
+
+export type TreeType = 'small' | 'medium' | 'large' | 'columnar' | 'conifer' | 'fruit';
+/** canopyM: crown spread; heightM: to the top; crownBase: share of the height below the crown; shape of the crown. */
+export interface TreeTypeDef { id: TreeType; label: string; canopyM: number; heightM: number; crownBase: number; shape: 'round' | 'cone' | 'column'; colour: string; note: string }
+export const TREE_TYPES: TreeTypeDef[] = [
+  { id: 'small', label: 'Small street tree', canopyM: 5, heightM: 8, crownBase: 0.35, shape: 'round', colour: '#7fae62', note: 'e.g. field maple, rowan' },
+  { id: 'medium', label: 'Medium tree', canopyM: 9, heightM: 13, crownBase: 0.3, shape: 'round', colour: '#679d52', note: 'e.g. hornbeam, lime' },
+  { id: 'large', label: 'Large tree', canopyM: 15, heightM: 20, crownBase: 0.25, shape: 'round', colour: '#4f8a43', note: 'e.g. oak, London plane' },
+  { id: 'columnar', label: 'Columnar tree', canopyM: 3.5, heightM: 12, crownBase: 0.2, shape: 'column', colour: '#6aa35a', note: 'e.g. fastigiate hornbeam' },
+  { id: 'conifer', label: 'Conifer', canopyM: 6, heightM: 15, crownBase: 0.1, shape: 'cone', colour: '#3f7350', note: 'e.g. Scots pine' },
+  { id: 'fruit', label: 'Fruit or orchard tree', canopyM: 5, heightM: 5, crownBase: 0.35, shape: 'round', colour: '#93b864', note: 'apple, pear, plum' },
+];
+export const treeType = (id: TreeType) => TREE_TYPES.find((t) => t.id === id) ?? TREE_TYPES[1];
+/** scale varies each tree a little, so a row or a wood doesn't look stamped. */
+export interface Tree { id: string; type: TreeType; p: Position; scale: number }
+
+/** A new tree with a little natural variation in size. */
+export function newTree(plan: Plan, p: Position, type: TreeType, rand = Math.random): Tree {
+  return { id: newId('T', plan.trees), type, p: [p[0], p[1]], scale: 0.85 + rand() * 0.3 };
+}
+export const canopyR = (t: Tree) => (treeType(t.type).canopyM / 2) * t.scale;
+export const canopyShape = (t: Tree): Feature<Polygon> => turf.circle(t.p, canopyR(t), { units: 'meters', steps: 16 });
+
+/** The tree in 3D as stacked slices: a trunk and a round, conical or columnar crown. */
+export function treeSlices(t: Tree): { shape: Feature<Polygon>; base: number; top: number; trunk?: boolean }[] {
+  const d = treeType(t.type), H = d.heightM * t.scale, R = canopyR(t);
+  const z0 = H * d.crownBase;
+  const out: { shape: Feature<Polygon>; base: number; top: number; trunk?: boolean }[] = [
+    { shape: turf.circle(t.p, Math.max(0.2, R * 0.06), { units: 'meters', steps: 6 }), base: 0, top: z0 + (H - z0) * 0.2, trunk: true },
+  ];
+  const n = 6;
+  for (let k = 0; k < n; k++) {
+    const a = z0 + ((H - z0) * k) / n, b = z0 + ((H - z0) * (k + 1)) / n;
+    const u = (k + 0.5) / n; // 0 at the bottom of the crown, 1 at the top
+    const r = d.shape === 'cone' ? R * (1 - u * 0.92) : d.shape === 'column' ? R * Math.sqrt(Math.max(0.05, 1 - (2 * u - 1) ** 2)) * 1.05 : R * Math.sqrt(Math.max(0.04, 1 - (2 * u - 1) ** 2));
+    out.push({ shape: turf.circle(t.p, Math.max(0.3, r), { units: 'meters', steps: 12 }), base: a, top: b });
+  }
+  return out;
+}
+
+/** Trees along both sides of a street, in its verge or just behind the footway, every `spacing` metres. */
+export function plantAlong(street: Street, plan: Plan, type: TreeType, spacing: number, boundary: PolyF | null): Tree[] {
+  const offset = streetType(street.type).widthM / 2 + (street.type === 'primary' ? -2.2 : 1.2);
+  const out: Tree[] = [];
+  const homes = plan.homes.map((h) => ({ f: h.shape, b: turf.bbox(h.shape) }));
+  const clear = (p: Position, r: number) => {
+    if (boundary && !turf.booleanPointInPolygon(p, boundary)) return false;
+    if ([...plan.trees, ...out].some((t) => turf.distance(t.p, p, { units: 'meters' }) < Math.max(r, canopyR(t)) * 1.1)) return false;
+    for (const h of homes) {
+      if (p[0] < h.b[0] - 1e-4 || p[0] > h.b[2] + 1e-4 || p[1] < h.b[1] - 1e-4 || p[1] > h.b[3] + 1e-4) continue;
+      if (turf.booleanPointInPolygon(p, h.f) || turf.pointToPolygonDistance(p, h.f, { units: 'meters' }) < 1.5) return false;
+    }
+    return true;
+  };
+  const sides = street.roundabout ? [1] : [1, -1];
+  for (const piece of streetPieces(street, plan.streets)) {
+    const line = turf.lineString(piece);
+    const len = turf.length(line, { units: 'meters' });
+    for (const side of sides)
+      for (let d = spacing / 2; d <= len - spacing / 4; d += spacing) {
+        const a = turf.along(line, Math.max(0, d - 1), { units: 'meters' }), b = turf.along(line, Math.min(len, d + 1), { units: 'meters' });
+        const p = turf.destination(turf.along(line, d, { units: 'meters' }), offset, turf.bearing(a, b) + 90 * side, { units: 'meters' }).geometry.coordinates;
+        const t = newTree(plan, p, type);
+        if (clear(p, canopyR(t) * 0.6)) out.push(t);
+      }
+  }
+  return out;
+}
+
+/** Trees scattered through a shape, about `spacing` metres apart (a jittered grid, so it reads as planted, not plotted). */
+export function fillWithTrees(shape: Feature<Polygon>, plan: Plan, type: TreeType, spacing: number): Tree[] {
+  const [w, s, e, n] = turf.bbox(shape);
+  const c = turf.centroid(shape).geometry.coordinates;
+  const kx = 111320 * Math.cos((c[1] * Math.PI) / 180), ky = 110574;
+  const dx = spacing / kx, dy = spacing / ky;
+  const out: Tree[] = [];
+  let row = 0;
+  for (let y = s + dy / 2; y < n; y += dy * 0.87, row++)
+    for (let x = w + (row % 2 ? dx / 2 : dx / 4); x < e; x += dx) {
+      const p: Position = [x + (Math.random() - 0.5) * dx * 0.5, y + (Math.random() - 0.5) * dy * 0.5];
+      if (!turf.booleanPointInPolygon(p, shape)) continue;
+      if (plan.trees.some((t) => turf.distance(t.p, p, { units: 'meters' }) < spacing * 0.6)) continue;
+      out.push(newTree(plan, p, type));
+    }
+  return out;
+}
+
+/** The trees on the map: 3D slices, and a flat canopy for plan drawings. */
+export function treesGeoJSON(trees: Tree[], selected: string | null): FeatureCollection {
+  const features: Feature[] = [];
+  for (const t of trees) {
+    const d = treeType(t.type);
+    const props = { id: t.id, colour: d.colour, wash: wash(d.colour, 0.35), selected: t.id === selected };
+    features.push({ ...canopyShape(t), properties: { ...props, flat: true, base: 0, top: 0 } });
+    for (const sl of treeSlices(t)) features.push({ ...sl.shape, properties: { ...props, flat: false, base: sl.base, top: sl.top, colour: sl.trunk ? '#7a6a55' : d.colour } });
+  }
+  return { type: 'FeatureCollection', features };
+}
+
+/** Canopy cover: the area under tree crowns (overlaps counted once), inside the site when there is one. */
+export function canopyCover(trees: Tree[], site: PolyF | null): number {
+  if (!trees.length) return 0;
+  const shapes = trees.map(canopyShape);
+  let u: PolyF | null = null;
+  try {
+    u = shapes.length > 1 ? (turf.union(turf.featureCollection(shapes)) as PolyF | null) : shapes[0];
+  } catch {
+    return shapes.reduce((a, f) => a + turf.area(f), 0);
+  }
+  if (!u) return 0;
+  if (!site) return turf.area(u);
+  try {
+    const x = turf.intersect(turf.featureCollection([u, site as any]));
+    return x ? turf.area(x) : 0;
+  } catch {
+    return turf.area(u);
+  }
+}
 
 let seq = 0;
 export const newId = (prefix: string, existing: { id: string }[]) => {
@@ -110,6 +230,7 @@ export function upgradePlan(p: any): Plan {
     const nodes: PenNode[] = o.nodes ?? nodesFrom(samePlace(ring[0], ring[ring.length - 1], 0.01) ? ring.slice(0, -1) : ring);
     return { ...o, nodes, pts: nodes.map((n) => n.p), round: o.round ?? 0 };
   });
+  plan.trees = (plan.trees ?? []).map((t: any) => ({ ...t, scale: t.scale ?? 1 }));
   plan.homes = plan.homes.map((h: any) => ({ ...h, type: HOUSE_TYPES.some((t) => t.id === h.type) ? h.type : 'terrace', plot: h.plot ?? h.shape, garden: h.garden ?? null, ridge: h.ridge ?? null, tenure: h.tenure ?? 'market' }));
   return plan;
 }
@@ -413,6 +534,7 @@ export interface Schedule {
   affordable: { homes: number; share: number; targetPct: number; targetHomes: number };
   mix: { beds: 1 | 2 | 3 | 4; homes: number; share: number; targetPct: number }[];
   openVsBenchmark: { type: OpenType; label: string; providedHa: number; benchmarkHa: number }[];
+  trees: { count: number; byType: { type: TreeType; label: string; n: number }[]; canopyM2: number; canopyShare: number | null };
 }
 
 export function schedule(plan: Plan, site: PolyF | null, apartmentHomes: number, apartmentParking: number, householdSize: number, targets: Targets): Schedule {
@@ -466,6 +588,10 @@ export function schedule(plan: Plan, site: PolyF | null, apartmentHomes: number,
     affordable: { homes: affHomes, share: homes ? affHomes / homes : 0, targetPct: targets.affordablePct, targetHomes: Math.ceil((homes * targets.affordablePct) / 100) },
     mix,
     openVsBenchmark,
+    trees: (() => {
+      const canopyM2 = canopyCover(plan.trees, site);
+      return { count: plan.trees.length, byType: TREE_TYPES.map((t) => ({ type: t.id, label: t.label, n: plan.trees.filter((x) => x.type === t.id).length })).filter((x) => x.n), canopyM2, canopyShare: siteM2 ? canopyM2 / siteM2 : null };
+    })(),
   };
 }
 
@@ -673,6 +799,19 @@ export function sketchGeoJSON(plan: Plan, extra: Feature<Polygon>[] = []) {
     }
   }
   for (const [i, f] of extra.entries()) outline([f.geometry.coordinates[0]], `x${i}`, { amp: 0.2, over: 1.4, passes: 2, w: 1.1 });
+  // Trees: a loose, wobbly crown drawn round once (a little over), and a dot for the trunk.
+  for (const t of plan.trees) {
+    const F = frameAt(t.p);
+    const rand = rng(hashOf(t.id));
+    const R = canopyR(t), pts: XY[] = [];
+    const start = rand() * Math.PI * 2, turns = 1.08 + rand() * 0.1;
+    for (let k = 0; k <= 28; k++) {
+      const a = start + (k / 28) * Math.PI * 2 * turns, r = R * (0.92 + rand() * 0.16);
+      pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+    }
+    add(lines, pts.map(F.from), 0.8, 0.75, darker(treeType(t.type).colour, 0.5));
+    add(lines, [F.from([-0.25, 0]), F.from([0.25, 0.05])], 1.2, 0.8, pencil);
+  }
   const fc = (features: Feature[]): FeatureCollection => ({ type: 'FeatureCollection', features });
   return { lines: fc(lines), hatches: fc(hatches) };
 }
