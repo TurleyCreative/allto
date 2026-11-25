@@ -1084,6 +1084,7 @@ function renderPlan() {
   $('#homeList').querySelector('[data-act=clearaff]')?.addEventListener('click', () => (S.plan.homes.forEach((h) => (h.tenure = 'market')), renderPlan()));
   renderSchedule();
   renderLegend();
+  renderMpContext();
   $('#mpKey').innerHTML = mpLegend((bg, extra = '') => `<span class="sw" style="background:${bg};${extra}"></span>`);
   saveProject();
   agent.contextChanged();
@@ -1861,6 +1862,31 @@ async function ensureLidar() {
   if (lidar) return lidar;
   lidar = await fetchLidar(turf.bbox(S.study!) as [number, number, number, number]);
   return lidar;
+}
+
+/**
+ * New homes are drawn with real roofs (eaves and ridge); existing buildings are flat blocks at an estimated
+ * height unless measured. Say so beside the masterplan, with a way to measure them, so the two compare fairly.
+ */
+function renderMpContext() {
+  const el = $('#mpContext');
+  el.hidden = !mpModeOn || !S.plan.homes.length;
+  if (el.hidden) return;
+  if (lidarInfo) {
+    el.innerHTML = `<p class="hint">Existing heights measured from LIDAR for ${lidarInfo.measured} of ${lidarInfo.total} buildings, to their main roof. New 2-storey homes: 5.3 m to the eaves, 8.5 m to the ridge.</p>`;
+    return;
+  }
+  el.innerHTML = `<p class="hint"><b>Comparing heights?</b> New homes have real roofs (2 storeys: 5.3 m eaves, 8.5 m ridge). Existing buildings are flat blocks at estimated heights, 6 m where none is recorded, so they look lower than they are.</p>
+    <button class="ghost" id="mpLidar" ${lidarBusy ? 'disabled' : ''}>${lidarBusy ? 'Measuring…' : 'Measure existing heights with LIDAR'}</button>`;
+  $('#mpLidar').onclick = async () => {
+    if (!S.study) return toast('Draw a red line first.');
+    if (!S.model) {
+      toast('Reading the site first…');
+      await analyse();
+    }
+    await measureLidar();
+    renderMpContext();
+  };
 }
 
 async function measureLidar() {

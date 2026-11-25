@@ -367,3 +367,6 @@ body.mp-mode #side, body.mp-mode #info, body.mp-mode #leader, body.mp-mode #walk
 #mpMini { margin-top: 10px; font-size: 12.5px; color: var(--muted); }
 body.mp-mode #toast { bottom: 22px; }
 .pen-hint { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; background: #141414; color: #fff; font-size: 11.5px; font-weight: 600; padding: 4px 8px; white-space: nowrap; }
+.mp-ctx { padding: 10px 14px 12px; }
+.mp-ctx .hint { margin: 0 0 8px; }
+.mp-ctx .ghost { width: 100%; padding: 8px 10px; font-size: 12.5px; }

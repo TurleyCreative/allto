@@ -57,8 +57,8 @@ export const HOUSE_TYPES: HouseType[] = [
   { id: 'bungalow', label: 'Bungalow, 2 bed', frontageM: 10, depthM: 8, storeys: 1, homes: 1, beds: 2, gapM: 3, colour: '#f7b6b6', parking: 1 },
 ];
 export const houseType = (id: HouseTypeId) => HOUSE_TYPES.find((t) => t.id === id) ?? HOUSE_TYPES[1];
-/** Eaves at about 2.75 m a storey; a 35° gable roof spans the depth. */
-export const houseEave = (t: HouseType) => t.storeys * 2.75;
+/** Typical new-build: 2.5 m a storey plus a 0.3 m plinth (eaves 5.3 m for two storeys); a 35° gable roof spans the depth. */
+export const houseEave = (t: HouseType) => t.storeys * 2.5 + 0.3;
 export const houseRise = (t: HouseType) => (t.depthM / 2) * Math.tan((35 * Math.PI) / 180);
 export const houseHeight = (t: HouseType) => houseEave(t) + houseRise(t);
 export const AFFORDABLE_COLOUR = '#1f8a8a';
@@ -472,7 +472,7 @@ export function schedule(plan: Plan, site: PolyF | null, apartmentHomes: number,
 // ------------------------------------------------------------------ map data
 
 /** A gable roof as stepped slices, for the map (Mapbox extrudes flat tops only). */
-function roofSlices(h: Home, t: HouseType, n = 5) {
+function roofSlices(h: Home, t: HouseType, n = 8) {
   const out: { shape: Feature<Polygon>; base: number; top: number }[] = [];
   if (!h.ridge) return out;
   const c = turf.midpoint(h.ridge[0], h.ridge[1]).geometry.coordinates;
