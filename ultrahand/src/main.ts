@@ -14,7 +14,9 @@ import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
 import { siteDXF, siteOBJ, type ExportLine, type ExportBlock } from './export3d';
-import { roundedShape, sketchGeoJSON, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
+import { createPen, type Snap, type SnapSources, type Editable } from './pen';
+import { bezierPath, autoHandles, nearestOnPath, splitAt, samePlace, cloneNodes, node as penNode, type PenNode } from './bezier';
+import { roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
@@ -146,6 +148,101 @@ const draw = new MapboxDraw({
 });
 map.addControl(draw);
 
+// ---------------------------------------------------------------- the pen (masterplan drawing and editing)
+// Streets, open spaces and blocks are drawn and edited with a pen: anchors with curve handles. Streets
+// share nodes where they meet, so dragging a junction moves every street that meets there.
+let mpModeOn = false;
+const pen = createPen(map, { sources: penSources, onEdit: applyPenEdit });
+
+function penDraw(kind: 'street' | 'open' | 'massing', closed: boolean, onDone: (nodes: PenNode[], snaps: (Snap | null)[]) => void, msg: string) {
+  draw.deleteAll();
+  setPick(null);
+  if (S.view !== 'plan') setView('plan');
+  S.drawing = kind;
+  const end = () => ((S.drawing = null), (lastDrawEnd = Date.now()), renderTiles());
+  pen.draw({ closed, onDone: (n, sn) => (end(), onDone(n, sn)), onCancel: end });
+  toast(msg);
+}
+
+/** What the pen can snap to: street nodes and centrelines, kerbs, the red line, spaces and blocks. */
+function penSources(exclude: string[]): SnapSources {
+  const ex = new Set(exclude);
+  const points: SnapSources['points'] = [], lines: SnapSources['lines'] = [];
+  const ringsOf = (f: Feature<Polygon | MultiPolygon>) => (f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat());
+  for (const s of S.plan.streets) {
+    if (ex.has(s.id)) continue;
+    if (s.roundabout) {
+      points.push({ p: s.pts[0], label: `Centre of ${s.name}`, ref: { type: 'roundabout', id: s.id } });
+      lines.push({ coords: s.line.geometry.coordinates, label: `Join ${s.name}`, ref: { type: 'ring', id: s.id } });
+      continue;
+    }
+    s.nodes.forEach((n, i) => points.push({ p: n.p, label: i === 0 || i === s.nodes.length - 1 ? `Join the end of ${s.name}` : `Join ${s.name} here`, ref: { type: 'node', id: s.id, index: i } }));
+    lines.push({ coords: s.line.geometry.coordinates, label: `New junction on ${s.name}`, ref: { type: 'street', id: s.id } });
+  }
+  const land = streetLand(S.plan.streets.filter((x) => !ex.has(x.id)));
+  if (land) for (const r of ringsOf(land)) lines.push({ coords: r, label: 'Kerb', ref: { type: 'kerb' } });
+  if (S.red) for (const r of ringsOf(S.red)) {
+    r.slice(0, -1).forEach((p) => points.push({ p, label: 'Red line corner' }));
+    lines.push({ coords: r, label: 'Red line' });
+  }
+  for (const o of S.plan.open) {
+    if (ex.has(o.id)) continue;
+    o.nodes.forEach((n) => points.push({ p: n.p, label: `Corner of ${o.name}` }));
+    lines.push({ coords: o.shape.geometry.coordinates[0], label: `Edge of ${o.name}` });
+  }
+  for (const b of S.blocks) {
+    if (ex.has(b.id)) continue;
+    b.shape.geometry.coordinates[0].slice(0, -1).forEach((p) => points.push({ p, label: `Corner of ${b.name}` }));
+    lines.push({ coords: b.shape.geometry.coordinates[0], label: `Edge of ${b.name}` });
+  }
+  return { points, lines };
+}
+
+/** Anchors or handles moved on the map: the streets, spaces and blocks follow, and homes are laid out again. */
+function applyPenEdit(changed: Map<string, PenNode[]>, snap: Snap | null, grabbed: { id: string; index: number } | null) {
+  const moved: Street[] = [];
+  let blocks = false;
+  for (const [id, nodes] of changed) {
+    const s = S.plan.streets.find((x) => x.id === id);
+    if (s) {
+      setStreetNodes(s, s.roundabout ? [nodes[0]] : nodes);
+      moved.push(s);
+      continue;
+    }
+    const o = S.plan.open.find((x) => x.id === id);
+    if (o) {
+      setOpenNodes(o, nodes);
+      clearHomesUnder(o.shape, true);
+      continue;
+    }
+    const b = S.blocks.find((x) => x.id === id);
+    if (b) {
+      b.nodes = cloneNodes(nodes);
+      b.shape = turf.polygon([bezierPath(nodes, true)]) as Feature<Polygon>;
+      blocks = true;
+    }
+  }
+  // A street point dropped part way along another street makes a junction there.
+  if (snap && grabbed && S.plan.streets.some((x) => x.id === grabbed.id)) joinAt(snap.p, snap);
+  for (const s of moved) if (!s.roundabout) relineStreet(s);
+  if (blocks) renderBlocks();
+  renderPlan();
+}
+
+const blockNodes = (b: Block) => b.nodes ?? b.shape.geometry.coordinates[0].slice(0, -1).map((p) => penNode(p));
+
+/** In masterplan mode (plan and 3D), every street's nodes can be dragged; the selected item shows its handles. */
+function updateEditables() {
+  pen.invalidate();
+  if (!mpModeOn || mpPick || (S.view !== 'plan' && S.view !== '3d')) return pen.setEditables([]); // a pick wants plain clicks
+  const list: Editable[] = S.plan.streets.map((s) => ({ id: s.id, nodes: s.nodes, closed: false, handles: s.id === S.mpSel && !s.roundabout, kind: s.roundabout ? 'roundabout' : 'street', minNodes: s.roundabout ? 1 : 2 }));
+  const o = S.plan.open.find((x) => x.id === S.mpSel);
+  if (o) list.push({ id: o.id, nodes: o.nodes, closed: true, handles: true, kind: 'open', minNodes: 3 });
+  const b = S.blocks.find((x) => x.id === S.blockSel);
+  if (b) list.push({ id: b.id, nodes: blockNodes(b), closed: true, handles: true, kind: 'block', minNodes: 3 });
+  pen.setEditables(list);
+}
+
 // Figure-ground base: white ground, pale streets, blue water, grey buildings.
 function styleBase() {
   for (const l of map.getStyle()!.layers ?? []) {
@@ -268,6 +365,7 @@ function addLayers() {
   map.addLayer({ id: 'pois-label', type: 'symbol', source: 'pois', filter: ['==', ['get', 'cat'], 'rail'], layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': font }, paint: { 'text-color': '#141414', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } });
   map.addLayer({ id: 'atlas-labels', type: 'symbol', source: 'atlas-labels', layout: { 'text-field': ['get', 'text'], 'text-size': 10.5, 'text-anchor': 'top', 'text-font': font, 'text-letter-spacing': 0.06, 'text-allow-overlap': true }, paint: { 'text-color': '#141414' } });
 
+  pen.addLayers();
   unlitFlatLayers();
   setModelColours();
   applySun();
@@ -365,7 +463,14 @@ function startDraw(kind: 'red' | 'study' | 'massing' | 'open') {
 }
 $('#drawRed').onclick = () => startDraw('red');
 $('#drawStudy').onclick = () => startDraw('study');
-$('#drawBlock').onclick = () => ((editingBlock = null), startDraw('massing'), toast('Click each corner of the block. Double-click to finish.'));
+$('#drawBlock').onclick = () =>
+  penDraw('massing', true, (nodes) => {
+    const nb = newBlock(turf.polygon([bezierPath(nodes, true)]) as Feature<Polygon>, S.blocks);
+    (nb as any).nodes = nodes;
+    S.blocks.push(nb);
+    S.blockSel = nb.id;
+    renderBlocks();
+  }, 'Click each corner of the block; drag to curve. Click the first corner or press Enter to finish.');
 $('#editRed').onclick = () => {
   if (!S.red) return;
   draw.deleteAll();
@@ -439,11 +544,6 @@ window.addEventListener('keydown', (e) => {
 });
 
 function finishDraw() {
-  if (S.drawing === 'street') {
-    const l = draw.getAll().features[0] as Feature<LineString> | undefined;
-    if (l?.geometry.type === 'LineString' && l.geometry.coordinates.length >= 2) addStreet(l);
-    return;
-  }
   const f = draw.getAll().features[0] as PolyF | undefined;
   if (!f || f.geometry.type !== 'Polygon' || f.geometry.coordinates[0].length < 4) return;
   const clean = turf.polygon(f.geometry.coordinates) as PolyF;
@@ -459,7 +559,7 @@ function finishDraw() {
       S.blockSel = nb.id;
     }
     renderBlocks();
-  } else if (S.drawing === 'open') addOpen(clean as Feature<Polygon>);
+  }
 }
 map.on('draw.create', () => {
   lastDrawEnd = Date.now();
@@ -467,7 +567,7 @@ map.on('draw.create', () => {
   draw.deleteAll();
   S.drawing = null;
 });
-map.on('draw.update', () => S.drawing !== 'street' && S.drawing !== 'open' && finishDraw());
+map.on('draw.update', finishDraw);
 map.on('draw.modechange', (e: any) => {
   if (e.mode === 'simple_select' && S.drawing && S.drawing !== 'box') {
     finishDraw();
@@ -537,6 +637,7 @@ function renderBlocksSoon() {
 
 function renderBlocks() {
   (map.getSource('blocks') as mapboxgl.GeoJSONSource | undefined)?.setData(blocksGeoJSON(S.blocks, S.blockSel));
+  updateEditables();
   if (S.sketch) renderPlanMap();
   blockMarkers.forEach((m) => m.remove());
   blockMarkers = S.blocks.map((b) => {
@@ -583,13 +684,10 @@ function renderBlocks() {
     });
     row.querySelector('[data-act=edit]')!.addEventListener('click', (e) => {
       e.stopPropagation();
-      draw.deleteAll();
       if (S.view !== 'plan') setView('plan');
-      editingBlock = b.id;
-      S.drawing = 'massing';
-      const [id] = draw.add(b.shape as any);
-      draw.changeMode('direct_select', { featureId: id });
-      toast('Drag the corners. Click the map outside the block when done.');
+      S.blockSel = b.id;
+      renderBlocks();
+      toast('Drag its corners. Alt-drag a corner to curve it, double-click an edge to add a corner, Delete removes the one picked.');
     });
   });
   const t = massTotals(S.blocks, S.red, S.assume);
@@ -630,7 +728,6 @@ type MpTool = 'streets' | 'open' | 'homes' | 'blocks';
 let mpTool: MpTool = 'streets';
 let mpPick: null | 'line' | 'place' | 'roundabout' = null; // waiting for a click on the map
 let streetMarkers: mapboxgl.Marker[] = [];
-let editingStreet: string | null = null;
 
 const fillSelect = (sel: string, items: { id: string; label: string }[], value: string) => {
   $<HTMLSelectElement>(sel).innerHTML = items.map((t) => `<option value="${t.id}"${t.id === value ? ' selected' : ''}>${esc(t.label)}</option>`).join('');
@@ -662,6 +759,7 @@ document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.
 
 function setPick(p: typeof mpPick) {
   mpPick = p;
+  updateEditables();
   if (p && walkPick) setWalkPick(false);
   $('#lineStreet').classList.toggle('picking', p === 'line');
   $('#placeHome').classList.toggle('picking', p === 'place');
@@ -672,20 +770,14 @@ function setPick(p: typeof mpPick) {
   map.getCanvas().style.cursor = p ? 'crosshair' : '';
 }
 
-$('#drawStreet').onclick = () => {
-  draw.deleteAll();
-  setPick(null);
-  editingStreet = null;
-  S.drawing = 'street';
-  if (S.view !== 'plan') setView('plan');
-  draw.changeMode('draw_line_string');
-  toast(+$<HTMLInputElement>('#stCurve').value ? 'Click points along the street; it bends smoothly through them. Double-click to finish.' : 'Click along the street. Double-click to finish.');
-};
+$('#drawStreet').onclick = () =>
+  penDraw('street', false, addStreetFromPen, 'Click to place points, or click and drag to pull out a curve. Start or end on a street to join it. Double-click or Enter to finish; Space-drag pans.');
 $('#addRoundabout').onclick = () => {
   setPick(mpPick === 'roundabout' ? null : 'roundabout');
   if (mpPick) toast('Click a junction. The roundabout centres on the nearest one, and the streets stop at its ring.');
 };
-$('#drawOpen').onclick = () => (setPick(null), startDraw('open'), toast('Click each corner of the open space. Double-click to finish.'));
+$('#drawOpen').onclick = () =>
+  penDraw('open', true, addOpen, 'Click each corner, or click and drag to curve. Click the first corner (or press Enter) to close the shape.');
 $('#lineStreet').onclick = () => {
   if (!S.plan.streets.length) return toast('Draw a street first, in Streets.');
   setPick(mpPick === 'line' ? null : 'line');
@@ -761,24 +853,32 @@ function clearHomesUnder(shape: Feature<Polygon | MultiPolygon>, quiet = false) 
   if (n && !quiet) toast(`${n} home${n > 1 ? 's' : ''} in the way removed.`);
 }
 
-function addStreet(line: Feature<LineString>) {
-  const pts = line.geometry.coordinates;
-  if (turf.length(line, { units: 'meters' }) < 8) return toast('That street is too short.');
+/** A street drawn with the pen. Ends that landed on another street join it at a shared node. */
+function addStreetFromPen(nodes: PenNode[], snaps: (Snap | null)[]) {
+  if (turf.length(turf.lineString(bezierPath(nodes)), { units: 'meters' }) < 8) return toast('That street is too short.');
+  // Clicked points only (no handles pulled): smooth them by the "How curved" setting.
   const curve = +$<HTMLInputElement>('#stCurve').value / 100;
-  if (editingStreet) {
-    const s = S.plan.streets.find((x) => x.id === editingStreet);
-    editingStreet = null;
-    if (!s) return;
-    s.pts = snapEnds(pts, S.plan.streets.filter((x) => x !== s));
-    s.line = streetLine(s.pts, s.curve);
-    return relineStreet(s);
-  }
-  const s = newStreet(S.plan, $<HTMLSelectElement>('#stType').value as StreetType, pts, curve);
+  const ns = nodes.every((n) => !n.i[0] && !n.i[1] && !n.o[0] && !n.o[1]) ? autoHandles(nodes, curve) : nodes;
+  for (const i of [0, ns.length - 1]) joinAt(ns[i].p, snaps[i]);
+  const s = newStreet(S.plan, $<HTMLSelectElement>('#stType').value as StreetType, ns, curve);
   S.plan.streets.push(s);
   S.mpSel = s.id;
   clearHomesUnder(corridor(s, S.plan.streets));
   renderPlan();
 }
+
+/** Where a street end lands part way along another street, give that street a node there: a junction. */
+function joinAt(p: Position, snap: Snap | null) {
+  if (snap?.ref?.type !== 'street') return;
+  const t = S.plan.streets.find((x) => x.id === snap.ref.id);
+  if (!t || t.roundabout) return;
+  if (t.nodes.some((n) => samePlace(n.p, p))) return;
+  const near = nearestOnPath(t.nodes, false, p);
+  const r = splitAt(t.nodes, near.seg, near.t);
+  r.nodes[r.index].p = [p[0], p[1]];
+  setStreetNodes(t, r.nodes);
+}
+
 function addRoundabout(at: Position) {
   const d = ROUNDABOUTS.find((r) => r.id === $<HTMLSelectElement>('#raType').value)!.diameterM;
   const r = newRoundabout(S.plan, at, $<HTMLSelectElement>('#stType').value === 'path' ? 'residential' : ($<HTMLSelectElement>('#stType').value as StreetType), d);
@@ -789,11 +889,11 @@ function addRoundabout(at: Position) {
   for (const s of S.plan.streets) if (s !== r && !s.roundabout && turf.booleanIntersects(s.line, corridor(r))) relineStreet(s);
   renderPlan();
 }
-function addOpen(shape: Feature<Polygon>) {
+function addOpen(nodes: PenNode[]) {
   const round = +$<HTMLInputElement>('#osRound').value / 100;
-  const pts = shape.geometry.coordinates[0];
-  const o: OpenSpace = { id: newId('O', S.plan.open), name: `${openType($<HTMLSelectElement>('#osType').value as OpenType).label}`, type: $<HTMLSelectElement>('#osType').value as OpenType, pts, round, shape: roundedShape(pts, round) };
-  shape = o.shape;
+  const type = $<HTMLSelectElement>('#osType').value as OpenType;
+  const o = setOpenNodes({ id: newId('O', S.plan.open), name: openType(type).label, type, round } as OpenSpace, nodes);
+  const shape = o.shape;
   S.plan.open.push(o);
   S.mpSel = o.id;
   clearHomesUnder(shape);
@@ -849,6 +949,7 @@ function renderPlanMap() {
   setSrc('mp-homes', g.homes);
   setSrc('mp-plots', g.plots);
   setSrc('mp-gardens', g.gardens);
+  updateEditables();
   if (S.sketch) {
     const sk = sketchGeoJSON(S.plan, S.blocks.map((b) => b.shape));
     setSrc('mp-sk-lines', sk.lines);
@@ -926,21 +1027,17 @@ function renderPlan() {
     row.querySelector('[data-act=line]')?.addEventListener('click', () => s && (setMpTool('homes'), lineThisStreet(s)));
     row.querySelector('[data-act=edit]')?.addEventListener('click', () => {
       if (!s) return;
-      draw.deleteAll();
       setPick(null);
       if (S.view !== 'plan') setView('plan');
-      editingStreet = s.id;
-      S.drawing = 'street';
-      const [fid] = draw.add(turf.lineString(s.pts) as any);
-      draw.changeMode('direct_select', { featureId: fid });
-      toast('Drag the points. Click the map away from the street when done; its homes are laid out again.');
+      selectMp(s.id);
+      toast('Drag its points and handles. Alt-drag a point to curve it, Alt-click to make it a corner, double-click the street to add a point.');
     });
     // Sliders redraw the map as they move, and lay the homes out again when let go.
     const curveIn = row.querySelector<HTMLInputElement>('[data-f=curve]');
     curveIn?.addEventListener('input', () => {
       if (!s) return;
       s.curve = +curveIn.value / 100;
-      s.line = streetLine(s.pts, s.curve);
+      setStreetNodes(s, autoHandles(s.nodes, s.curve));
       (curveIn.nextElementSibling as HTMLElement).textContent = curveLabel(s.curve);
       renderPlanMap();
     });
@@ -953,7 +1050,7 @@ function renderPlan() {
     roundIn?.addEventListener('input', () => {
       if (!o) return;
       o.round = +roundIn.value / 100;
-      o.shape = roundedShape(o.pts, o.round);
+      o.shape = roundedShape(bezierPath(o.nodes, true), o.round);
       (roundIn.nextElementSibling as HTMLElement).textContent = roundLabel(o.round);
       renderPlanMap();
     });
@@ -1219,9 +1316,9 @@ $<HTMLInputElement>('#osRound').addEventListener('change', renderTiles);
 map.on('draw.create', () => setTimeout(renderTiles, 0));
 map.on('draw.modechange', () => setTimeout(renderTiles, 0));
 
-let mpModeOn = false;
 function setMpMode(on: boolean) {
   mpModeOn = on;
+  if (!on) pen.cancel();
   document.body.classList.toggle('mp-mode', on);
   $('#mpMode').hidden = !on;
   setPick(null);
@@ -1273,6 +1370,7 @@ $<HTMLInputElement>('#mpSketch').onchange = (e) => {
 
 /** Sketch mode: paper over the base map, pencil lines and washes; plain mode: the crisp drawing. */
 function applyMpStyle() {
+  updateEditables();
   if (!map.getLayer('mp-sk-lines')) return;
   const vis = (id: string, on: boolean) => map.getLayer(id) && map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
   const atlas = S.view === 'atlas';
@@ -1961,7 +2059,7 @@ $('#walkBtn').onclick = () => {
 document.addEventListener('keydown', (e) => e.key === 'Escape' && walkPick && setWalkPick(false));
 let lastDrawEnd = 0; // the click that finishes a drawing must not also start a walk
 map.on('click', (e) => {
-  if (S.drawing || eye.dragged || Date.now() - lastDrawEnd < 400) return;
+  if (S.drawing || pen.active() || eye.dragged || Date.now() - lastDrawEnd < 400) return;
   // Walking distances only once "Walk from a point" has been pressed: the next click is the start.
   if (walkPick) {
     setWalkPick(false);

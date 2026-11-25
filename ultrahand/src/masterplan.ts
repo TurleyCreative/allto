@@ -4,6 +4,8 @@
 import * as turf from '@turf/turf';
 import type { Feature, FeatureCollection, LineString, Polygon, MultiPolygon, Position } from 'geojson';
 
+import { bezierPath, autoHandles, nodesFrom, cloneNodes, samePlace, type PenNode } from './bezier';
+
 type PolyF = Feature<Polygon | MultiPolygon>;
 
 // ------------------------------------------------------------------ libraries
@@ -67,12 +69,13 @@ export interface Street {
   id: string;
   name: string;
   type: StreetType;
-  pts: Position[]; // the points drawn (the centre, for a roundabout)
-  curve: number; // 0: straight between the points; up to 1: a spline through them, more curved
+  pts: Position[]; // the anchors (the centre, for a roundabout)
+  nodes: PenNode[]; // the anchors with their curve handles, as drawn with the pen
+  curve: number; // the last "smooth all" setting: 0 corners, up to 1 a full curve through the anchors
   line: Feature<LineString>; // the centreline; the ring for a roundabout
   roundabout?: { diameterM: number };
 }
-export interface OpenSpace { id: string; name: string; type: OpenType; pts: Position[]; round: number; shape: Feature<Polygon> } // pts: the corners drawn; round 0–1
+export interface OpenSpace { id: string; name: string; type: OpenType; pts: Position[]; nodes: PenNode[]; round: number; shape: Feature<Polygon> } // nodes: the outline as drawn; round 0–1
 export type Tenure = 'market' | 'affordable';
 export interface Home {
   id: string;
@@ -96,8 +99,17 @@ export const newId = (prefix: string, existing: { id: string }[]) => {
 /** A plan saved by an earlier version: fill in what it lacks. */
 export function upgradePlan(p: any): Plan {
   const plan = { ...emptyPlan(), ...(p ?? {}) } as Plan;
-  plan.streets = plan.streets.map(({ curved, ...s }: any) => ({ ...s, pts: s.pts ?? s.line.geometry.coordinates, curve: s.curve ?? (curved ? 0.85 : 0) }));
-  plan.open = plan.open.map((o: any) => ({ ...o, pts: o.pts ?? o.shape.geometry.coordinates[0], round: o.round ?? 0 }));
+  plan.streets = plan.streets.map(({ curved, ...s }: any) => {
+    const pts: Position[] = s.pts ?? s.line.geometry.coordinates;
+    const curve = s.curve ?? (curved ? 0.85 : 0);
+    const nodes: PenNode[] = s.nodes ?? (s.roundabout ? nodesFrom([pts[0]]) : autoHandles(nodesFrom(pts), curve));
+    return { ...s, pts, curve, nodes, line: s.roundabout ? s.line : turf.lineString(bezierPath(nodes)) };
+  });
+  plan.open = plan.open.map((o: any) => {
+    const ring: Position[] = o.pts ?? o.shape.geometry.coordinates[0];
+    const nodes: PenNode[] = o.nodes ?? nodesFrom(samePlace(ring[0], ring[ring.length - 1], 0.01) ? ring.slice(0, -1) : ring);
+    return { ...o, nodes, pts: nodes.map((n) => n.p), round: o.round ?? 0 };
+  });
   plan.homes = plan.homes.map((h: any) => ({ ...h, type: HOUSE_TYPES.some((t) => t.id === h.type) ? h.type : 'terrace', plot: h.plot ?? h.shape, garden: h.garden ?? null, ridge: h.ridge ?? null, tenure: h.tenure ?? 'market' }));
   return plan;
 }
@@ -115,16 +127,34 @@ export function streetLine(pts: Position[], curve: number): Feature<LineString> 
   }
 }
 
-export function newStreet(plan: Plan, type: StreetType, pts: Position[], curve: number): Street {
-  const snapped = snapEnds(pts, plan.streets);
-  return { id: newId('S', plan.streets), name: `Street ${plan.streets.filter((s) => !s.roundabout).length + 1}`, type, pts: snapped, curve, line: streetLine(snapped, curve) };
+export function newStreet(plan: Plan, type: StreetType, nodes: PenNode[], curve: number): Street {
+  const s = { id: newId('S', plan.streets), name: `Street ${plan.streets.filter((x) => !x.roundabout).length + 1}`, type, curve } as Street;
+  return setStreetNodes(s, nodes);
+}
+
+/** Give a street new anchors and handles; its centreline follows. A roundabout's one node is its centre. */
+export function setStreetNodes(s: Street, nodes: PenNode[]): Street {
+  s.nodes = cloneNodes(nodes);
+  s.pts = s.nodes.map((n) => n.p);
+  s.line = s.roundabout
+    ? turf.lineString(turf.circle(s.pts[0], ringR(s.roundabout.diameterM), { units: 'meters', steps: 64 }).geometry.coordinates[0])
+    : turf.lineString(bezierPath(s.nodes));
+  return s;
+}
+
+/** Give an open space a new outline; its shape (with rounded corners, if set) follows. */
+export function setOpenNodes(o: OpenSpace, nodes: PenNode[]): OpenSpace {
+  o.nodes = cloneNodes(nodes);
+  o.pts = o.nodes.map((n) => n.p);
+  o.shape = roundedShape(bezierPath(o.nodes, true), o.round);
+  return o;
 }
 
 export function newRoundabout(plan: Plan, at: Position, type: StreetType, diameterM: number): Street {
   const centre = roundaboutSpot(at, plan.streets);
   const ring = turf.circle(centre, ringR(diameterM), { units: 'meters', steps: 64 }).geometry.coordinates[0];
   const n = plan.streets.filter((s) => s.roundabout).length + 1;
-  return { id: newId('S', plan.streets), name: `Roundabout ${n}`, type, pts: [centre], curve: 0, line: turf.lineString(ring), roundabout: { diameterM } };
+  return { id: newId('S', plan.streets), name: `Roundabout ${n}`, type, pts: [centre], nodes: nodesFrom([centre]), curve: 0, line: turf.lineString(ring), roundabout: { diameterM } };
 }
 
 /** Ends of a new street within 15 m of another street join it, making a junction. */

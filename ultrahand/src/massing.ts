@@ -21,6 +21,7 @@ export interface Block {
   use: Use;
   storeys: number;
   baseM: number; // starts above the ground (e.g. above a podium)
+  nodes?: import('./bezier').PenNode[]; // the outline as drawn with the pen, with any curve handles
 }
 
 export interface Assumptions {
