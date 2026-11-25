@@ -375,3 +375,7 @@ body.mp-mode #toast { bottom: 22px; }
 .mp-right > .mp-card { flex: none; }
 .mp-right > .mp-card:first-child { overflow: visible; }
 .mp-card #mpSchedule { overflow: visible; }
+.pen-measures { position: absolute; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
+.pen-m { position: absolute; left: 0; top: 0; background: rgba(20, 20, 20, 0.86); color: #fff; font-size: 11.5px; font-weight: 600; padding: 3px 7px; white-space: nowrap; }
+.pen-m.ang { background: #2433e0; }
+.mp-card[hidden] { display: none; }

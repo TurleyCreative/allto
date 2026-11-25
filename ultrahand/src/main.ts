@@ -4,7 +4,7 @@ import MapboxDraw from '@mapbox/mapbox-gl-draw';
 import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
 import * as turf from '@turf/turf';
 import * as SunCalc from 'suncalc';
-import type { Feature, FeatureCollection, Polygon, MultiPolygon, LineString, Position } from 'geojson';
+import type { Feature, FeatureCollection, Polygon, MultiPolygon, LineString, Position, Point } from 'geojson';
 import './style.css';
 
 import { DATASETS, fetchDataset, fetchPlanningAuthority, describe, entityUrl } from './planning';
@@ -14,7 +14,7 @@ import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
 import { siteDXF, siteOBJ, type ExportLine, type ExportBlock } from './export3d';
-import { createPen, type Snap, type SnapSources, type Editable } from './pen';
+import { createPen, type Snap, type SnapSources, type Editable, type Guide } from './pen';
 import { bezierPath, autoHandles, nearestOnPath, splitAt, samePlace, cloneNodes, node as penNode, type PenNode } from './bezier';
 import { TREE_TYPES, treeType, newTree, canopyR, treeSlices, plantAlong, fillWithTrees, treesGeoJSON, canopyShape, type TreeType, roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
@@ -167,7 +167,8 @@ function penDraw(kind: 'street' | 'open' | 'massing', closed: boolean, onDone: (
 /** What the pen can snap to: street nodes and centrelines, kerbs, the red line, spaces and blocks. */
 function penSources(exclude: string[]): SnapSources {
   const ex = new Set(exclude);
-  const points: SnapSources['points'] = [], lines: SnapSources['lines'] = [];
+  const points: SnapSources['points'] = [], lines: SnapSources['lines'] = [], guides: Guide[] = [];
+  const brg = (a: Position | Feature<Point>, b: Position | Feature<Point>) => turf.bearing(a as any, b as any);
   const ringsOf = (f: Feature<Polygon | MultiPolygon>) => (f.geometry.type === 'Polygon' ? f.geometry.coordinates : f.geometry.coordinates.flat());
   for (const s of S.plan.streets) {
     if (ex.has(s.id)) continue;
@@ -176,14 +177,40 @@ function penSources(exclude: string[]): SnapSources {
       lines.push({ coords: s.line.geometry.coordinates, label: `Join ${s.name}`, ref: { type: 'ring', id: s.id } });
       continue;
     }
-    s.nodes.forEach((n, i) => points.push({ p: n.p, label: i === 0 || i === s.nodes.length - 1 ? `Join the end of ${s.name}` : `Join ${s.name} here`, ref: { type: 'node', id: s.id, index: i } }));
+    // Guides: each end extends along the street, and every point has a line square to the street.
+    const len = turf.length(s.line, { units: 'meters' });
+    const tangent = (p: Position) => {
+      if (len < 2) return undefined;
+      const d = turf.nearestPointOnLine(s.line, p, { units: 'meters' }).properties.location ?? 0;
+      const a = turf.along(s.line, Math.max(0, d - 1), { units: 'meters' }), b = turf.along(s.line, Math.min(len, d + 1), { units: 'meters' });
+      return brg(a, b);
+    };
+    s.nodes.forEach((n, i) => points.push({ p: n.p, label: i === 0 || i === s.nodes.length - 1 ? `Join the end of ${s.name}` : `Join ${s.name} here`, ref: { type: 'node', id: s.id, index: i }, dir: tangent(n.p) }));
+    if (len > 4) {
+      const at = (d: number) => turf.along(s.line, Math.max(0, Math.min(len, d)), { units: 'meters' }).geometry.coordinates;
+      const start = s.nodes[0].p, end = s.nodes[s.nodes.length - 1].p;
+      const bs = brg(at(2), start), be = brg(at(len - 2), end);
+      guides.push({ p: start, bearing: bs, label: `Line of ${s.name}` }, { p: end, bearing: be, label: `Line of ${s.name}` });
+      guides.push({ p: start, bearing: bs + 90, both: true, label: `Square to ${s.name}` }, { p: end, bearing: be + 90, both: true, label: `Square to ${s.name}` });
+      s.nodes.slice(1, -1).forEach((n) => {
+        const near = turf.nearestPointOnLine(s.line, n.p, { units: 'meters' });
+        const d = near.properties.location ?? 0;
+        guides.push({ p: n.p, bearing: brg(at(d - 1), at(d + 1)) + 90, both: true, label: `Square to ${s.name}` });
+      });
+    }
     lines.push({ coords: s.line.geometry.coordinates, label: `New junction on ${s.name}`, ref: { type: 'street', id: s.id } });
   }
   const land = streetLand(S.plan.streets.filter((x) => !ex.has(x.id)));
   if (land) for (const r of ringsOf(land)) lines.push({ coords: r, label: 'Kerb', ref: { type: 'kerb' } });
+  // Straight edges (the red line, blocks) carry on as guides beyond their corners.
+  const edgeGuides = (ring: Position[], name: string) => {
+    if (ring.length > 40) return;
+    for (let i = 0; i < ring.length - 1; i++) if (turf.distance(ring[i], ring[i + 1], { units: 'meters' }) > 3) guides.push({ p: ring[i], bearing: brg(ring[i], ring[i + 1]), both: true, label: `Line of ${name}` });
+  };
   if (S.red) for (const r of ringsOf(S.red)) {
     r.slice(0, -1).forEach((p) => points.push({ p, label: 'Red line corner' }));
     lines.push({ coords: r, label: 'Red line' });
+    edgeGuides(r, 'the red line');
   }
   for (const o of S.plan.open) {
     if (ex.has(o.id)) continue;
@@ -193,9 +220,10 @@ function penSources(exclude: string[]): SnapSources {
   for (const b of S.blocks) {
     if (ex.has(b.id)) continue;
     b.shape.geometry.coordinates[0].slice(0, -1).forEach((p) => points.push({ p, label: `Corner of ${b.name}` }));
+    edgeGuides(b.shape.geometry.coordinates[0], b.name);
     lines.push({ coords: b.shape.geometry.coordinates[0], label: `Edge of ${b.name}` });
   }
-  return { points, lines };
+  return { points, lines, guides };
 }
 
 /** Anchors or handles moved on the map: the streets, spaces and blocks follow, and homes are laid out again. */
@@ -1515,6 +1543,31 @@ $('#mpExport').onclick = async () => {
   }
   exportDrawing(S.view === 'plan' ? 'plan' : 'axo');
 };
+
+// ---- guides
+const guidesSaved = (() => {
+  try {
+    return localStorage.getItem('ultrahand:guides') !== '0';
+  } catch {
+    return true;
+  }
+})();
+$<HTMLInputElement>('#mpGuides').checked = guidesSaved;
+pen.setGuides(guidesSaved);
+function setGuides(on: boolean) {
+  $<HTMLInputElement>('#mpGuides').checked = on;
+  pen.setGuides(on);
+  try {
+    localStorage.setItem('ultrahand:guides', on ? '1' : '0');
+  } catch { /* storage blocked */ }
+}
+$<HTMLInputElement>('#mpGuides').onchange = (e) => setGuides((e.target as HTMLInputElement).checked);
+document.addEventListener('keydown', (e) => {
+  if (!mpModeOn || e.key.toLowerCase() !== 'g' || e.ctrlKey || e.metaKey || e.altKey) return;
+  if ((e.target as HTMLElement)?.closest('input,select,textarea')) return;
+  setGuides(!$<HTMLInputElement>('#mpGuides').checked);
+  toast($<HTMLInputElement>('#mpGuides').checked ? 'Guides on: extensions, square lines and measurements.' : 'Guides off.');
+});
 
 // ---- sketch
 S.sketch = (() => {

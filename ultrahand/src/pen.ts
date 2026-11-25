@@ -6,10 +6,43 @@ import mapboxgl from 'mapbox-gl';
 import type { Feature, FeatureCollection, Position } from 'geojson';
 import { node, bezierPath, handleAt, offsetTo, samePlace, cloneNodes, nearestOnPath, splitAt, isCorner, type PenNode, type XY } from './bezier';
 
-export interface SnapPoint { p: Position; label: string; ref?: any }
+export interface SnapPoint { p: Position; label: string; ref?: any; dir?: number }
 export interface SnapLine { coords: Position[]; label: string; ref?: any }
-export interface SnapSources { points: SnapPoint[]; lines: SnapLine[] }
-export interface Snap { p: Position; label: string; kind: 'point' | 'line' | 'road' | 'angle' | 'none'; ref?: any }
+/** A guide: a line through p at a bearing (degrees). One way (an extension) unless both. */
+export interface Guide { p: Position; bearing: number; both?: boolean; label: string }
+export interface SnapSources { points: SnapPoint[]; lines: SnapLine[]; guides?: Guide[] }
+/** dir: the bearing of the line snapped to, for the angle where they meet. */
+export interface Snap { p: Position; label: string; kind: 'point' | 'line' | 'road' | 'guide' | 'angle' | 'none'; ref?: any; dir?: number }
+
+const KY = 110574;
+const kxAt = (lat: number) => 111320 * Math.cos((lat * Math.PI) / 180);
+/** Bearing (degrees) from a to b, on a flat local frame. */
+const bearingOf = (a: Position, b: Position) => (Math.atan2((b[0] - a[0]) * kxAt(a[1]), (b[1] - a[1]) * KY) * 180) / Math.PI;
+const distM = (a: Position, b: Position) => Math.hypot((b[0] - a[0]) * kxAt(a[1]), (b[1] - a[1]) * KY);
+const ahead = (p: Position, bearing: number, m: number): Position => {
+  const r = (bearing * Math.PI) / 180;
+  return [p[0] + (Math.sin(r) * m) / kxAt(p[1]), p[1] + (Math.cos(r) * m) / KY];
+};
+/** The direction a path arrives at anchor k (from its in-handle, or from the anchor before). */
+function arriving(nodes: PenNode[], k: number, closed: boolean): number | null {
+  const n = nodes[k];
+  if (n.i[0] || n.i[1]) return (Math.atan2(-n.i[0], -n.i[1]) * 180) / Math.PI;
+  const prev = k > 0 ? nodes[k - 1] : closed ? nodes[nodes.length - 1] : null;
+  return prev && distM(prev.p, n.p) > 0.5 ? bearingOf(prev.p, n.p) : null;
+}
+/** Guides from an anchor: straight on from the way the path arrives, and square to it. */
+export function anchorGuides(nodes: PenNode[], k: number, closed: boolean, name = 'the last point'): Guide[] {
+  const b = arriving(nodes, k, closed);
+  if (b == null) return [];
+  return [
+    { p: nodes[k].p, bearing: b, label: `Straight on from ${name}` },
+    { p: nodes[k].p, bearing: b + 90, both: true, label: `Square to ${name}` },
+  ];
+}
+const angleBetween = (a: number, b: number) => {
+  const d = Math.abs((((a - b) % 360) + 540) % 360 - 180);
+  return d; // 0–180
+};
 
 /** Something on the map whose anchors can be dragged. `handles`: show and edit its handles too. */
 export interface Editable { id: string; nodes: PenNode[]; closed: boolean; handles: boolean; kind: string; minNodes?: number }
@@ -52,6 +85,26 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
   let selAnchor: { id: string; index: number } | null = null;
   let space = false, shift = false, alt = false;
   let hoverCursor = false;
+  let guidesOn = true, noSnap = false;
+  let guideView: { a: mapboxgl.Point; d: [number, number]; t: number; both: boolean; on: boolean }[] = [];
+
+  // ---- measurements: small labels on the map while drawing and dragging
+  const measureBox = document.createElement('div');
+  measureBox.className = 'pen-measures';
+  map.getContainer().appendChild(measureBox);
+  function showMeasures(list: { at: Position; text: string; kind: 'len' | 'ang'; dy?: number }[]) {
+    while (measureBox.children.length < list.length) measureBox.appendChild(document.createElement('span'));
+    [...measureBox.children].forEach((el, i) => {
+      const m = list[i] as (typeof list)[number] | undefined;
+      const e = el as HTMLElement;
+      e.hidden = !m;
+      if (!m) return;
+      const q = map.project(m.at as [number, number]);
+      e.className = `pen-m ${m.kind}`;
+      e.textContent = m.text;
+      e.style.transform = `translate(${Math.round(q.x)}px, ${Math.round(q.y + (m.dy ?? 0))}px) translate(-50%, -50%)`;
+    });
+  }
 
   // ---- the hint by the cursor
   const hint = document.createElement('div');
@@ -83,27 +136,32 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
   }
 
   function nearestOnScreenLine(coords: Position[], P: mapboxgl.Point) {
-    let best = { d: Infinity, x: 0, y: 0 };
+    let best = { d: Infinity, x: 0, y: 0, i: 1 };
     let a = map.project(coords[0] as [number, number]);
     for (let i = 1; i < coords.length; i++) {
       const b = map.project(coords[i] as [number, number]);
       const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy || 1e-9;
       const u = Math.max(0, Math.min(1, ((P.x - a.x) * dx + (P.y - a.y) * dy) / L2));
       const x = a.x + dx * u, y = a.y + dy * u, d = Math.hypot(P.x - x, P.y - y);
-      if (d < best.d) best = { d, x, y };
+      if (d < best.d) best = { d, x, y, i };
       a = b;
     }
     return best;
   }
 
-  function snapAt(P: mapboxgl.Point, exclude: string[], prev: Position | null, extraPoints: SnapPoint[] = []): Snap {
+  function snapAt(P: mapboxgl.Point, exclude: string[], prev: Position | null, extraPoints: SnapPoint[] = [], own: Guide[] = []): Snap {
+    guideView = [];
+    if (noSnap) {
+      const ll = map.unproject(P);
+      return { p: [ll.lng, ll.lat], label: 'Snapping off (Ctrl)', kind: 'none' };
+    }
     const { src, boxes } = sources(exclude);
     // 1. points: junctions, ends, corners
     let best: Snap | null = null, bd = PX_POINT;
     for (const s of [...extraPoints, ...src.points]) {
       const q = map.project(s.p as [number, number]);
       const d = Math.hypot(q.x - P.x, q.y - P.y);
-      if (d < bd) ((bd = d), (best = { p: s.p, label: s.label, kind: 'point', ref: s.ref }));
+      if (d < bd) ((bd = d), (best = { p: s.p, label: s.label, kind: 'point', ref: s.ref, dir: s.dir }));
     }
     if (best) return best;
     // 2. lines: our streets, kerbs, the red line, edges of spaces
@@ -117,7 +175,7 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
       if (r.d < bd) {
         bd = r.d;
         const ll = map.unproject([r.x, r.y]);
-        best = { p: [ll.lng, ll.lat], label: l.label, kind: 'line', ref: l.ref };
+        best = { p: [ll.lng, ll.lat], label: l.label, kind: 'line', ref: l.ref, dir: bearingOf(l.coords[r.i - 1], l.coords[r.i]) };
       }
     });
     if (best) return best;
@@ -139,12 +197,54 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
         if (r.d < bd) {
           bd = r.d;
           const ll = map.unproject([r.x, r.y]);
-          best = { p: [ll.lng, ll.lat], label: `Existing road${f.properties?.name ? `: ${f.properties.name}` : ''}`, kind: 'road' };
+          best = { p: [ll.lng, ll.lat], label: `Existing road${f.properties?.name ? `: ${f.properties.name}` : ''}`, kind: 'road', dir: bearingOf(part[r.i - 1], part[r.i]) };
         }
       }
     }
     if (best) return best;
-    // 4. shift: keep to 15° steps from the last anchor
+    // 4. guides: extensions of streets and edges, lines square to them, straight on; where two cross first
+    if (guidesOn) {
+      const cands: { g: Guide; a: mapboxgl.Point; d: [number, number]; t: number; dist: number }[] = [];
+      for (const g of [...own, ...(src.guides ?? [])]) {
+        const a = map.project(g.p as [number, number]);
+        if (Math.hypot(a.x - P.x, a.y - P.y) > 900) continue;
+        const b = map.project(ahead(g.p, g.bearing, 30) as [number, number]);
+        const L = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const d: [number, number] = [(b.x - a.x) / L, (b.y - a.y) / L];
+        const t = (P.x - a.x) * d[0] + (P.y - a.y) * d[1];
+        if (!g.both && t < 6) continue;
+        const dist = Math.abs((P.x - a.x) * d[1] - (P.y - a.y) * d[0]);
+        if (dist < 40) cands.push({ g, a, d, t, dist });
+      }
+      cands.sort((x, y) => x.dist - y.dist);
+      const near = cands.slice(0, 6);
+      let hit: { x: number; y: number; on: number[] } | null = null, hd = 11;
+      for (let i = 0; i < near.length; i++)
+        for (let j = i + 1; j < near.length; j++) {
+          const A = near[i], B = near[j];
+          const den = A.d[0] * B.d[1] - A.d[1] * B.d[0];
+          if (Math.abs(den) < 0.15) continue; // nearly parallel
+          const s1 = ((B.a.x - A.a.x) * B.d[1] - (B.a.y - A.a.y) * B.d[0]) / den;
+          const s2 = ((B.a.x - A.a.x) * A.d[1] - (B.a.y - A.a.y) * A.d[0]) / den;
+          if ((!A.g.both && s1 < 0) || (!B.g.both && s2 < 0)) continue;
+          const x = A.a.x + A.d[0] * s1, y = A.a.y + A.d[1] * s1, dd = Math.hypot(x - P.x, y - P.y);
+          if (dd < hd) ((hd = dd), (hit = { x, y, on: [i, j] }));
+        }
+      const show = (on: number[]) => (guideView = near.filter((c) => c.dist < 40).map((c, i) => ({ a: c.a, d: c.d, t: c.t, both: !!c.g.both, on: on.includes(i) })));
+      if (hit) {
+        show(hit.on);
+        const ll = map.unproject([hit.x, hit.y]);
+        return { p: [ll.lng, ll.lat], label: hit.on.map((i) => near[i].g.label).join(' × '), kind: 'guide' };
+      }
+      if (near.length && near[0].dist < 8) {
+        show([0]);
+        const c = near[0];
+        const ll = map.unproject([c.a.x + c.d[0] * c.t, c.a.y + c.d[1] * c.t]);
+        return { p: [ll.lng, ll.lat], label: c.g.label, kind: 'guide', dir: c.g.bearing };
+      }
+      show([]);
+    }
+    // 5. shift: keep to 15° steps from the last anchor
     const ll = map.unproject(P);
     if (shift && prev) {
       const A = map.project(prev as [number, number]);
@@ -192,7 +292,78 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
       if (draw.cursor && draw.cursor.kind !== 'none' && draw.cursor.kind !== 'angle') f.push(pt(draw.cursor.p, { kind: 'snap' }));
     }
     if (drag?.snap && drag.snap.kind !== 'none') f.push(pt(drag.snap.p, { kind: 'snap' }));
+    // guide lines near the cursor, drawn from their origin to a little past it
+    if (guidesOn && (mode === 'draw' || drag) && !draw?.dragging)
+      for (const g of guideView) {
+        const from = g.both ? Math.min(0, g.t) - 220 : 0, to = Math.max(0, g.t) + 220;
+        const A = map.unproject([g.a.x + g.d[0] * from, g.a.y + g.d[1] * from]), B = map.unproject([g.a.x + g.d[0] * to, g.a.y + g.d[1] * to]);
+        f.push(ln([[A.lng, A.lat], [B.lng, B.lat]], { kind: g.on ? 'guide-on' : 'guide' }));
+      }
     (map.getSource('pen') as mapboxgl.GeoJSONSource | undefined)?.setData(fc(f));
+    showMeasures(guidesOn ? measures() : []);
+  }
+
+  /** Lengths and angles to show: the segment being drawn, the turn at the last point, the angle where streets meet. */
+  function measures(): { at: Position; text: string; kind: 'len' | 'ang'; dy?: number }[] {
+    const out: { at: Position; text: string; kind: 'len' | 'ang'; dy?: number }[] = [];
+    const len = (path: Position[]) => path.slice(1).reduce((a, q, i) => a + distM(path[i], q), 0);
+    /** The point halfway along a path. */
+    const mid = (path: Position[]): Position => {
+      let half = len(path) / 2;
+      for (let i = 1; i < path.length; i++) {
+        const d = distM(path[i - 1], path[i]);
+        if (d >= half) {
+          const t = d ? half / d : 0;
+          return [path[i - 1][0] + (path[i][0] - path[i - 1][0]) * t, path[i - 1][1] + (path[i][1] - path[i - 1][1]) * t];
+        }
+        half -= d;
+      }
+      return path[path.length - 1];
+    };
+    const fmt = (m: number) => (m < 100 ? `${m.toFixed(1)} m` : `${Math.round(m)} m`);
+    if (mode === 'draw' && draw) {
+      const n = draw.nodes;
+      if (!n.length || !draw.cursor) return out;
+      const last = n[n.length - 1];
+      if (draw.dragging) {
+        if (n.length >= 2) {
+          const seg = bezierPath([n[n.length - 2], last], false);
+          out.push({ at: mid(seg), text: `↔ ${fmt(len(seg))}`, kind: 'len' });
+        }
+        return out;
+      }
+      const seg = bezierPath([last, node(draw.cursor.p)], false);
+      const L = len(seg);
+      if (L > 0.5) out.push({ at: mid(seg), text: `↔ ${fmt(L)}`, kind: 'len' });
+      const out1 = seg.length > 1 ? bearingOf(seg[0], seg[1]) : null;
+      const inb = arriving(n, n.length - 1, false);
+      if (out1 != null && inb != null && L > 2) out.push({ at: ahead(last.p, inb + 180, 0), text: `∠ ${Math.round(180 - angleBetween(inb, out1))}°`, kind: 'ang' });
+      else if (out1 != null && n.length === 1 && draw.snaps[0]?.dir != null && L > 2) {
+        const a = angleBetween(draw.snaps[0].dir!, out1);
+        out.push({ at: last.p, text: `∠ ${Math.round(Math.min(a, 180 - a))}°`, kind: 'ang' });
+      }
+      if (draw.cursor.dir != null && (draw.cursor.kind === 'line' || draw.cursor.kind === 'road' || draw.cursor.kind === 'point') && seg.length > 1 && L > 2) {
+        const a = angleBetween(draw.cursor.dir, bearingOf(seg[seg.length - 2], seg[seg.length - 1]));
+        out.push({ at: draw.cursor.p, text: `∠ ${Math.round(Math.min(a, 180 - a))}°`, kind: 'ang' });
+      }
+      const total = len(bezierPath(n, false)) + L;
+      if (n.length >= 2) out.push({ at: draw.cursor.p, text: `Σ ${fmt(total)}`, kind: 'len', dy: -26 });
+      return out;
+    }
+    if (drag && drag.moved && !drag.handle && !drag.pull) {
+      for (const t of drag.targets) {
+        const e = editables.find((x) => x.id === t.id);
+        const ns = drag.live.get(t.id);
+        if (!e || !ns) continue;
+        for (const k of [t.index - 1, t.index + 1]) {
+          const j = e.closed ? (k + ns.length) % ns.length : k;
+          if (j < 0 || j >= ns.length || j === t.index) continue;
+          const seg = bezierPath(k < t.index ? [ns[j], ns[t.index]] : [ns[t.index], ns[j]], false);
+          out.push({ at: mid(seg), text: `↔ ${fmt(len(seg))}`, kind: 'len' });
+        }
+      }
+    }
+    return out;
   }
 
   // ---- hit testing editables
@@ -246,6 +417,41 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
     render();
   }
 
+  /** Guides from what is being drawn: straight on and square from the last point; for a shape, from the first too. */
+  function drawGuides(): Guide[] {
+    if (!draw || !guidesOn) return [];
+    const n = draw.nodes;
+    const g: Guide[] = n.length ? anchorGuides(n, n.length - 1, false) : [];
+    if (n.length >= 2) {
+      const b0 = n[0].o[0] || n[0].o[1] ? (Math.atan2(n[0].o[0], n[0].o[1]) * 180) / Math.PI : bearingOf(n[0].p, n[1].p);
+      g.push({ p: n[0].p, bearing: b0 + 180, label: 'Straight back from the first point' }, { p: n[0].p, bearing: b0 + 90, both: true, label: 'Square to the first point' });
+    }
+    return g;
+  }
+  /** Guides for a dragged point: straight on and square from its neighbours. */
+  function dragGuides(): Guide[] {
+    if (!drag || !guidesOn) return [];
+    const g: Guide[] = [];
+    for (const t of drag.targets) {
+      const e = editables.find((x) => x.id === t.id);
+      const ns = drag.orig.get(t.id);
+      if (!e || !ns || ns.length < 2) continue;
+      for (const step of [-1, 1]) {
+        const j = t.index + step, far = t.index + 2 * step;
+        const J = e.closed ? (j + ns.length) % ns.length : j, F = e.closed ? (far + ns.length) % ns.length : far;
+        if (J < 0 || J >= ns.length || J === t.index) continue;
+        if (F >= 0 && F < ns.length && F !== t.index) {
+          const b = bearingOf(ns[F].p, ns[J].p);
+          g.push({ p: ns[J].p, bearing: b, label: 'Straight on' }, { p: ns[J].p, bearing: b + 90, both: true, label: 'Square' });
+        } else {
+          const b = bearingOf(ns[J].p, ns[t.index].p);
+          g.push({ p: ns[J].p, bearing: b, label: 'Same line' });
+        }
+      }
+    }
+    return g;
+  }
+
   // ---- events
   map.on('mousedown', (e) => {
     if (e.originalEvent.button !== 0 || space) return;
@@ -259,7 +465,7 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
           return render();
         }
       }
-      const snap = snapAt(e.point, draw.opts.exclude ?? [], n.length ? n[n.length - 1].p : null);
+      const snap = snapAt(e.point, draw.opts.exclude ?? [], n.length ? n[n.length - 1].p : null, [], drawGuides());
       n.push(node(snap.p));
       draw.snaps.push(snap.kind === 'none' || snap.kind === 'angle' ? null : snap);
       draw.dragging = { index: n.length - 1, start: e.point, closing: false, moved: false };
@@ -294,7 +500,7 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
         showHint('Drag to shape the curve · Alt: one side only', e.point);
         return render();
       }
-      draw.cursor = snapAt(e.point, draw.opts.exclude ?? [], draw.nodes.length ? draw.nodes[draw.nodes.length - 1].p : null);
+      draw.cursor = snapAt(e.point, draw.opts.exclude ?? [], draw.nodes.length ? draw.nodes[draw.nodes.length - 1].p : null, [], drawGuides());
       const closing = draw.opts.closed && draw.nodes.length >= 3 && (() => {
         const q = map.project(draw!.nodes[0].p as [number, number]);
         return Math.hypot(q.x - e.point.x, q.y - e.point.y) < PX_POINT;
@@ -330,7 +536,7 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
         showHint('Pulling out handles', e.point);
       } else {
         const ids = [...new Set(drag.targets.map((t) => t.id))];
-        drag.snap = snapAt(e.point, ids, null);
+        drag.snap = snapAt(e.point, ids, null, [], dragGuides());
         for (const t of drag.targets) live(t.id)[t.index].p = drag.snap.p;
         showHint(drag.snap.label || (drag.targets.length > 1 ? 'Moving the junction' : 'Moving the point'), e.point);
       }
@@ -404,6 +610,7 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
     'keydown',
     (e) => {
       shift = e.shiftKey;
+      noSnap = e.ctrlKey || e.metaKey;
       alt = e.altKey;
       const typing = (e.target as HTMLElement)?.closest?.('input,select,textarea');
       if (typing) return;
@@ -447,6 +654,7 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
     'keyup',
     (e) => {
       shift = e.shiftKey;
+      noSnap = e.ctrlKey || e.metaKey;
       alt = e.altKey;
       if (e.key === ' ' && space) {
         space = false;
@@ -476,6 +684,8 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
           'circle-emissive-strength': 1,
         } as any,
       });
+      map.addLayer({ id: 'pen-guide', type: 'line', source: 'pen', filter: k('guide'), paint: { 'line-color': '#2433e0', 'line-width': 1, 'line-opacity': 0.35, 'line-dasharray': [3, 3], 'line-emissive-strength': 1 } as any });
+      map.addLayer({ id: 'pen-guide-on', type: 'line', source: 'pen', filter: k('guide-on'), paint: { 'line-color': '#f08a1c', 'line-width': 1.4, 'line-dasharray': [4, 2], 'line-emissive-strength': 1 } as any });
       map.addLayer({ id: 'pen-snap', type: 'circle', source: 'pen', filter: k('snap'), paint: { 'circle-radius': 8, 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': '#f08a1c', 'circle-stroke-width': 2, 'circle-emissive-strength': 1 } as any });
       render();
     },
@@ -510,6 +720,12 @@ export function createPen(map: mapboxgl.Map, deps: PenDeps) {
       srcCache = null;
     },
     snapAt,
+    /** Guides and measurements on or off. */
+    setGuides(on: boolean) {
+      guidesOn = on;
+      guideView = [];
+      render();
+    },
   };
 }
 export type Pen = ReturnType<typeof createPen>;
