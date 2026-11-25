@@ -205,3 +205,52 @@ export function distanceTo(g: Graph, dist: Float64Array, p: XY, max = 150): numb
   const d = Math.min(via(hit.a), via(hit.b)) + off;
   return isFinite(d) ? d : null;
 }
+
+/**
+ * Add drawn streets and paths to a street network. Where a drawn line crosses an existing street (or
+ * another drawn line) both get a point there, so the walk can turn at the crossing; drawn ends that stop
+ * on or near a street are joined by buildGraph as usual.
+ */
+export function withDrawn(base: { coords: number[][] }[], drawn: number[][][], frame: LocalFrame): { coords: number[][] }[] {
+  const all = [...base.map((l) => l.coords), ...drawn].map((c) => c.map((p) => frame.toLocal(p)));
+  const firstDrawn = base.length;
+  const box = (c: XY[]) => {
+    let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+    for (const p of c) ((w = Math.min(w, p[0])), (e = Math.max(e, p[0])), (s = Math.min(s, p[1])), (n = Math.max(n, p[1])));
+    return [w, s, e, n];
+  };
+  const boxes = all.map(box);
+  const inserts = all.map(() => [] as { seg: number; t: number; p: XY }[]);
+  for (let d = firstDrawn; d < all.length; d++) {
+    const D = all[d], bd = boxes[d];
+    for (let o = 0; o < all.length; o++) {
+      if (o === d || (o >= firstDrawn && o < d)) continue; // each drawn pair once
+      const bo = boxes[o];
+      if (bo[0] > bd[2] || bo[2] < bd[0] || bo[1] > bd[3] || bo[3] < bd[1]) continue;
+      const O = all[o];
+      for (let i = 0; i < D.length - 1; i++)
+        for (let j = 0; j < O.length - 1; j++) {
+          const [a, b] = [D[i], D[i + 1]], [c, e] = [O[j], O[j + 1]];
+          const r = [b[0] - a[0], b[1] - a[1]], s = [e[0] - c[0], e[1] - c[1]];
+          const den = r[0] * s[1] - r[1] * s[0];
+          if (Math.abs(den) < 1e-9) continue;
+          const t = ((c[0] - a[0]) * s[1] - (c[1] - a[1]) * s[0]) / den;
+          const u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+          if (t <= 0.001 || t >= 0.999 || u <= 0.001 || u >= 0.999) continue;
+          const p: XY = [a[0] + r[0] * t, a[1] + r[1] * t];
+          inserts[d].push({ seg: i, t, p });
+          inserts[o].push({ seg: j, t: u, p });
+        }
+    }
+  }
+  return all.map((c, k) => {
+    const ins = inserts[k].sort((x, y) => x.seg - y.seg || x.t - y.t);
+    const out: XY[] = [];
+    let q = 0;
+    for (let i = 0; i < c.length; i++) {
+      out.push(c[i]);
+      while (q < ins.length && ins[q].seg === i) out.push(ins[q++].p);
+    }
+    return { coords: out.map((p) => frame.toLngLat(p)) };
+  });
+}

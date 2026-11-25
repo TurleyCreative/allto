@@ -9,7 +9,7 @@ import './style.css';
 
 import { DATASETS, fetchDataset, fetchPlanningAuthority, describe, entityUrl } from './planning';
 import { fetchStreets, fetchPoisFromTiles, fetchWalkNetwork } from './tiles';
-import { buildGraph, walkFrom, walkPieces, distanceTo, WALK_SPEED, BANDS } from './walk';
+import { buildGraph, walkFrom, walkPieces, distanceTo, withDrawn, WALK_SPEED, BANDS } from './walk';
 import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
@@ -1512,7 +1512,7 @@ map.on('draw.modechange', () => setTimeout(renderTiles, 0));
 
 function setMpMode(on: boolean) {
   mpModeOn = on;
-  if (!on) pen.cancel();
+  if (!on) (pen.cancel(), (S.mpSel = null));
   document.body.classList.toggle('mp-mode', on);
   $('#mpMode').hidden = !on;
   setPick(null);
@@ -1992,7 +1992,7 @@ async function transitAccess(seq: number) {
       const c = turf.centroid(S.study).geometry.coordinates;
       const frame = new LocalFrame(c[0], c[1]);
       const lines = await fetchWalkNetwork(turf.bbox(area), TOKEN);
-      walkNet = { study: S.study, frame, graph: buildGraph(lines, frame) };
+      walkNet = { study: S.study, frame, lines, graph: buildGraph(lines, frame) };
     }
     if (seq !== analyseSeq) return;
     const { graph, frame } = walkNet;
@@ -2705,7 +2705,17 @@ function pointInRing(p: XY, r: XY[]) {
 // ---------------------------------------------------------------- walking reach from a point
 // Click a spot in the study area: the streets you can walk to in 5, 10 and 15 minutes spread out
 // from it, along the real street network at 80 m a minute.
-let walkNet: { study: PolyF; frame: LocalFrame; graph: ReturnType<typeof buildGraph> } | null = null;
+let walkNet: { study: PolyF; frame: LocalFrame; lines: { coords: number[][] }[]; graph: ReturnType<typeof buildGraph> } | null = null;
+/** Walk along the drawn masterplan streets and paths too (remembered in this browser). */
+let walkDrawn = (() => {
+  try {
+    return localStorage.getItem('ultrahand:walkDrawn') === '1';
+  } catch {
+    return false;
+  }
+})();
+let walkUsedDrawn = false;
+const drawnLines = () => S.plan.streets.flatMap((s) => streetPieces(s, S.plan.streets));
 let walkMarker: mapboxgl.Marker | null = null;
 let walkRAF = 0;
 let walkSeq = 0;
@@ -2729,9 +2739,13 @@ async function walkFromPoint(ll: [number, number]) {
       const frame = new LocalFrame(c[0], c[1]);
       const lines = await fetchWalkNetwork(turf.bbox(area), TOKEN);
       if (seq !== walkSeq) return;
-      walkNet = { study: S.study, frame, graph: buildGraph(lines, frame) };
+      walkNet = { study: S.study, frame, lines, graph: buildGraph(lines, frame) };
     }
-    const { graph, frame } = walkNet;
+    const { frame } = walkNet;
+    // With drawn streets on, the network is rebuilt from the existing streets plus the plan as it is now.
+    const drawn = walkDrawn ? drawnLines() : [];
+    walkUsedDrawn = drawn.length > 0;
+    const graph = drawn.length ? buildGraph(withDrawn(walkNet.lines, drawn, frame), frame) : walkNet.graph;
     const res = walkFrom(graph, frame.toLocal(ll), WALK_LIMIT);
     if (!res) return (clearWalk(), toast('No street within 250 m of that spot.'));
     const { fc, lengthIn } = walkPieces(graph, res.dist, frame, WALK_LIMIT);
@@ -2788,9 +2802,19 @@ function renderWalkKey() {
       `<div class="wpal">${Object.entries(WALK_PALETTES)
         .map(([name, c]) => `<button data-pal="${name}" title="${name}" aria-label="${name} colours" style="background:linear-gradient(90deg,${c[0]} 0 33%,${c[1]} 33% 66%,${c[2]} 66%)"></button>`)
         .join('')}</div>` +
-      `<p class="muted">Along streets and footpaths at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Press Walk from a point to start somewhere else.</p>`,
+      (S.plan.streets.length
+        ? `<label class="wdrawn"><input type="checkbox" id="walkDrawn" ${walkDrawn ? 'checked' : ''}> Include drawn streets and paths <span class="muted">(${S.plan.streets.length})</span></label>`
+        : '') +
+      `<p class="muted">Along ${walkUsedDrawn ? 'existing and drawn ' : ''}streets and footpaths at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Press Walk from a point to start somewhere else.</p>`,
   );
   const el = $('#walkPanel');
+  el.querySelector<HTMLInputElement>('#walkDrawn')?.addEventListener('change', (e) => {
+    walkDrawn = (e.target as HTMLInputElement).checked;
+    try {
+      localStorage.setItem('ultrahand:walkDrawn', walkDrawn ? '1' : '0');
+    } catch { /* storage blocked */ }
+    if (walkMarker) walkFromPoint(walkMarker.getLngLat().toArray() as [number, number]);
+  });
   el.querySelectorAll<HTMLInputElement>('[data-band]').forEach((cb) =>
     cb.addEventListener('change', () => {
       walkStyle.on[+cb.dataset.band!] = cb.checked;
@@ -3082,6 +3106,7 @@ function siteContext() {
         ? {
             from: { lng: r6(walkMarker.getLngLat().lng), lat: r6(walkMarker.getLngLat().lat) },
             speedKmh: 4.8,
+            includesDrawnStreets: walkUsedDrawn,
             bands: BANDS.map((b) => ({ minutes: b, metres: b * WALK_SPEED, streetsAndPathsKm: r1(lastWalk!.lengthIn[b] / 1000) })),
           }
         : null,
