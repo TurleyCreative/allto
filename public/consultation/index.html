@@ -306,6 +306,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
       <div class="mo"><h4><span class="ico-h" data-icon="accessibility" data-icon-size="15"></span>Accessibility Checklist</h4><p>A quick check before you publish. This never blocks export — it's just a heads-up.</p>
         <div id="a11y-checklist-list" style="margin-top:10px"></div>
       </div>
+      <div class="mo" id="mo-poll" style="display:none"></div>
       <div class="mo" id="mo-dl"><h4><span class="ico-h" data-icon="download" data-icon-size="15"></span>Download HTML File</h4><p>A single self-contained file. Upload to GitHub Pages to publish.</p></div>
       <div class="mo"><h4><span class="ico-h" data-icon="save" data-icon-size="15"></span>Project Data (JSON)</h4><p>Save your project settings as a JSON file to back up, version control, or hand off to a colleague.</p>
         <div style="display:flex;gap:8px;margin-top:10px">
@@ -824,6 +825,7 @@ function migrateProject(data) {
     }];
   }
   delete data.codesignOptions; delete data.codesignSheetdbUrl; delete data.codesignReadUrl;
+  (data.codesignGroups||[]).forEach(function(g){ cdEnsure(g); });
   data.zones.forEach(function(z){
     if(z.codesignGroupId===undefined) z.codesignGroupId = (_cdMigratedGroupId && z.codesign) ? _cdMigratedGroupId : null;
     delete z.codesign;
@@ -2431,7 +2433,7 @@ function bindTopbar() {
   el('tt-seo').addEventListener('click', function() { switchMain('seo'); });
   el('tt-about').addEventListener('click', openAboutModal);
   el('btn-theme-toggle').addEventListener('click', toggleTheme);
-  el('btn-export').addEventListener('click', function() { el('em').classList.add('on'); renderA11yChecklist(); });
+  el('btn-export').addEventListener('click', function() { el('em').classList.add('on'); renderA11yChecklist(); renderPollExports(); });
   el('btn-about-close').addEventListener('click', closeAboutModal);
   el('about-modal').addEventListener('click', function(e) { if(e.target.id === 'about-modal') closeAboutModal(); });
   document.addEventListener('keydown', function(e) {
@@ -4007,7 +4009,9 @@ function renderZoneEditor(i) {
     html += '<div class="rs"><div class="f"><label class="fl">Participatory budget'+infoBtn('Lets visitors click this plot and pick a use from that budget\'s options (Settings > Co-Design). Takes priority over the lightbox below while a use hasn’t been picked yet. "None" leaves this plot out of co-design entirely.')+'</label><select id="zn-cd-group">'
       + '<option value=""'+(!z.codesignGroupId?' selected':'')+'>None</option>'
       + P.codesignGroups.map(function(g){ return '<option value="'+h(g.id)+'"'+(z.codesignGroupId===g.id?' selected':'')+'>'+h(g.label||'Budget')+'</option>'; }).join('')
-      + '</select></div></div>';
+      + '</select></div>'
+      + (z.codesignGroupId ? '<div class="f"><label class="fl">Plot area (m²)'+infoBtn('Used for costs and value in the budget. Leave blank to use the area of the shape you drew; type a figure to use the true net area instead.')+'</label><input type="number" id="zn-cd-area" value="'+(z.areaM2!=null&&z.areaM2!==''?h(z.areaM2):'')+'" placeholder="Drawn area: '+Math.round(zoneAreaM2(Object.assign({}, z, {areaM2:null}))).toLocaleString('en-GB')+' m²"/></div>' : '')
+      + '</div>';
   }
   // Lightbox section
   var zlb = z.lightbox || {};
@@ -4072,6 +4076,8 @@ function renderZoneEditor(i) {
     markDirty(); renderZoneEditor(i);
   });
   bindInput('zn-cd-group', function(v){ P.zones[i].codesignGroupId = v || null; renderZoneEditor(i); });
+  var znArea = el('zn-cd-area');
+  if(znArea) znArea.addEventListener('input', function(){ P.zones[i].areaM2 = cdNum(this.value); markDirty(); });
   var tog3d = el('zn-3d-tog');
   if(tog3d) tog3d.addEventListener('click', function(){
     P.zones[i].render3d = !P.zones[i].render3d;
@@ -4175,6 +4181,534 @@ function bindSdbTest(btnId, inputId, statusId, mode) {
 // ═══════════════════════════════════════════════════
 //  SETTINGS
 // ═══════════════════════════════════════════════════
+// ── PARTICIPATORY BUDGETS: categories, money and plot areas ──
+// A budget's uses can sit under parent categories (Hotel, Food & Beverage, ...). Each use can carry a
+// cost and a value per m²: applied to a plot's area, a pick either pays for itself or needs subsidy.
+function cdEnsure(g) {
+  if (!g.categories) g.categories = [];
+  if (!g.money) g.money = { on: false, currency: '£', cap: null, blockOverCap: false, showVoters: true };
+  if (!g.poll) g.poll = { title: '', intro: '', showResults: true };
+  (g.options || []).forEach(function(o) { if (o.categoryId === undefined) o.categoryId = null; });
+  return g;
+}
+function cdNum(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[£$€,\s]/g, '')); return isFinite(n) ? n : null; }
+/** A plot's area in m²: the figure typed on the zone, else its drawn shape. */
+function zoneAreaM2(z) {
+  if (z && cdNum(z.areaM2) != null) return cdNum(z.areaM2);
+  var r = (z && z.coordinates) || [];
+  if (r.length < 3) return 0;
+  var lat0 = r[0][1] * Math.PI / 180, kx = 111320 * Math.cos(lat0), ky = 110574, a = 0;
+  for (var i = 0; i < r.length; i++) {
+    var p = r[i], q = r[(i + 1) % r.length];
+    a += (p[0] * kx) * (q[1] * ky) - (q[0] * kx) * (p[1] * ky);
+  }
+  return Math.abs(a / 2);
+}
+/** A lighter or darker version of a colour, for the uses under one category. */
+function cdShade(hex, t) {
+  var c = (hex || '#888888').replace('#', ''), out = '#';
+  for (var i = 0; i < 3; i++) {
+    var v = parseInt(c.substr(i * 2, 2), 16);
+    v = t >= 0 ? v + (255 - v) * t : v * (1 + t);
+    out += ('0' + Math.round(Math.max(0, Math.min(255, v))).toString(16)).slice(-2);
+  }
+  return out;
+}
+var CD_CAT_COLOURS = ['#b07cc6', '#4a90c9', '#e0b93b', '#5aa86b', '#e08a5a', '#d4524f', '#6f8fb3', '#8c8c8c'];
+/**
+ * Rows pasted from a spreadsheet: Category, Use, [Cost per m²], [Value per m²]. A blank category carries
+ * the one above down (merged cells paste that way). A header row is skipped.
+ */
+function cdParsePaste(text) {
+  // Excel pastes tab-separated (and its numbers may hold commas: "2,800"); fall back to ; or , otherwise.
+  var rows = String(text || '').split(/\r?\n/).map(function(l) {
+    var parts = l.indexOf('\t') >= 0 ? l.split('\t') : l.indexOf(';') >= 0 ? l.split(';') : l.split(',');
+    return parts.map(function(c) { return c.replace(/^"|"$/g, '').trim(); });
+  })
+    .filter(function(r) { return r.some(function(c) { return c; }); });
+  if (rows.length && /categor/i.test(rows[0][0] || '') && /use/i.test(rows[0][1] || '')) rows.shift();
+  var cats = [], opts = [], cur = null;
+  rows.forEach(function(r, i) {
+    var cat = r.length > 1 ? r[0] : '', use = r.length > 1 ? r[1] : r[0];
+    if (cat) {
+      cur = cats.filter(function(c) { return c.label.toLowerCase() === cat.toLowerCase(); })[0];
+      if (!cur) { cur = { id: 'cc' + Date.now() + '_' + cats.length, label: cat, color: CD_CAT_COLOURS[cats.length % CD_CAT_COLOURS.length] }; cats.push(cur); }
+    }
+    if (!use) return;
+    opts.push({ id: 'co' + Date.now() + '_' + i, label: use, icon: '', categoryId: cur ? cur.id : null, costM2: cdNum(r[2]), valueM2: cdNum(r[3]) });
+  });
+  // Uses take shades of their category's colour.
+  cats.forEach(function(c) {
+    var mine = opts.filter(function(o) { return o.categoryId === c.id; });
+    mine.forEach(function(o, k) { o.color = cdShade(c.color, mine.length > 1 ? -0.25 + (0.6 * k) / (mine.length - 1) : 0); });
+  });
+  opts.forEach(function(o) { if (!o.color) o.color = '#888888'; });
+  return { categories: cats, options: opts };
+}
+function cdMoneyFmt(g, v) {
+  var cur = (g.money && g.money.currency) || '£', a = Math.abs(v);
+  var s = a >= 1e6 ? (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm' : a >= 1e3 ? Math.round(a / 1e3) + 'k' : String(Math.round(a));
+  return (v < 0 ? '−' : '') + cur + s;
+}
+
+/** The categories, uses, money and poll settings of one budget card in Settings. */
+function cdGroupBodyHTML(g, gi) {
+  cdEnsure(g);
+  var m = g.money, html = '';
+  // Categories
+  html += '<div class="f"><label class="fl">Categories' + infoBtn('Optional parent categories, e.g. Hotel, Food &amp; Beverage, Retail. Voters see uses grouped under them, and results add up by category too.') + '</label>';
+  g.categories.forEach(function(c, ci) {
+    html += '<div class="cr" style="margin-bottom:6px">'
+      + '<input type="color" class="cd-cat-color" value="' + h(c.color) + '" data-gi="' + gi + '" data-ci="' + ci + '"/>'
+      + '<input type="text" class="cd-cat-label" value="' + h(c.label) + '" data-gi="' + gi + '" data-ci="' + ci + '" style="flex:1" placeholder="Category"/>'
+      + '<button class="ib cd-cat-del" data-gi="' + gi + '" data-ci="' + ci + '" aria-label="Remove category">' + lucideSVG('trash-2', 12, 'currentColor') + '</button></div>';
+  });
+  html += '<button class="btn btn-g btn-ic cd-add-cat" data-gi="' + gi + '" style="width:100%;justify-content:center;margin-top:2px">' + lucideSVG('plus', 13, 'currentColor') + 'Add category</button></div>';
+  // Uses
+  html += '<div class="f"><label class="fl">Uses' + infoBtn('Click the circle to pick an icon — shown as a badge on the plot once picked, in the picker, and in the results legend.' + (m.on ? ' Cost and value are per m² of the plot: a use whose value covers its cost pays for itself; one that doesn’t needs the difference as subsidy. Leave value blank for uses that are fully subsidised.' : '')) + '</label>';
+  if (m.on) html += '<div class="cr" style="font-size:10px;color:var(--ghost);gap:6px;margin-bottom:4px"><span style="flex:1">' + (g.categories.length ? 'Each use: category, then' : 'Each use:') + '</span><span style="width:78px">Cost ' + h(m.currency || '£') + '/m²</span><span style="width:78px">Value ' + h(m.currency || '£') + '/m²</span></div>';
+  html += '<div class="cd-opts-list" data-gi="' + gi + '">';
+  var order = g.categories.map(function(c) { return c.id; }).concat([null]);
+  order.forEach(function(cid) {
+    var cat = g.categories.filter(function(c) { return c.id === cid; })[0];
+    var opts = (g.options || []).map(function(o, oi) { return { o: o, oi: oi }; }).filter(function(x) { return (x.o.categoryId || null) === cid || (cid === null && !g.categories.some(function(c) { return c.id === x.o.categoryId; })); });
+    if (!opts.length) return;
+    if (g.categories.length) html += '<div style="font-size:10px;font-weight:600;margin:10px 0 4px;display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:' + h(cat ? cat.color : '#888') + '"></span>' + h(cat ? cat.label : 'No category') + '</div>';
+    opts.forEach(function(x) {
+      var opt = x.o, oi = x.oi;
+      html += '<div style="margin-bottom:6px"><div class="cr">'
+        + '<input type="color" class="cd-opt-color" value="' + h(opt.color) + '" data-gi="' + gi + '" data-oi="' + oi + '"/>'
+        + '<input type="text" class="cd-opt-label" value="' + h(opt.label) + '" data-gi="' + gi + '" data-oi="' + oi + '" style="flex:1;min-width:0" placeholder="Label"/>'
+        + '<button type="button" class="cd-opt-icon-btn icon-pick-anchor" data-gi="' + gi + '" data-oi="' + oi + '" title="Choose icon" aria-label="Choose icon" style="width:30px;height:30px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--border2);background:' + h(opt.color) + ';display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0">'
+        + (opt.icon && isLucide(opt.icon) ? lucideSVG(opt.icon, 15, '#fff') : '') + '</button>'
+        + '<button class="ib cd-opt-del" data-gi="' + gi + '" data-oi="' + oi + '" aria-label="Remove option">' + lucideSVG('trash-2', 12, 'currentColor') + '</button></div>';
+      if (g.categories.length || m.on) {
+        html += '<div class="cr" style="margin-top:4px;gap:6px">';
+        if (g.categories.length) html += '<select class="cd-opt-cat" data-gi="' + gi + '" data-oi="' + oi + '" style="flex:1;min-width:0;font-size:11px">' + '<option value="">No category</option>' + g.categories.map(function(c) { return '<option value="' + h(c.id) + '"' + (opt.categoryId === c.id ? ' selected' : '') + '>' + h(c.label) + '</option>'; }).join('') + '</select>';
+        if (m.on) html += '<input type="number" class="cd-opt-cost" data-gi="' + gi + '" data-oi="' + oi + '" value="' + (opt.costM2 != null ? opt.costM2 : '') + '" placeholder="Cost/m²" title="Cost to deliver, per m²" style="width:78px;font-size:11px"/>'
+          + '<input type="number" class="cd-opt-val" data-gi="' + gi + '" data-oi="' + oi + '" value="' + (opt.valueM2 != null ? opt.valueM2 : '') + '" placeholder="Value/m²" title="What it brings back, per m² (sales or capitalised rent); blank if none" style="width:78px;font-size:11px"/>';
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  });
+  html += '</div>';
+  html += '<button class="btn btn-g btn-ic cd-add-opt" data-gi="' + gi + '" style="width:100%;justify-content:center;margin-top:4px">' + lucideSVG('plus', 13, 'currentColor') + 'Add use</button>';
+  html += '<details style="margin-top:8px"><summary style="font-size:11px;cursor:pointer">Paste categories and uses from a spreadsheet</summary>'
+    + '<p style="font-size:11px;line-height:1.5;margin:6px 0">Copy the cells from Excel and paste them here: <b>Category, Use</b>, and optionally <b>Cost per m², Value per m²</b>. Merged category cells are fine. This replaces this budget’s categories and uses.</p>'
+    + '<textarea class="cd-paste" data-gi="' + gi + '" style="min-height:90px;font-family:var(--mono);font-size:11px" placeholder="Hotel\t3 Star Hotel\t2800\t3100&#10;\t4 Star Boutique Hotel\t3400\t3900"></textarea>'
+    + '<button class="btn btn-g btn-ic cd-paste-go" data-gi="' + gi + '" style="width:100%;justify-content:center;margin-top:6px">' + lucideSVG('check', 13, 'currentColor') + 'Use these</button></details>';
+  html += '</div>';
+  // Money
+  html += '<div class="lr" style="margin:10px 0 8px"><span class="ll">Costs and funding' + infoBtn('Give each use a cost and a value per m². Each plot’s pick, and the whole scenario, then reads as self-funding or as needing subsidy (the cost not covered by value).') + '</span><button class="tg' + (m.on ? ' on' : '') + '" id="cfg-cd-money-' + gi + '"></button></div>';
+  if (m.on) {
+    html += '<div class="cr" style="gap:8px;margin-bottom:8px"><div class="f" style="flex:0 0 70px;margin:0"><label class="fl">Currency</label><input type="text" id="cfg-cd-cur-' + gi + '" value="' + h(m.currency || '£') + '"/></div>'
+      + '<div class="f" style="flex:1;margin:0"><label class="fl">Subsidy available' + infoBtn('Optional. The most subsidy the scheme can carry. Voters see how their picks compare with it.') + '</label><input type="number" id="cfg-cd-cap-' + gi + '" value="' + (m.cap != null ? m.cap : '') + '" placeholder="No limit"/></div></div>';
+    html += '<div class="lr" style="margin-bottom:6px"><span class="ll">Show costs to voters</span><button class="tg' + (m.showVoters !== false ? ' on' : '') + '" id="cfg-cd-showmoney-' + gi + '"></button></div>';
+    if (m.cap != null) html += '<div class="lr" style="margin-bottom:6px"><span class="ll">Voters can’t submit over the subsidy available</span><button class="tg' + (m.blockOverCap ? ' on' : '') + '" id="cfg-cd-block-' + gi + '"></button></div>';
+  }
+  // Presentation poll
+  html += '<details style="margin-top:8px"><summary style="font-size:11px;cursor:pointer">Presentation poll</summary>'
+    + '<p style="font-size:11px;line-height:1.5;margin:6px 0">A phone page for a QR code on a slide: no navigation, just your text, the map and the plots. Download it from <b>Export</b>; open it with <b>?results</b> on the big screen for live results and the QR code.</p>'
+    + '<div class="f"><label class="fl">Title</label><input type="text" id="cfg-cd-ptitle-' + gi + '" value="' + h(g.poll.title || '') + '" placeholder="' + h(g.label || 'Have your say') + '"/></div>'
+    + '<div class="f"><label class="fl">Introduction</label><textarea id="cfg-cd-pintro-' + gi + '" style="min-height:70px" placeholder="What the plots are, what you’d like people to do, and that it’s anonymous.">' + h(g.poll.intro || '') + '</textarea></div>'
+    + '<div class="lr"><span class="ll">Show results to voters after they vote</span><button class="tg' + (g.poll.showResults !== false ? ' on' : '') + '" id="cfg-cd-pres-' + gi + '"></button></div>'
+    + '</details>';
+  return html;
+}
+
+function bindCdGroupBodies() {
+  var G = function(e) { return P.codesignGroups[parseInt(e.dataset.gi)]; };
+  var redraw = function() { markDirty(); renderSettings(); };
+  document.querySelectorAll('.cd-cat-color').forEach(function(inp) { inp.addEventListener('change', function() { G(this).categories[+this.dataset.ci].color = this.value; redraw(); }); });
+  document.querySelectorAll('.cd-cat-label').forEach(function(inp) { inp.addEventListener('input', function() { G(this).categories[+this.dataset.ci].label = this.value; markDirty(); }); });
+  document.querySelectorAll('.cd-cat-del').forEach(function(b) { b.addEventListener('click', function() { var g = G(this), c = g.categories[+this.dataset.ci]; g.categories.splice(+this.dataset.ci, 1); g.options.forEach(function(o) { if (o.categoryId === c.id) o.categoryId = null; }); redraw(); }); });
+  document.querySelectorAll('.cd-add-cat').forEach(function(b) { b.addEventListener('click', function() { var g = G(this); g.categories.push({ id: 'cc' + Date.now(), label: 'New category', color: CD_CAT_COLOURS[g.categories.length % CD_CAT_COLOURS.length] }); redraw(); }); });
+  document.querySelectorAll('.cd-opt-cat').forEach(function(s) { s.addEventListener('change', function() { G(this).options[+this.dataset.oi].categoryId = this.value || null; redraw(); }); });
+  document.querySelectorAll('.cd-opt-cost').forEach(function(s) { s.addEventListener('input', function() { G(this).options[+this.dataset.oi].costM2 = cdNum(this.value); markDirty(); }); });
+  document.querySelectorAll('.cd-opt-val').forEach(function(s) { s.addEventListener('input', function() { G(this).options[+this.dataset.oi].valueM2 = cdNum(this.value); markDirty(); }); });
+  document.querySelectorAll('.cd-paste-go').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var g = G(this), ta = document.querySelector('.cd-paste[data-gi="' + this.dataset.gi + '"]');
+      var r = cdParsePaste(ta ? ta.value : '');
+      if (!r.options.length) return alert('Nothing to use: paste rows of Category and Use.');
+      if ((g.options || []).length && !confirm('Replace this budget’s ' + g.options.length + ' uses with the ' + r.options.length + ' pasted?')) return;
+      g.categories = r.categories;
+      g.options = r.options;
+      if (r.options.some(function(o) { return o.costM2 != null || o.valueM2 != null; })) g.money.on = true;
+      redraw();
+    });
+  });
+  (P.codesignGroups || []).forEach(function(g, gi) {
+    cdEnsure(g);
+    var tg = function(id, fn) { var e = el(id); if (e) e.addEventListener('click', function() { fn(); redraw(); }); };
+    tg('cfg-cd-money-' + gi, function() { g.money.on = !g.money.on; });
+    tg('cfg-cd-showmoney-' + gi, function() { g.money.showVoters = g.money.showVoters === false; });
+    tg('cfg-cd-block-' + gi, function() { g.money.blockOverCap = !g.money.blockOverCap; });
+    tg('cfg-cd-pres-' + gi, function() { g.poll.showResults = g.poll.showResults === false; });
+    bindInput('cfg-cd-cur-' + gi, function(v) { g.money.currency = v || '£'; });
+    var cap = el('cfg-cd-cap-' + gi);
+    if (cap) cap.addEventListener('change', function() { g.money.cap = cdNum(this.value); redraw(); });
+    bindInput('cfg-cd-ptitle-' + gi, function(v) { g.poll.title = v; });
+    var intro = el('cfg-cd-pintro-' + gi);
+    if (intro) intro.addEventListener('input', function() { g.poll.intro = this.value; markDirty(); });
+  });
+}
+
+// ── PRESENTATION POLL: a phone page for one participatory budget, and its live results screen ──
+// Exported as its own HTML file. Voters (from a QR code on a slide) see the text, the map and the
+// plots, pick a use for each, see what their scenario costs, and submit anonymously. The same file
+// opened with ?results is the big-screen view: its QR code, how many have voted, and live results.
+
+/** Everything the poll page needs about budget gi, from the project. */
+function pollConfig(gi) {
+  var g = cdEnsure(P.codesignGroups[gi]);
+  var scene = (P.scenes || []).filter(function(sc) { return sc.codesignGroupId === g.id; })[0];
+  var plots = (P.zones || []).filter(function(z) { return z.codesignGroupId === g.id && (z.coordinates || []).length > 2; }).map(function(z) {
+    return { id: z.id, name: z.name || 'Plot', ring: z.coordinates, areaM2: Math.round(zoneAreaM2(z)), color: z.color || '#888888' };
+  });
+  var stripTags = function(s) { var d = document.createElement('div'); d.innerHTML = s || ''; return (d.textContent || '').trim(); };
+  return {
+    title: g.poll.title || (scene && scene.title) || g.label || 'Have your say',
+    intro: g.poll.intro || (scene ? stripTags(scene.body) : ''),
+    project: P.name || '',
+    token: P.mapboxToken, style: P.mapboxStyle || 'mapbox://styles/mapbox/light-v11',
+    accent: P.accentColor || '#c0392b',
+    redLine: P.redLine && P.redLine.coordinates ? P.redLine.coordinates : null,
+    group: {
+      id: g.id, label: g.label || 'Budget', submitUrl: g.submitUrl || '', readUrl: g.readUrl || g.submitUrl || '',
+      categories: g.categories.map(function(c) { return { id: c.id, label: c.label, color: c.color }; }),
+      options: (g.options || []).map(function(o) { return { id: o.id, label: o.label, color: o.color, categoryId: o.categoryId || null, costM2: cdNum(o.costM2), valueM2: cdNum(o.valueM2) }; }),
+      money: { on: !!g.money.on, currency: g.money.currency || '£', cap: cdNum(g.money.cap), blockOverCap: !!g.money.blockOverCap, showVoters: g.money.showVoters !== false },
+      showResults: g.poll.showResults !== false,
+    },
+    plots: plots,
+  };
+}
+
+function buildPollHTML(gi, mode) {
+  var cfg = pollConfig(gi);
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="UTF-8"/>'
+    + '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>'
+    + '<title>' + h(cfg.title) + '</title>'
+    + '<meta name="robots" content="noindex"/>'
+    + '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet"/>'
+    + '<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"><' + '/script>'
+    + '<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"><' + '/script>'
+    + '<style>' + POLL_CSS.replace(/__ACCENT__/g, cfg.accent) + '</style></head><body>'
+    + '<div id="app"></div>'
+    + '<script>' + (mode ? 'window.__POLL_MODE=' + JSON.stringify(mode) + ';' : '') + '(' + pollRuntime.toString() + ')(' + JSON.stringify(cfg).replace(/</g, '\\u003c') + ');<' + '/script>'
+    + '</body></html>';
+}
+
+var POLL_CSS = [
+  ':root{--accent:__ACCENT__;--ink:#161513;--muted:#6f6c66;--line:#e5e2dc;--paper:#ffffff;--ok:#2f7d4f;--warn:#b7791f;--bad:#c0392b}',
+  '*{box-sizing:border-box}html,body{margin:0;height:100%}',
+  'body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased}',
+  'button{font:inherit;color:inherit;cursor:pointer}',
+  // voter
+  '.v-head{padding:18px 18px 10px}.v-proj{font-size:12px;color:var(--muted);letter-spacing:.02em}.v-title{font-size:22px;font-weight:700;line-height:1.2;margin:4px 0 8px}',
+  '.v-intro{color:#3b3935;white-space:pre-line;font-size:14px}.v-anon{font-size:12px;color:var(--muted);margin-top:8px}',
+  '#vmap{height:46vh;min-height:260px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}',
+  '.v-list{padding:10px 14px 150px}.v-list h3{font-size:13px;margin:6px 4px 8px;color:var(--muted);font-weight:600}',
+  '.plot{width:100%;display:flex;align-items:center;gap:12px;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:8px}',
+  '.plot .sw{width:14px;height:14px;border-radius:4px;flex:none;background:#ddd}.plot .nm{font-weight:600}.plot .sub{font-size:12px;color:var(--muted)}',
+  '.plot .pick{margin-left:auto;font-size:13px;font-weight:600;text-align:right}.plot .pick.none{color:var(--accent)}',
+  '.bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(0,0,0,.06)}',
+  '.money{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;flex-wrap:wrap}.chip{font-weight:700;padding:3px 9px;border-radius:999px;font-size:12px}',
+  '.chip.ok{background:#e4f2e9;color:var(--ok)}.chip.warn{background:#fbf0dc;color:var(--warn)}.chip.bad{background:#fbe5e2;color:var(--bad)}',
+  '.go{width:100%;border:0;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;padding:14px;font-size:16px}.go:disabled{opacity:.4}',
+  '.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:20}',
+  '.sheet{position:fixed;left:0;right:0;bottom:0;max-height:82vh;overflow:auto;background:#fff;border-radius:18px 18px 0 0;z-index:21;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}',
+  '.sheet h2{font-size:18px;margin:2px 0 2px}.sheet .sub{font-size:12px;color:var(--muted);margin-bottom:10px}',
+  '.cat{font-size:12px;font-weight:700;margin:14px 2px 6px;display:flex;align-items:center;gap:7px}.cat i{width:10px;height:10px;border-radius:3px;display:inline-block}',
+  '.opt{width:100%;display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:11px 12px;margin-bottom:6px;text-align:left}',
+  '.opt.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}.opt .dot{width:14px;height:14px;border-radius:50%;flex:none}.opt .m{margin-left:auto;font-size:12px;font-weight:600}',
+  '.m.ok{color:var(--ok)}.m.warn{color:var(--warn)}',
+  '.clear{background:none;border:0;color:var(--muted);text-decoration:underline;padding:8px 2px}',
+  '.thanks{padding:40px 22px;text-align:center}.thanks h2{font-size:24px;margin:0 0 8px}.thanks p{color:#3b3935}.link{background:none;border:0;text-decoration:underline;color:var(--ink);margin-top:14px;font-weight:600}',
+  // results
+  '.r{display:grid;grid-template-columns:320px 1fr 460px;gap:0;height:100vh}',
+  '.r-left{padding:28px;border-right:1px solid var(--line);display:flex;flex-direction:column}.r-left h1{font-size:24px;line-height:1.2;margin:0 0 6px}',
+  '.r-qr{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:18px 0 10px}.r-qr svg,.r-qr img{width:100%;height:auto;display:block}',
+  '.r-scan{font-weight:700;font-size:18px}.r-url{font-size:12px;color:var(--muted);word-break:break-all}',
+  '.r-count{margin-top:auto}.r-count b{font-size:64px;line-height:1;display:block}.r-count span{color:var(--muted)}',
+  '#rmap{height:100vh}',
+  '.r-right{padding:24px 26px;overflow:auto;border-left:1px solid var(--line)}.r-right h2{font-size:15px;margin:0 0 10px}',
+  '.rp{margin-bottom:16px}.rp .t{display:flex;justify-content:space-between;font-size:14px;margin-bottom:5px}.rp .t b{font-weight:700}',
+  '.stack{display:flex;height:22px;border-radius:6px;overflow:hidden;background:#f1efeb}.stack i{display:block;height:100%}',
+  '.leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;margin:6px 0 16px}.leg span{display:inline-flex;align-items:center;gap:5px}.leg i{width:10px;height:10px;border-radius:3px;display:inline-block}',
+  '.scen{border:1px solid var(--line);border-radius:12px;padding:14px;margin:6px 0 16px}.scen .big{font-size:22px;font-weight:800;margin:4px 0}',
+  '.r-foot{font-size:12px;color:var(--muted);display:flex;gap:12px;align-items:center;margin-top:10px}.r-foot button{background:none;border:1px solid var(--line);border-radius:8px;padding:5px 10px}',
+  '@media (max-width:900px){.r{grid-template-columns:1fr;height:auto}#rmap{height:50vh}.r-left,.r-right{border:0}}',
+].join('\n');
+
+/* The page's own code: runs in the exported file, so it uses nothing from the editor. */
+function pollRuntime(C) {
+  var G = C.group, M = G.money;
+  var mode = window.__POLL_MODE || (/[?&]results\b/.test(location.search) ? 'results' : 'vote');
+  var app = document.getElementById('app');
+  var esc = function(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var optById = {}, optByLabel = {}, catById = {};
+  G.options.forEach(function(o) { optById[o.id] = o; optByLabel[o.label] = o; });
+  G.categories.forEach(function(c) { catById[c.id] = c; });
+  var money = function(v) {
+    var a = Math.abs(v), s = a >= 1e6 ? (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm' : a >= 1e3 ? Math.round(a / 1e3) + 'k' : String(Math.round(a));
+    return (v < 0 ? '−' : '') + M.currency + s;
+  };
+  /** What a use on a plot costs and brings back. */
+  var fin = function(o, plot) {
+    var cost = (o.costM2 || 0) * plot.areaM2, value = (o.valueM2 || 0) * plot.areaM2;
+    return { cost: cost, value: value, net: value - cost };
+  };
+  var scenario = function(picks) {
+    var t = { cost: 0, value: 0, net: 0, n: 0 };
+    C.plots.forEach(function(p) { var o = optById[picks[p.id]]; if (!o) return; var f = fin(o, p); t.cost += f.cost; t.value += f.value; t.net += f.net; t.n++; });
+    return t;
+  };
+  var status = function(t, plotOnly) {
+    if (t.net >= 0) return { cls: 'ok', text: 'Self-funding' + (t.net > 0 ? ' (+' + money(t.net) + ')' : '') };
+    var need = -t.net;
+    if (plotOnly) return { cls: 'warn', text: 'Needs ' + money(need) + ' subsidy' };
+    if (M.cap != null && need > M.cap) return { cls: 'bad', text: 'Needs ' + money(need) + ' subsidy, ' + money(need - M.cap) + ' over the ' + money(M.cap) + ' available' };
+    return { cls: 'warn', text: 'Needs ' + money(need) + ' subsidy' + (M.cap != null ? ' of ' + money(M.cap) + ' available' : '') };
+  };
+  var showMoney = M.on && (mode === 'results' || M.showVoters);
+  var bounds = function() {
+    var b = [180, 90, -180, -90];
+    C.plots.forEach(function(p) { p.ring.forEach(function(c) { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); }); });
+    if (b[0] > b[2] && C.redLine) C.redLine.forEach(function(c) { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); });
+    return b[0] <= b[2] ? [[b[0], b[1]], [b[2], b[3]]] : null;
+  };
+  var centroid = function(ring) { var x = 0, y = 0; ring.forEach(function(c) { x += c[0]; y += c[1]; }); return [x / ring.length, y / ring.length]; };
+  var plotsFC = function(colourOf, labelOf) {
+    return {
+      type: 'FeatureCollection',
+      features: C.plots.map(function(p) { return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [p.ring] }, properties: { id: p.id, colour: colourOf(p), label: labelOf(p) } }; })
+        .concat(C.plots.map(function(p) { return { type: 'Feature', geometry: { type: 'Point', coordinates: centroid(p.ring) }, properties: { id: p.id, label: labelOf(p), pt: true } }; })),
+    };
+  };
+  var makeMap = function(el, interactive, onReady) {
+    if (!window.mapboxgl || !C.token) { el.innerHTML = '<p style="padding:20px;color:#888">Map unavailable.</p>'; return null; }
+    mapboxgl.accessToken = C.token;
+    var b = bounds();
+    var opts = { container: el, style: C.style, attributionControl: false, interactive: interactive, cooperativeGestures: interactive };
+    if (b) { opts.bounds = b; opts.fitBoundsOptions = { padding: 40 }; } else { opts.center = [-1.5, 52.5]; opts.zoom = 5; }
+    var m = new mapboxgl.Map(opts);
+    m.addControl(new mapboxgl.AttributionControl({ compact: true }));
+    m.on('load', function() {
+      if (C.redLine) {
+        m.addSource('rl', { type: 'geojson', data: { type: 'Feature', geometry: { type: 'Polygon', coordinates: [C.redLine] }, properties: {} } });
+        m.addLayer({ id: 'rl', type: 'line', source: 'rl', paint: { 'line-color': '#c0392b', 'line-width': 2.5, 'line-dasharray': [2, 1] } });
+      }
+      m.addSource('plots', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      m.addLayer({ id: 'plots-f', type: 'fill', source: 'plots', filter: ['!', ['has', 'pt']], paint: { 'fill-color': ['get', 'colour'], 'fill-opacity': 0.72 } });
+      m.addLayer({ id: 'plots-l', type: 'line', source: 'plots', filter: ['!', ['has', 'pt']], paint: { 'line-color': '#ffffff', 'line-width': 2 } });
+      m.addLayer({ id: 'plots-t', type: 'symbol', source: 'plots', filter: ['has', 'pt'], layout: { 'text-field': ['get', 'label'], 'text-size': interactive ? 13 : 20, 'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'], 'text-max-width': 9 }, paint: { 'text-color': '#111', 'text-halo-color': '#fff', 'text-halo-width': 1.6 } });
+      onReady && onReady(m);
+    });
+    return m;
+  };
+  var vid = (function() {
+    var k = 'allto:poll:vid', v = null;
+    try { v = localStorage.getItem(k); } catch (e) {}
+    if (!v) { v = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now(); try { localStorage.setItem(k, v); } catch (e) {} }
+    return v;
+  })();
+  var DONE_KEY = 'allto:poll:' + G.id + ':picks';
+
+  // ------------------------------------------------------------------ voting
+  function vote() {
+    var picks = {}, done = false;
+    try { var saved = JSON.parse(localStorage.getItem(DONE_KEY) || 'null'); if (saved) { picks = saved; done = true; } } catch (e) {}
+    var map = null, built = false;
+    function render() {
+      if (done) { if (map) map.remove(); map = null; built = false; return thanks(); }
+      if (!built) {
+        app.innerHTML = '<div class="v-head">' + (C.project ? '<div class="v-proj">' + esc(C.project) + '</div>' : '') + '<div class="v-title">' + esc(C.title) + '</div>'
+          + (C.intro ? '<div class="v-intro">' + esc(C.intro) + '</div>' : '')
+          + '<div class="v-anon">Anonymous: no names or contact details are asked for or kept.</div></div>'
+          + '<div id="vmap"></div><div class="v-list" id="vlist"></div><div class="bar" id="vbar"></div>';
+        built = true;
+        map = makeMap(document.getElementById('vmap'), true, function(m) {
+          paint(m);
+          m.on('click', 'plots-f', function(e) { var f = e.features && e.features[0]; if (f) pick(f.properties.id); });
+          m.on('mouseenter', 'plots-f', function() { m.getCanvas().style.cursor = 'pointer'; });
+          m.on('mouseleave', 'plots-f', function() { m.getCanvas().style.cursor = ''; });
+        });
+      }
+      var t = scenario(picks), st = status(t), over = M.cap != null && -t.net > M.cap;
+      document.getElementById('vlist').innerHTML = '<h3>Choose a use for each plot</h3>'
+        + C.plots.map(function(p) {
+          var o = optById[picks[p.id]];
+          return '<button class="plot" data-p="' + esc(p.id) + '"><span class="sw" style="background:' + esc(o ? o.color : '#ddd') + '"></span><span><div class="nm">' + esc(p.name) + '</div><div class="sub">' + Math.round(p.areaM2).toLocaleString('en-GB') + ' m²</div></span>'
+            + '<span class="pick' + (o ? '' : ' none') + '">' + (o ? esc(o.label) + (showMoney ? '<div class="sub">' + esc(status(fin(o, p), true).text) + '</div>' : '') : 'Choose') + '</span></button>';
+        }).join('');
+      document.getElementById('vbar').innerHTML = (showMoney && t.n ? '<div class="money"><span>Your picks cost ' + money(t.cost) + (t.value ? ', bring back ' + money(t.value) : '') + '</span><span class="chip ' + st.cls + '">' + esc(st.text) + '</span></div>' : '')
+        + '<button class="go" id="send"' + (t.n && !(over && M.blockOverCap) ? '' : ' disabled') + '>' + (over && M.blockOverCap ? 'Over the subsidy available' : t.n ? 'Submit my picks (' + t.n + ' of ' + C.plots.length + ')' : 'Pick a use for a plot to start') + '</button>';
+      app.querySelectorAll('.plot').forEach(function(b) { b.onclick = function() { pick(b.dataset.p); }; });
+      document.getElementById('send').onclick = send;
+      paint();
+    }
+    function paint(m) {
+      m = m || map;
+      if (!m || !m.getSource('plots')) return;
+      m.getSource('plots').setData(plotsFC(function(p) { var o = optById[picks[p.id]]; return o ? o.color : p.color; }, function(p) { var o = optById[picks[p.id]]; return p.name + (o ? '\n' + o.label : ''); }));
+    }
+    function pick(pid) {
+      var p = C.plots.filter(function(x) { return x.id === pid; })[0];
+      if (!p) return;
+      var cats = G.categories.concat([{ id: null, label: G.categories.length ? 'Other' : '', color: '#999' }]);
+      var html = '<div class="sheet-bg"></div><div class="sheet" role="dialog" aria-label="Choose a use"><h2>' + esc(p.name) + '</h2><div class="sub">' + Math.round(p.areaM2).toLocaleString('en-GB') + ' m²</div>';
+      cats.forEach(function(c) {
+        var opts = G.options.filter(function(o) { return (o.categoryId || null) === c.id || (c.id === null && o.categoryId && !catById[o.categoryId]); });
+        if (!opts.length) return;
+        if (c.label) html += '<div class="cat"><i style="background:' + esc(c.color) + '"></i>' + esc(c.label) + '</div>';
+        opts.forEach(function(o) {
+          var s = showMoney ? status(fin(o, p), true) : null;
+          html += '<button class="opt' + (picks[pid] === o.id ? ' on' : '') + '" data-o="' + esc(o.id) + '"><span class="dot" style="background:' + esc(o.color) + '"></span>' + esc(o.label)
+            + (s ? '<span class="m ' + s.cls + '">' + esc(s.cls === 'ok' ? 'Pays for itself' : 'Needs ' + money(-fin(o, p).net)) + '</span>' : '') + '</button>';
+        });
+      });
+      html += (picks[pid] ? '<button class="clear" data-o="">Clear this plot</button>' : '') + '</div>';
+      var box = document.createElement('div');
+      box.innerHTML = html;
+      document.body.appendChild(box);
+      var close = function() { box.remove(); };
+      box.querySelector('.sheet-bg').onclick = close;
+      box.querySelectorAll('[data-o]').forEach(function(b) {
+        b.onclick = function() { if (b.dataset.o) picks[pid] = b.dataset.o; else delete picks[pid]; close(); render(); };
+      });
+    }
+    function send() {
+      var t = scenario(picks), sub = String(Date.now()), ts = new Date().toISOString();
+      var rows = C.plots.filter(function(p) { return picks[p.id]; }).map(function(p) {
+        var o = optById[picks[p.id]], f = fin(o, p), c = catById[o.categoryId];
+        return { id: sub + '-' + p.id, submissionId: sub, visitorId: vid, zoneId: p.id, zoneName: p.name, choice: o.label, category: c ? c.label : '', areaM2: Math.round(p.areaM2),
+          cost: Math.round(f.cost), value: Math.round(f.value), net: Math.round(f.net), scenarioCost: Math.round(t.cost), scenarioValue: Math.round(t.value), scenarioNet: Math.round(t.net), source: 'poll', timestamp: ts };
+      });
+      var btn = document.getElementById('send');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      var post = G.submitUrl ? fetch(G.submitUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: rows }) }) : Promise.resolve();
+      post.then(function() {
+        try { localStorage.setItem(DONE_KEY, JSON.stringify(picks)); } catch (e) {}
+        done = true; render();
+      }).catch(function() { btn.disabled = false; btn.textContent = 'Couldn’t send — try again'; });
+    }
+    function thanks() {
+      app.innerHTML = '<div class="thanks"><h2>Thank you</h2><p>Your picks are in. Keep an eye on the screen for what everyone chose.</p>'
+        + '<button class="link" id="again">Change my picks</button>' + (G.showResults ? '<br><button class="link" id="see">See what everyone picked</button>' : '') + '</div>';
+      document.getElementById('again').onclick = function() { done = false; render(); };
+      var see = document.getElementById('see');
+      if (see) see.onclick = function() { results(true); };
+    }
+    render();
+  }
+
+  // ------------------------------------------------------------------ results
+  /** Everyone's latest picks: one scenario per voter (their newest submission). */
+  function aggregate(rows) {
+    var plotIds = {};
+    C.plots.forEach(function(p) { plotIds[p.id] = p; });
+    var latest = {};
+    rows.filter(function(r) { return r && r.choice && plotIds[r.zoneId]; }).forEach(function(r) {
+      var who = r.visitorId || r.submissionId || r.id, sub = String(r.submissionId || r.timestamp || '');
+      var cur = latest[who];
+      if (!cur || sub > cur.sub) latest[who] = { sub: sub, picks: {} };
+      if (latest[who].sub === sub) { var o = optByLabel[r.choice]; if (o) latest[who].picks[r.zoneId] = o.id; }
+    });
+    var voters = Object.keys(latest).map(function(k) { return latest[k].picks; }).filter(function(p) { return Object.keys(p).length; });
+    var counts = {}, cats = {};
+    C.plots.forEach(function(p) { counts[p.id] = {}; });
+    voters.forEach(function(v) { Object.keys(v).forEach(function(pid) { var o = optById[v[pid]]; counts[pid][o.id] = (counts[pid][o.id] || 0) + 1; var ck = o.categoryId || ''; cats[ck] = (cats[ck] || 0) + 1; }); });
+    var top = {};
+    C.plots.forEach(function(p) { var best = null; G.options.forEach(function(o) { var n = counts[p.id][o.id] || 0; if (n && (!best || n > counts[p.id][best])) best = o.id; }); if (best) top[p.id] = best; });
+    var selfFunding = voters.filter(function(v) { return scenario(v).net >= 0; }).length;
+    return { voters: voters.length, counts: counts, cats: cats, top: top, selfFunding: selfFunding };
+  }
+
+  function results(inline) {
+    var map = null, A = null, last = null;
+    var url = location.href.replace(/[?#].*$/, '');
+    app.innerHTML = inline
+      ? '<div class="r-right" style="border:0;padding:20px 16px"><h2>What everyone picked</h2><div id="rbody">Loading…</div><button class="link" id="back">Back</button></div>'
+      : '<div class="r"><div class="r-left">' + (C.project ? '<div class="v-proj">' + esc(C.project) + '</div>' : '') + '<h1>' + esc(C.title) + '</h1>'
+        + '<div class="r-qr" id="qr"></div><div class="r-scan">Scan to have your say</div><div class="r-url">' + esc(url) + '</div>'
+        + '<div class="r-count"><b id="nv">0</b><span>people have voted</span></div></div>'
+        + '<div id="rmap"></div><div class="r-right"><div id="rbody">Loading…</div>'
+        + '<div class="r-foot"><span id="upd"></span><button id="csv">Download results (CSV)</button></div></div></div>';
+    if (inline) document.getElementById('back').onclick = function() { vote(); };
+    var qr = document.getElementById('qr');
+    if (qr && window.qrcode) { var q = qrcode(0, 'M'); q.addData(url); q.make(); qr.innerHTML = q.createSvgTag({ cellSize: 6, margin: 0, scalable: true }); }
+    if (!inline) map = makeMap(document.getElementById('rmap'), false, function() { draw(); });
+    var csv = document.getElementById('csv');
+    if (csv) csv.onclick = function() {
+      if (!A) return;
+      var L = [['Plot', 'Area m2', 'Category', 'Use', 'Votes', 'Share of the plot’s votes']];
+      C.plots.forEach(function(p) {
+        var tot = Object.keys(A.counts[p.id]).reduce(function(s, k) { return s + A.counts[p.id][k]; }, 0);
+        G.options.forEach(function(o) { var n = A.counts[p.id][o.id] || 0; if (n) L.push([p.name, Math.round(p.areaM2), (catById[o.categoryId] || {}).label || '', o.label, n, tot ? (n / tot * 100).toFixed(1) + '%' : '']); });
+      });
+      L.push([], ['People who voted', A.voters]);
+      if (M.on) {
+        var t = scenario(A.top);
+        L.push(['Most popular scenario: cost', Math.round(t.cost)], ['Most popular scenario: value', Math.round(t.value)], ['Most popular scenario: net (negative = subsidy needed)', Math.round(t.net)], ['Scenarios that are self-funding', A.selfFunding + ' of ' + A.voters]);
+      }
+      var text = L.map(function(r) { return r.map(function(c) { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+      a.download = (C.title || 'results').toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-results.csv';
+      a.click();
+    };
+    function draw() {
+      var body = document.getElementById('rbody');
+      if (!body) return;
+      if (!A) return;
+      var nv = document.getElementById('nv');
+      if (nv) nv.textContent = A.voters;
+      if (map && map.getSource('plots')) map.getSource('plots').setData(plotsFC(function(p) { var o = optById[A.top[p.id]]; return o ? o.color : '#cfcac2'; }, function(p) {
+        var o = optById[A.top[p.id]], tot = Object.keys(A.counts[p.id]).reduce(function(s, k) { return s + A.counts[p.id][k]; }, 0);
+        return p.name + (o ? '\n' + o.label + ' ' + Math.round((A.counts[p.id][o.id] / tot) * 100) + '%' : '');
+      }));
+      if (!A.voters) { body.innerHTML = '<p style="color:#6f6c66">No votes yet. Scan the code to be the first.</p>'; return; }
+      var h = '<h2>Each plot</h2>';
+      C.plots.forEach(function(p) {
+        var c = A.counts[p.id], tot = Object.keys(c).reduce(function(s, k) { return s + c[k]; }, 0), o = optById[A.top[p.id]];
+        h += '<div class="rp"><div class="t"><span>' + esc(p.name) + '</span><b>' + (o ? esc(o.label) + ' ' + Math.round((c[o.id] / tot) * 100) + '%' : '—') + '</b></div><div class="stack">'
+          + G.options.filter(function(x) { return c[x.id]; }).sort(function(a, b) { return c[b.id] - c[a.id]; }).map(function(x) { return '<i title="' + esc(x.label) + ': ' + c[x.id] + '" style="width:' + (c[x.id] / tot * 100) + '%;background:' + esc(x.color) + '"></i>'; }).join('') + '</div></div>';
+      });
+      var used = G.options.filter(function(o) { return C.plots.some(function(p) { return A.counts[p.id][o.id]; }); });
+      h += '<div class="leg">' + used.map(function(o) { return '<span><i style="background:' + esc(o.color) + '"></i>' + esc(o.label) + '</span>'; }).join('') + '</div>';
+      if (G.categories.length) {
+        var ct = Object.keys(A.cats).reduce(function(s, k) { return s + A.cats[k]; }, 0);
+        h += '<h2>By category</h2><div class="stack" style="height:28px">' + G.categories.filter(function(c) { return A.cats[c.id]; }).map(function(c) { return '<i title="' + esc(c.label) + '" style="width:' + (A.cats[c.id] / ct * 100) + '%;background:' + esc(c.color) + '"></i>'; }).join('') + '</div>'
+          + '<div class="leg">' + G.categories.filter(function(c) { return A.cats[c.id]; }).sort(function(a, b) { return A.cats[b.id] - A.cats[a.id]; }).map(function(c) { return '<span><i style="background:' + esc(c.color) + '"></i>' + esc(c.label) + ' ' + Math.round(A.cats[c.id] / ct * 100) + '%</span>'; }).join('') + '</div>';
+      }
+      if (M.on) {
+        var t = scenario(A.top), st = status(t);
+        h += '<h2>The room’s scenario</h2><div class="scen"><div style="font-size:13px;color:#6f6c66">The most popular use on every plot</div><div class="big">' + esc(st.text) + '</div>'
+          + '<div style="font-size:13px">Costs ' + money(t.cost) + (t.value ? ' · brings back ' + money(t.value) : '') + '</div></div>'
+          + '<div style="font-size:14px">' + A.selfFunding + ' of ' + A.voters + ' people’s scenarios pay for themselves.</div>';
+      }
+      body.innerHTML = h;
+      var upd = document.getElementById('upd');
+      if (upd && last) upd.textContent = 'Updated ' + last.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+    function load() {
+      if (!G.readUrl) { var b = document.getElementById('rbody'); if (b) b.innerHTML = '<p>This poll isn’t connected to a results flow yet (Settings > Co-Design > Read URL).</p>'; return; }
+      fetch(G.readUrl, { cache: 'no-store' }).then(function(r) { return r.json(); }).then(function(rows) {
+        A = aggregate(Array.isArray(rows) ? rows : rows && rows.value ? rows.value : []);
+        last = new Date();
+        draw();
+      }).catch(function() { var b = document.getElementById('rbody'); if (b && !A) b.innerHTML = '<p>Couldn’t load results just now. Retrying…</p>'; });
+    }
+    load();
+    if (!inline) setInterval(load, 10000);
+  }
+
+  if (mode === 'results') results(false); else vote();
+}
+
 function renderSettings() {
   var html = '<div class="rh"><div class="rt">Project Settings</div></div>';
   html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('id-card',14,'currentColor')+'Identity</span></div>';
@@ -4339,21 +4873,7 @@ function renderSettings() {
         + '</div>'
         + '<div id="cd-sdb-read-status-'+gi+'" style="font-size:11px;font-family:var(--mono);margin-top:6px;height:16px"></div>'
         + '</div>';
-      html += '<div class="f"><label class="fl">Use options'+infoBtn('Click the circle to pick an icon — shown as a badge on the plot once picked, in the picker, and in the results legend.')+'</label>';
-      html += '<div class="cd-opts-list" data-gi="'+gi+'">';
-      (g.options||[]).forEach(function(opt, oi){
-        html += '<div class="cr" style="margin-bottom:6px">'
-          + '<input type="color" class="cd-opt-color" value="'+h(opt.color)+'" data-gi="'+gi+'" data-oi="'+oi+'"/>'
-          + '<input type="text" class="cd-opt-label" value="'+h(opt.label)+'" data-gi="'+gi+'" data-oi="'+oi+'" style="flex:1" placeholder="Label"/>'
-          + '<button type="button" class="cd-opt-icon-btn icon-pick-anchor" data-gi="'+gi+'" data-oi="'+oi+'" title="Choose icon" aria-label="Choose icon" style="width:30px;height:30px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--border2);background:'+h(opt.color)+';display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0">'
-            + (opt.icon && isLucide(opt.icon) ? lucideSVG(opt.icon,15,'#fff') : '')
-            + '</button>'
-          + '<button class="ib cd-opt-del" data-gi="'+gi+'" data-oi="'+oi+'" aria-label="Remove option">'+lucideSVG('trash-2',12,'currentColor')+'</button>'
-          + '</div>';
-      });
-      html += '</div>';
-      html += '<button class="btn btn-g btn-ic cd-add-opt" data-gi="'+gi+'" style="width:100%;justify-content:center;margin-top:4px">'+lucideSVG('plus',13,'currentColor')+'Add option</button>';
-      html += '</div>';
+      html += cdGroupBodyHTML(g, gi);
       html += '</div>';
     });
     html += '<button class="btn btn-g btn-ic" id="btn-cd-add-group" style="width:100%;justify-content:center">'+lucideSVG('plus',13,'currentColor')+'Add participatory budget</button>';
@@ -4710,10 +5230,11 @@ function renderSettings() {
   document.querySelectorAll('.cd-add-opt').forEach(function(btn){
     btn.addEventListener('click', function(){
       var gi=parseInt(this.dataset.gi);
-      P.codesignGroups[gi].options.push({id:'co'+Date.now(),label:'New Use',color:'#888888',icon:''});
+      P.codesignGroups[gi].options.push({id:'co'+Date.now(),label:'New Use',color:'#888888',icon:'',categoryId:null});
       markDirty(); renderSettings();
     });
   });
+  bindCdGroupBodies();
   var addGroupBtn = el('btn-cd-add-group');
   if(addGroupBtn) addGroupBtn.addEventListener('click', function(){
     P.codesignGroups.push({id:'cg'+Date.now(), label:'New Budget', submitUrl:'', readUrl:'', options:[
@@ -6131,6 +6652,33 @@ function previewInNewTab() {
   }
 }
 
+/** Export dialog: a presentation poll page for each participatory budget with plots. */
+function renderPollExports() {
+  var box = el('mo-poll');
+  if (!box) return;
+  var groups = P.codesignEnabled ? (P.codesignGroups || []).map(function(g, gi) { return { g: g, gi: gi, n: (P.zones || []).filter(function(z) { return z.codesignGroupId === g.id; }).length }; }).filter(function(x) { return x.n; }) : [];
+  box.style.display = groups.length ? '' : 'none';
+  if (!groups.length) return;
+  box.innerHTML = '<h4><span class="ico-h">' + lucideSVG('users', 15, 'currentColor') + '</span>Presentation poll</h4>'
+    + '<p>A phone page for a QR code on a slide: your text, the map and the plots, no navigation. Upload it next to your site. Open it with <b>?results</b> on the big screen for its QR code and live results.</p>'
+    + groups.map(function(x) {
+      return '<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><b style="flex:1;font-size:12px;min-width:120px">' + h(x.g.label || 'Budget') + ' <span style="font-weight:400;color:var(--ghost)">(' + x.n + ' plots)</span></b>'
+        + '<button class="btn btn-g" data-poll-dl="' + x.gi + '">Download poll page</button>'
+        + '<button class="btn btn-g" data-poll-pv="' + x.gi + '">Preview</button>'
+        + '<button class="btn btn-g" data-poll-rs="' + x.gi + '">Preview results screen</button></div>';
+    }).join('');
+  var open = function(html) { var w = window.open('', '_blank'); if (!w) return alert('Pop-up blocked — please allow pop-ups for this page.'); w.document.open(); w.document.write(html); w.document.close(); };
+  box.querySelectorAll('[data-poll-dl]').forEach(function(b) { b.onclick = function() {
+    var gi = +this.dataset.pollDl, g = P.codesignGroups[gi];
+    var a = document.createElement('a');
+    a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(buildPollHTML(gi));
+    a.download = ((P.name || 'consultation') + '-' + (g.label || 'poll')).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-poll.html';
+    document.body.appendChild(a); a.click(); a.remove();
+  }; });
+  box.querySelectorAll('[data-poll-pv]').forEach(function(b) { b.onclick = function() { open(buildPollHTML(+this.dataset.pollPv)); }; });
+  box.querySelectorAll('[data-poll-rs]').forEach(function(b) { b.onclick = function() { open(buildPollHTML(+this.dataset.pollRs, 'results')); }; });
+}
+
 function downloadHTML() {
   el('em').classList.remove('on');
   try {
@@ -6578,7 +7126,8 @@ function buildCfg() {
       return {
         id: g.id, label: g.label||'Co-Design',
         submitUrl: g.submitUrl||'', readUrl: g.readUrl||g.submitUrl||'',
-        options: (g.options||[]).map(function(o){return {id:o.id,label:o.label,color:o.color,icon:o.icon||''};})
+        categories: (g.categories||[]).map(function(c){return {id:c.id,label:c.label};}),
+        options: (g.options||[]).map(function(o){return {id:o.id,label:o.label,color:o.color,icon:o.icon||'',categoryId:o.categoryId||null};})
       };
     })) + ';',
     'var COOKIE_BANNER_ENABLED = ' + (P.cookieBannerEnabled!==false) + ';',
@@ -8218,7 +8767,10 @@ function buildJS() {
 '  wrap.appendChild(title);',
 '  var optsWrap=document.createElement("div");',
 '  optsWrap.className="cd-popup-opts";',
-'  group.options.forEach(function(opt){',
+'  var _cats=group.categories||[], _lastCat;',
+'  var _ci=function(o){ var k=_cats.findIndex(function(c){return c.id===o.categoryId;}); return k<0?999:k; };',
+'  group.options.slice().sort(function(a,b){return _ci(a)-_ci(b);}).forEach(function(opt){',
+'    if(_cats.length && opt.categoryId!==_lastCat){ _lastCat=opt.categoryId; var cat=_cats.filter(function(c){return c.id===opt.categoryId;})[0]; var ch=document.createElement("div"); ch.className="cd-popup-cat"; ch.textContent=cat?cat.label:"Other"; optsWrap.appendChild(ch); }',
 '    var btn=document.createElement("button");',
 '    btn.type="button";',
 '    btn.className="cd-opt-btn"+(current===opt.id?" selected":"");',
@@ -8904,7 +9456,8 @@ function buildPopCSS() {
 + '.cd-popup .mapboxgl-popup-close-button{color:#0f0e0d;opacity:.5;font-size:16px;right:8px;top:8px}'
 + '.cd-popup .mapboxgl-popup-close-button:hover{opacity:1;background:none}'
 + '.cd-popup-title{font-size:13px;font-weight:700;margin-bottom:10px;padding-right:14px;line-height:1.35}'
-+ '.cd-popup-opts{display:flex;flex-direction:column;gap:6px}'
++ '.cd-popup-opts{display:flex;flex-direction:column;gap:6px;max-height:55vh;overflow:auto}'
++ '.cd-popup-cat{font-size:10.5px;font-weight:700;letter-spacing:.02em;margin:6px 2px 0;opacity:.7}'
 + '.cd-opt-btn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:8px 10px;border-radius:6px;border:1.5px solid rgba(15,14,13,.14);background:#fff;font-size:12.5px;font-weight:600;color:#0f0e0d;cursor:pointer;transition:border-color .15s,background .15s;font-family:inherit}'
 + '.cd-opt-btn:hover{border-color:var(--cd-c,#888);background:rgba(0,0,0,.03)}'
 + '.cd-opt-btn.selected{border-color:var(--cd-c,#888);box-shadow:0 0 0 1px var(--cd-c,#888) inset}'
@@ -9179,7 +9732,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); } };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, cdParsePaste: cdParsePaste };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
