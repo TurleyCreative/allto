@@ -1,6 +1,7 @@
 // Walking reach along the street network: a shortest-path tree from a point, walked at 80 m a
 // minute (4.8 km/h), cut into short pieces that each know how far from the start they are.
-import type { Feature, FeatureCollection, LineString } from 'geojson';
+import type { Feature, FeatureCollection, LineString, Polygon, MultiPolygon } from 'geojson';
+import * as turf from '@turf/turf';
 import { LocalFrame, type XY } from './geo';
 
 export const WALK_SPEED = 80; // metres per minute
@@ -283,4 +284,38 @@ export function withDrawn(base: { coords: number[][] }[], drawn: number[][][], f
     if (tail[k]) out.push(tail[k]!);
     return { coords: out.map((p) => frame.toLngLat(p)) };
   });
+}
+
+/** Take the parts of existing streets and paths that lie inside cleared areas out of a network. */
+export function clipLines(lines: { coords: number[][] }[], areas: Feature<Polygon | MultiPolygon>[]): { coords: number[][] }[] {
+  if (!areas.length) return lines;
+  const boxes = areas.map((a) => turf.bbox(a));
+  const out: { coords: number[][] }[] = [];
+  for (const l of lines) {
+    if (l.coords.length < 2) continue;
+    let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+    for (const c of l.coords) ((w = Math.min(w, c[0])), (e = Math.max(e, c[0])), (s = Math.min(s, c[1])), (n = Math.max(n, c[1])));
+    let pieces = [l.coords];
+    areas.forEach((area, i) => {
+      const b = boxes[i];
+      if (b[0] > e || b[2] < w || b[1] > n || b[3] < s) return;
+      pieces = pieces.flatMap((c) => {
+        if (c.length < 2) return [];
+        let parts: number[][][];
+        try {
+          parts = turf.lineSplit(turf.lineString(c), area as any).features.map((f) => f.geometry.coordinates);
+        } catch {
+          parts = [c];
+        }
+        if (!parts.length) parts = [c];
+        return parts.filter((q) => {
+          const ql = turf.lineString(q);
+          const mid = turf.along(ql, turf.length(ql) / 2);
+          return !turf.booleanPointInPolygon(mid, area);
+        });
+      });
+    });
+    for (const c of pieces) out.push({ coords: c });
+  }
+  return out;
 }

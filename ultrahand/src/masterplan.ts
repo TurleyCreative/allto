@@ -87,8 +87,11 @@ export interface Home {
   streetId: string | null;
   tenure: Tenure;
 }
-export interface Plan { streets: Street[]; open: OpenSpace[]; homes: Home[]; trees: Tree[] }
-export const emptyPlan = (): Plan => ({ streets: [], open: [], homes: [], trees: [] });
+/** clearRed / clear: where the existing roads, paths and buildings are taken away (the red line, drawn areas). */
+export interface Plan { streets: Street[]; open: OpenSpace[]; homes: Home[]; trees: Tree[]; clearRed: boolean; clear: { id: string; shape: Feature<Polygon> }[] }
+export const emptyPlan = (): Plan => ({ streets: [], open: [], homes: [], trees: [], clearRed: false, clear: [] });
+/** The areas cleared of what exists now. */
+export const clearAreas = (plan: Plan, red: PolyF | null): PolyF[] => [...(plan.clearRed && red ? [red] : []), ...plan.clear.map((c) => c.shape)];
 
 // ------------------------------------------------------------------ trees
 
@@ -230,6 +233,8 @@ export function upgradePlan(p: any): Plan {
     const nodes: PenNode[] = o.nodes ?? nodesFrom(samePlace(ring[0], ring[ring.length - 1], 0.01) ? ring.slice(0, -1) : ring);
     return { ...o, nodes, pts: nodes.map((n) => n.p), round: o.round ?? 0 };
   });
+  plan.clearRed = !!plan.clearRed;
+  plan.clear = plan.clear ?? [];
   plan.trees = (plan.trees ?? []).map((t: any) => ({ ...t, scale: t.scale ?? 1 }));
   plan.homes = plan.homes.map((h: any) => ({ ...h, type: HOUSE_TYPES.some((t) => t.id === h.type) ? h.type : 'terrace', plot: h.plot ?? h.shape, garden: h.garden ?? null, ridge: h.ridge ?? null, tenure: h.tenure ?? 'market' }));
   return plan;

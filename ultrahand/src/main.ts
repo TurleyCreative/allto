@@ -9,14 +9,14 @@ import './style.css';
 
 import { DATASETS, fetchDataset, fetchPlanningAuthority, describe, entityUrl } from './planning';
 import { fetchStreets, fetchPoisFromTiles, fetchWalkNetwork } from './tiles';
-import { buildGraph, walkFrom, walkPieces, distanceTo, withDrawn, WALK_SPEED, BANDS } from './walk';
+import { buildGraph, walkFrom, walkPieces, distanceTo, withDrawn, clipLines, WALK_SPEED, BANDS } from './walk';
 import { ROFSW_TILES, surfaceWaterOn, type SurfaceWater } from './flood';
 import { sunStudySVG } from './sunstudy';
 import { computeMetrics, pct, ratio, type Metrics } from './metrics';
 import { siteDXF, siteOBJ, type ExportLine, type ExportBlock } from './export3d';
 import { createPen, type Snap, type SnapSources, type Editable, type Guide } from './pen';
 import { bezierPath, autoHandles, nearestOnPath, splitAt, samePlace, cloneNodes, node as penNode, type PenNode } from './bezier';
-import { TREE_TYPES, treeType, newTree, canopyR, treeSlices, plantAlong, fillWithTrees, treesGeoJSON, canopyShape, type TreeType, roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
+import { clearAreas, TREE_TYPES, treeType, newTree, canopyR, treeSlices, plantAlong, fillWithTrees, treesGeoJSON, canopyShape, type TreeType, roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
@@ -297,11 +297,13 @@ const growExpr = (prop: string, T: number): any => [
 function addLayers() {
   styleBase();
   map.setFog(null as any); // fog greys out the pitched views; drawings want a clean white ground
-  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-land', 'mp-islands', 'mp-open', 'mp-homes', 'mp-plots', 'mp-gardens', 'mp-sk-lines', 'mp-sk-hatch', 'mp-paper', 'mp-trees']) map.addSource(id, { type: 'geojson', data: empty });
+  for (const id of ['mask', 'red', 'study', 'walk', 'walkpt', 'model', 'pois', 'selected', 'massing', 'blocks', 'contours', 'section-line', 'imd', 'atlas-labels', 'mp-streets', 'mp-land', 'mp-islands', 'mp-open', 'mp-homes', 'mp-plots', 'mp-gardens', 'mp-sk-lines', 'mp-sk-hatch', 'mp-paper', 'mp-trees', 'mp-clear']) map.addSource(id, { type: 'geojson', data: empty });
 
   // Sketch mode lays paper over the base map, under everything Ultrahand draws.
   (map.getSource('mp-paper') as mapboxgl.GeoJSONSource).setData(turf.bboxPolygon([-179, -85, 179, 85]));
   map.addLayer({ id: 'mp-paper', type: 'fill', source: 'mp-paper', layout: { visibility: 'none' }, paint: { 'fill-color': '#f8f4eb', 'fill-opacity': 0.62 } });
+  // Cleared areas: plain ground over the base map's roads, paths and buildings there.
+  map.addLayer({ id: 'mp-clear', type: 'fill', source: 'mp-clear', paint: { 'fill-color': '#ffffff', 'fill-opacity': 1 } });
   for (const d of DATASETS) {
     map.addSource(`ds-${d.id}`, { type: 'geojson', data: empty });
     if (d.kind === 'fill') {
@@ -848,7 +850,8 @@ function mpObstacles(except?: Home): Obstacles {
     ...S.plan.homes.filter((h) => h !== except).map((h) => h.plot),
     ...S.blocks.map((b) => b.shape),
   ];
-  if ($<HTMLInputElement>('#hoAvoid').checked && S.model) for (const b of S.model.buildings) if (b.inStudy) shapes.push(b.feature as Feature<Polygon | MultiPolygon>);
+  const cleared = new Set(clearedIds());
+  if ($<HTMLInputElement>('#hoAvoid').checked && S.model) for (const b of S.model.buildings) if (b.inStudy && !cleared.has(b.idx)) shapes.push(b.feature as Feature<Polygon | MultiPolygon>);
   return { boundary: S.red, shapes };
 }
 const homeOpts = (): HomeOpts => {
@@ -988,6 +991,8 @@ function renderPlanMap() {
   setSrc('mp-plots', g.plots);
   setSrc('mp-gardens', g.gardens);
   setSrc('mp-trees', treesGeoJSON(S.plan.trees, S.mpSel));
+  setSrc('mp-clear', { type: 'FeatureCollection', features: clearAreas(S.plan, S.red) as Feature[] });
+  applyModelFilter();
   updateEditables();
   if (S.sketch) {
     const sk = sketchGeoJSON(S.plan, S.blocks.map((b) => b.shape));
@@ -1122,6 +1127,7 @@ function renderPlan() {
   );
   $('#homeList').querySelector('[data-act=clearaff]')?.addEventListener('click', () => (S.plan.homes.forEach((h) => (h.tenure = 'market')), renderPlan()));
   renderTreeList();
+  renderClearList();
   renderSchedule();
   renderLegend();
   renderMpContext();
@@ -1309,6 +1315,47 @@ function mpBuildings(frame: LocalFrame, white = false): AxoBuilding[] {
       look: white ? { roof: '#f6c9cb', wallLight: '#ffffff', wallDark: '#ffffff', stroke: '#6f6e6a', strokeWidth: 0.6 } : lookForColour(colour),
     };
   });
+}
+
+// ---------------------------------------------------------------- clearing what exists on the site
+/** Existing buildings (from the analysis) that stand in a cleared area. */
+function clearedIds(): number[] {
+  const areas = clearAreas(S.plan, S.red);
+  if (!S.model || !areas.length) return [];
+  return S.model.buildings.filter((b) => areas.some((a) => turf.booleanPointInPolygon(b.ll, a))).map((b) => b.idx);
+}
+/** Existing buildings shown: the study area only in the axo and atlas, and none in cleared areas. */
+function applyModelFilter() {
+  if (!map.getLayer('model-3d')) return;
+  const parts: any[] = [];
+  if ((S.view === 'axo' || S.view === 'atlas') && S.model) parts.push(['==', ['get', 'inStudy'], true]);
+  const ids = S.view === 'atlas' ? [] : clearedIds();
+  if (ids.length) parts.push(['!', ['in', ['id'], ['literal', ids]]]);
+  map.setFilter('model-3d', parts.length ? ['all', ...parts] : null);
+}
+$<HTMLInputElement>('#clrRed').onchange = (e) => {
+  if (!S.red) return (toast('Draw a red line first.'), (($('#clrRed') as HTMLInputElement).checked = false));
+  S.plan.clearRed = (e.target as HTMLInputElement).checked;
+  renderPlan();
+};
+$('#clrDraw').onclick = () =>
+  penDraw('open', true, (nodes) => {
+    S.plan.clear.push({ id: newId('C', S.plan.clear), shape: turf.polygon([bezierPath(nodes, true)]) as Feature<Polygon> });
+    renderPlan();
+    toast('Cleared. Existing roads, paths and buildings there are hidden, and left out of walks that include the drawn streets.');
+  }, 'Draw the area to clear: click each corner (drag to curve); click the first corner or press Enter to finish.');
+function renderClearList() {
+  $<HTMLInputElement>('#clrRed').checked = S.plan.clearRed;
+  $('#clrList').innerHTML = S.plan.clear
+    .map((c, i) => `<div class="mpr" data-clr="${c.id}"><span class="sw" style="background:#fff;border:1px dashed #9a9994"></span><span class="grow"><b>Cleared area ${i + 1}</b><small>${m2(turf.area(c.shape))}</small></span><button class="link" data-act="delclr">Restore</button></div>`)
+    .join('');
+  $('#clrList').querySelectorAll<HTMLElement>('[data-act=delclr]').forEach((b) =>
+    b.addEventListener('click', () => {
+      const id = (b.closest('.mpr') as HTMLElement).dataset.clr;
+      S.plan.clear = S.plan.clear.filter((c) => c.id !== id);
+      renderPlan();
+    }),
+  );
 }
 
 // ---------------------------------------------------------------- trees: the tree plopper
@@ -1598,6 +1645,7 @@ function applyMpStyle() {
   const sk = S.sketch && !atlas;
   const flatHomes = sk && S.view === 'plan';
   vis('mp-paper', sk);
+  if (map.getLayer('mp-clear')) map.setPaintProperty('mp-clear', 'fill-color', sk ? '#f9f6ef' : '#ffffff');
   vis('mp-sk-lines', sk);
   vis('mp-sk-hatch', sk);
   vis('mp-homes-flat', flatHomes);
@@ -2549,7 +2597,8 @@ async function setView(v: View, opts: { quiet?: boolean } = {}) {
   document.querySelectorAll('#views [data-view], #mpViews [data-view]').forEach((x) => x.classList.toggle('on', (x as HTMLElement).dataset.view === v));
   map.setCamera({ 'camera-projection': v === 'axo' || v === 'plan' || v === 'atlas' ? 'orthographic' : 'perspective' });
   const isolate = (v === 'axo' || v === 'atlas') && !!S.model;
-  map.setFilter('model-3d', isolate ? ['==', ['get', 'inStudy'], true] : null);
+  applyModelFilter();
+  void isolate;
   if (map.getLayer('building')) map.setLayoutProperty('building', 'visibility', isolate ? 'none' : 'visible');
   map.setPaintProperty('mask', 'fill-opacity', v === 'atlas' ? 1 : isolate ? 0.94 : 0.55);
   (map.getSource('mask') as mapboxgl.GeoJSONSource)?.setData(v === 'atlas' ? maskOf(null) : S.study ? maskOf(S.study) : empty);
@@ -2716,7 +2765,7 @@ let walkDrawn = (() => {
     return false;
   }
 })();
-let walkUsedDrawn = false;
+let walkUsedDrawn = false, walkUsedClear = false;
 const drawnLines = () => S.plan.streets.flatMap((s) => streetPieces(s, S.plan.streets));
 let walkMarker: mapboxgl.Marker | null = null;
 let walkRAF = 0;
@@ -2746,8 +2795,10 @@ async function walkFromPoint(ll: [number, number]) {
     const { frame } = walkNet;
     // With drawn streets on, the network is rebuilt from the existing streets plus the plan as it is now.
     const drawn = walkDrawn ? drawnLines() : [];
-    walkUsedDrawn = drawn.length > 0;
-    const graph = drawn.length ? buildGraph(withDrawn(walkNet.lines, drawn, frame), frame) : walkNet.graph;
+    const cleared = walkDrawn ? clearAreas(S.plan, S.red) : [];
+    walkUsedDrawn = drawn.length > 0 || cleared.length > 0;
+    walkUsedClear = cleared.length > 0;
+    const graph = walkUsedDrawn ? buildGraph(withDrawn(clipLines(walkNet.lines, cleared), drawn, frame), frame) : walkNet.graph;
     const res = walkFrom(graph, frame.toLocal(ll), WALK_LIMIT);
     if (!res) return (clearWalk(), toast('No street within 250 m of that spot.'));
     const { fc, lengthIn } = walkPieces(graph, res.dist, frame, WALK_LIMIT);
@@ -2804,10 +2855,10 @@ function renderWalkKey() {
       `<div class="wpal">${Object.entries(WALK_PALETTES)
         .map(([name, c]) => `<button data-pal="${name}" title="${name}" aria-label="${name} colours" style="background:linear-gradient(90deg,${c[0]} 0 33%,${c[1]} 33% 66%,${c[2]} 66%)"></button>`)
         .join('')}</div>` +
-      (S.plan.streets.length
+      (S.plan.streets.length || S.plan.clear.length || S.plan.clearRed
         ? `<label class="wdrawn"><input type="checkbox" id="walkDrawn" ${walkDrawn ? 'checked' : ''}> Include drawn streets and paths <span class="muted">(${S.plan.streets.length})</span></label>`
         : '') +
-      `<p class="muted">Along ${walkUsedDrawn ? 'existing and drawn ' : ''}streets and footpaths at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Press Walk from a point to start somewhere else.</p>`,
+      `<p class="muted">Along ${walkUsedDrawn ? 'existing and drawn ' : ''}streets and footpaths${walkUsedClear ? ' (existing ones cleared inside the site)' : ''} at 4.8 km/h${start > 15 ? `, starting ${Math.round(start)} m from the nearest street` : ''}. Tick a band to show it on the map; click a swatch to change its colour. Press Walk from a point to start somewhere else.</p>`,
   );
   const el = $('#walkPanel');
   el.querySelector<HTMLInputElement>('#walkDrawn')?.addEventListener('change', (e) => {
@@ -3240,7 +3291,7 @@ try {
 function saveProject() {
   recordHistory();
   try {
-    const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length;
+    const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length || S.plan.clear.length || S.plan.clearRed;
     if (!S.red && !S.blocks.length && !hasPlan) return localStorage.removeItem(KEY);
     localStorage.setItem(KEY, JSON.stringify({ red: S.red, place: S.place, bufferM: S.bufferM, blocks: S.blocks, assume: S.assume, plan: S.plan, mpAssume: S.mpAssume, targets: S.targets }));
   } catch { /* storage blocked */ }
