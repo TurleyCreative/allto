@@ -4010,6 +4010,7 @@ function renderZoneEditor(i) {
       + '<option value=""'+(!z.codesignGroupId?' selected':'')+'>None</option>'
       + P.codesignGroups.map(function(g){ return '<option value="'+h(g.id)+'"'+(z.codesignGroupId===g.id?' selected':'')+'>'+h(g.label||'Budget')+'</option>'; }).join('')
       + '</select></div>'
+      + (z.codesignGroupId ? cdPlotHTML(z) : '')
       + (z.codesignGroupId ? '<div class="f"><label class="fl">Plot area (m²)'+infoBtn('Used for costs and value in the budget. Leave blank to use the area of the shape you drew; type a figure to use the true net area instead.')+'</label><input type="number" id="zn-cd-area" value="'+(z.areaM2!=null&&z.areaM2!==''?h(z.areaM2):'')+'" placeholder="Drawn area: '+Math.round(zoneAreaM2(Object.assign({}, z, {areaM2:null}))).toLocaleString('en-GB')+' m²"/></div>' : '')
       + '</div>';
   }
@@ -4076,6 +4077,7 @@ function renderZoneEditor(i) {
     markDirty(); renderZoneEditor(i);
   });
   bindInput('zn-cd-group', function(v){ P.zones[i].codesignGroupId = v || null; renderZoneEditor(i); });
+  bindCdPlot(i);
   var znArea = el('zn-cd-area');
   if(znArea) znArea.addEventListener('input', function(){ P.zones[i].areaM2 = cdNum(this.value); markDirty(); });
   var tog3d = el('zn-3d-tog');
@@ -4187,6 +4189,11 @@ function bindSdbTest(btnId, inputId, statusId, mode) {
 function cdEnsure(g) {
   if (!g.categories) g.categories = [];
   if (!g.money) g.money = { on: false, currency: '£', cap: null, blockOverCap: false, showVoters: true };
+  // Return per m²: 'erv' = rent per m² per month (gives a payback period), 'value' = capital value per m².
+  if (!g.money.mode) g.money.mode = 'erv';
+  if (g.money.target === undefined) g.money.target = 25;
+  if (g.money.heritage === undefined) g.money.heritage = 1;
+  if (!g.money.storeyMult) g.money.storeyMult = {};
   if (!g.poll) g.poll = { title: '', intro: '', showResults: true };
   (g.options || []).forEach(function(o) { if (o.categoryId === undefined) o.categoryId = null; });
   return g;
@@ -4251,6 +4258,54 @@ function cdMoneyFmt(g, v) {
   return (v < 0 ? '−' : '') + cur + s;
 }
 
+var CD_TEXT_BTN = 'background:none;border:0;padding:0 0 0 8px;font-size:10px;color:var(--ghost);text-decoration:underline;cursor:pointer;width:auto;height:auto';
+/** On a plot in a budget: its storeys, heritage, and which of the budget's uses it allows. */
+function cdPlotHTML(z) {
+  var g = (P.codesignGroups || []).filter(function(x) { return x.id === z.codesignGroupId; })[0];
+  if (!g) return '';
+  cdEnsure(g);
+  var allowed = z.cdAllowed || null; // null: every use
+  var on = function(o) { return !allowed || allowed.indexOf(o.id) >= 0; };
+  var html = '<div class="cr" style="gap:8px;margin-bottom:8px">'
+    + '<div class="f" style="flex:1;margin:0"><label class="fl">Storeys' + infoBtn('Floor area for costs and rent is the plot area times this (uses marked ground only stay at one storey). The budget\u2019s storey cost multiplier applies.') + '</label><input type="number" min="1" max="60" id="zn-cd-storeys" value="' + (z.cdStoreys || 1) + '"/></div>'
+    + '<div class="f" style="flex:1;margin:0"><label class="fl">Heritage' + infoBtn('Costs on this plot take the budget\u2019s heritage multiplier (' + (g.money.heritage || 1) + '\u00d7, set in Settings > Co-Design).') + '</label><div class="lr" style="margin:0"><span class="ll">Heritage plot</span><button class="tg' + (z.cdHeritage ? ' on' : '') + '" id="zn-cd-heritage"></button></div></div></div>';
+  html += '<div class="f"><label class="fl">Uses allowed here' + infoBtn('Untick the uses voters can\u2019t choose on this plot. They are left out of its picker, here and in the presentation poll.') + ' <span style="font-weight:400;color:var(--ghost)">' + (allowed ? allowed.length + ' of ' + g.options.length : 'all') + '</span></label>';
+  var cats = g.categories.concat([{ id: null, label: g.categories.length ? 'No category' : '', color: '#999' }]);
+  cats.forEach(function(c) {
+    var opts = g.options.filter(function(o) { return (o.categoryId || null) === c.id || (c.id === null && o.categoryId && !g.categories.some(function(x) { return x.id === o.categoryId; })); });
+    if (!opts.length) return;
+    if (c.label) html += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;font-weight:600;margin:8px 0 4px"><span style="width:9px;height:9px;border-radius:2px;background:' + h(c.color) + '"></span>' + h(c.label)
+      + '<button type="button" class="cd-allow-cat" data-c="' + h(c.id || '') + '" data-on="1" style="margin-left:auto;' + CD_TEXT_BTN + '">All</button><button type="button" class="cd-allow-cat" data-c="' + h(c.id || '') + '" data-on="0" style="' + CD_TEXT_BTN + '">None</button></div>';
+    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 10px">' + opts.map(function(o) {
+      return '<label style="display:flex;align-items:flex-start;justify-content:flex-start;gap:6px;font-size:11px;line-height:1.3;text-align:left;cursor:pointer;margin:0;padding:0;font-weight:400"><input type="checkbox" class="cd-allow" value="' + h(o.id) + '"' + (on(o) ? ' checked' : '') + ' style="width:auto;height:auto;margin:1px 0 0;flex:none"/><span>' + h(o.label) + '</span></label>';
+    }).join('') + '</div>';
+  });
+  return html + '</div>';
+}
+function bindCdPlot(i) {
+  var z = P.zones[i];
+  var st = el('zn-cd-storeys');
+  if (st) st.addEventListener('input', function() { z.cdStoreys = Math.max(1, Math.round(cdNum(this.value) || 1)); markDirty(); });
+  var hr = el('zn-cd-heritage');
+  if (hr) hr.addEventListener('click', function() { z.cdHeritage = !z.cdHeritage; this.classList.toggle('on', z.cdHeritage); markDirty(); });
+  var g = (P.codesignGroups || []).filter(function(x) { return x.id === z.codesignGroupId; })[0];
+  if (!g) return;
+  var setAllowed = function(ids) { z.cdAllowed = ids.length === g.options.length ? null : ids; markDirty(); renderZoneEditor(i); };
+  var current = function() { return z.cdAllowed ? z.cdAllowed.slice() : g.options.map(function(o) { return o.id; }); };
+  document.querySelectorAll('.cd-allow').forEach(function(cb) {
+    cb.addEventListener('change', function() { var ids = current().filter(function(x) { return x !== cb.value; }); if (cb.checked) ids.push(cb.value); setAllowed(ids); });
+  });
+  document.querySelectorAll('.cd-allow-cat').forEach(function(b) {
+    b.addEventListener('click', function() {
+      var cid = b.dataset.c || null, ids = current();
+      var mine = g.options.filter(function(o) { return (o.categoryId || null) === cid; }).map(function(o) { return o.id; });
+      ids = ids.filter(function(x) { return mine.indexOf(x) < 0; });
+      if (b.dataset.on === '1') ids = ids.concat(mine);
+      setAllowed(ids);
+    });
+  });
+}
+
 /** The categories, uses, money and poll settings of one budget card in Settings. */
 function cdGroupBodyHTML(g, gi) {
   cdEnsure(g);
@@ -4266,7 +4321,7 @@ function cdGroupBodyHTML(g, gi) {
   html += '<button class="btn btn-g btn-ic cd-add-cat" data-gi="' + gi + '" style="width:100%;justify-content:center;margin-top:2px">' + lucideSVG('plus', 13, 'currentColor') + 'Add category</button></div>';
   // Uses
   html += '<div class="f"><label class="fl">Uses' + infoBtn('Click the circle to pick an icon — shown as a badge on the plot once picked, in the picker, and in the results legend.' + (m.on ? ' Cost and value are per m² of the plot: a use whose value covers its cost pays for itself; one that doesn’t needs the difference as subsidy. Leave value blank for uses that are fully subsidised.' : '')) + '</label>';
-  if (m.on) html += '<div class="cr" style="font-size:10px;color:var(--ghost);gap:6px;margin-bottom:4px"><span style="flex:1">' + (g.categories.length ? 'Each use: category, then' : 'Each use:') + '</span><span style="width:78px">Cost ' + h(m.currency || '£') + '/m²</span><span style="width:78px">Value ' + h(m.currency || '£') + '/m²</span></div>';
+  if (m.on) html += '<div class="cr" style="font-size:10px;color:var(--ghost);gap:6px;margin-bottom:4px"><span style="flex:1">' + (g.categories.length ? 'Each use: category, then' : 'Each use:') + '</span><span style="width:70px">Cost ' + h(m.currency || '£') + '/m²</span><span style="width:70px">' + (m.mode === 'value' ? 'Value ' + h(m.currency || '£') + '/m²' : 'ERV ' + h(m.currency || '£') + '/m²/mo') + '</span><span style="width:44px">Ground only</span></div>';
   html += '<div class="cd-opts-list" data-gi="' + gi + '">';
   var order = g.categories.map(function(c) { return c.id; }).concat([null]);
   order.forEach(function(cid) {
@@ -4285,8 +4340,9 @@ function cdGroupBodyHTML(g, gi) {
       if (g.categories.length || m.on) {
         html += '<div class="cr" style="margin-top:4px;gap:6px">';
         if (g.categories.length) html += '<select class="cd-opt-cat" data-gi="' + gi + '" data-oi="' + oi + '" style="flex:1;min-width:0;font-size:11px">' + '<option value="">No category</option>' + g.categories.map(function(c) { return '<option value="' + h(c.id) + '"' + (opt.categoryId === c.id ? ' selected' : '') + '>' + h(c.label) + '</option>'; }).join('') + '</select>';
-        if (m.on) html += '<input type="number" class="cd-opt-cost" data-gi="' + gi + '" data-oi="' + oi + '" value="' + (opt.costM2 != null ? opt.costM2 : '') + '" placeholder="Cost/m²" title="Cost to deliver, per m²" style="width:78px;font-size:11px"/>'
-          + '<input type="number" class="cd-opt-val" data-gi="' + gi + '" data-oi="' + oi + '" value="' + (opt.valueM2 != null ? opt.valueM2 : '') + '" placeholder="Value/m²" title="What it brings back, per m² (sales or capitalised rent); blank if none" style="width:78px;font-size:11px"/>';
+        if (m.on) html += '<input type="number" class="cd-opt-cost" data-gi="' + gi + '" data-oi="' + oi + '" value="' + (opt.costM2 != null ? opt.costM2 : '') + '" placeholder="Cost/m²" title="Cost to deliver, per m² of floor" style="width:70px;font-size:11px"/>'
+          + '<input type="number" step="any" class="cd-opt-val" data-gi="' + gi + '" data-oi="' + oi + '" value="' + (opt.valueM2 != null ? opt.valueM2 : '') + '" placeholder="' + (m.mode === 'value' ? 'Value/m²' : 'ERV/m²/mo') + '" title="' + (m.mode === 'value' ? 'Capital value per m² of floor; blank if none' : 'Estimated rental value per m² of floor per month; 0 or blank if it earns nothing') + '" style="width:70px;font-size:11px"/>'
+          + '<label style="width:44px;display:flex;justify-content:center" title="Ground only: not multiplied by the plot\u2019s storeys (open space, say)"><input type="checkbox" class="cd-opt-ground" data-gi="' + gi + '" data-oi="' + oi + '"' + (opt.groundOnly ? ' checked' : '') + '/></label>';
         html += '</div>';
       }
       html += '</div>';
@@ -4295,15 +4351,20 @@ function cdGroupBodyHTML(g, gi) {
   html += '</div>';
   html += '<button class="btn btn-g btn-ic cd-add-opt" data-gi="' + gi + '" style="width:100%;justify-content:center;margin-top:4px">' + lucideSVG('plus', 13, 'currentColor') + 'Add use</button>';
   html += '<details style="margin-top:8px"><summary style="font-size:11px;cursor:pointer">Paste categories and uses from a spreadsheet</summary>'
-    + '<p style="font-size:11px;line-height:1.5;margin:6px 0">Copy the cells from Excel and paste them here: <b>Category, Use</b>, and optionally <b>Cost per m², Value per m²</b>. Merged category cells are fine. This replaces this budget’s categories and uses.</p>'
+    + '<p style="font-size:11px;line-height:1.5;margin:6px 0">Copy the cells from Excel and paste them here: <b>Category, Use</b>, and optionally <b>Cost per m², ERV per m² per month</b> (or capital value, if the return is set that way). Merged category cells are fine. This replaces this budget’s categories and uses.</p>'
     + '<textarea class="cd-paste" data-gi="' + gi + '" style="min-height:90px;font-family:var(--mono);font-size:11px" placeholder="Hotel\t3 Star Hotel\t2800\t3100&#10;\t4 Star Boutique Hotel\t3400\t3900"></textarea>'
     + '<button class="btn btn-g btn-ic cd-paste-go" data-gi="' + gi + '" style="width:100%;justify-content:center;margin-top:6px">' + lucideSVG('check', 13, 'currentColor') + 'Use these</button></details>';
   html += '</div>';
   // Money
   html += '<div class="lr" style="margin:10px 0 8px"><span class="ll">Costs and funding' + infoBtn('Give each use a cost and a value per m². Each plot’s pick, and the whole scenario, then reads as self-funding or as needing subsidy (the cost not covered by value).') + '</span><button class="tg' + (m.on ? ' on' : '') + '" id="cfg-cd-money-' + gi + '"></button></div>';
   if (m.on) {
+    html += '<div class="f"><label class="fl">Return per m²</label><select id="cfg-cd-mode-' + gi + '"><option value="erv"' + (m.mode !== 'value' ? ' selected' : '') + '>ERV per month (payback)</option><option value="value"' + (m.mode === 'value' ? ' selected' : '') + '>Capital value (surplus or subsidy)</option></select></div>';
     html += '<div class="cr" style="gap:8px;margin-bottom:8px"><div class="f" style="flex:0 0 70px;margin:0"><label class="fl">Currency</label><input type="text" id="cfg-cd-cur-' + gi + '" value="' + h(m.currency || '£') + '"/></div>'
-      + '<div class="f" style="flex:1;margin:0"><label class="fl">Subsidy available' + infoBtn('Optional. The most subsidy the scheme can carry. Voters see how their picks compare with it.') + '</label><input type="number" id="cfg-cd-cap-' + gi + '" value="' + (m.cap != null ? m.cap : '') + '" placeholder="No limit"/></div></div>';
+      + (m.mode !== 'value' ? '<div class="f" style="flex:1;margin:0"><label class="fl">Pay back within' + infoBtn('Years. A pick or scenario whose rent repays its cost within this reads as paying for itself; beyond it, the gap is the subsidy needed. Blank: just show the payback period.') + '</label><input type="number" id="cfg-cd-target-' + gi + '" value="' + (m.target != null ? m.target : '') + '" placeholder="No target"/></div>' : '')
+      + '<div class="f" style="flex:1;margin:0"><label class="fl">Subsidy available' + infoBtn('Optional. The most subsidy the scheme can carry' + (m.mode !== 'value' ? ' (the cost not repaid by rent within the payback target)' : '') + '. Voters see how their picks compare with it.') + '</label><input type="number" id="cfg-cd-cap-' + gi + '" value="' + (m.cap != null ? m.cap : '') + '" placeholder="No limit"/></div></div>';
+    html += '<div class="f"><label class="fl">Heritage cost multiplier' + infoBtn('Applied to the cost of any use on a plot marked as heritage (on the plot, under Constraint Zones). 1.2 = 20% more.') + '</label><input type="number" step="0.01" id="cfg-cd-her-' + gi + '" value="' + (m.heritage != null ? m.heritage : 1) + '"/></div>';
+    html += '<div class="f"><label class="fl">Cost multiplier by number of storeys' + infoBtn('A plot\u2019s floor area is its footprint times its storeys (set on the plot). The cost per m² is multiplied by the figure for that many storeys; blank uses the nearest lower one, or 1.') + '</label><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'
+      + [1, 2, 3, 4, 5, 6, 7, 8].map(function(n) { return '<label style="font-size:10px;color:var(--ghost);display:flex;align-items:center;gap:4px;margin:0">' + n + '<input type="number" step="0.01" class="cd-storey-mult" data-gi="' + gi + '" data-n="' + n + '" value="' + (m.storeyMult[n] != null ? m.storeyMult[n] : '') + '" placeholder="' + (n === 1 ? '1' : '') + '" style="width:100%;min-width:0;font-size:11px;padding:4px 4px"/></label>'; }).join('') + '</div></div>';
     html += '<div class="lr" style="margin-bottom:6px"><span class="ll">Show costs to voters</span><button class="tg' + (m.showVoters !== false ? ' on' : '') + '" id="cfg-cd-showmoney-' + gi + '"></button></div>';
     if (m.cap != null) html += '<div class="lr" style="margin-bottom:6px"><span class="ll">Voters can’t submit over the subsidy available</span><button class="tg' + (m.blockOverCap ? ' on' : '') + '" id="cfg-cd-block-' + gi + '"></button></div>';
   }
@@ -4327,6 +4388,8 @@ function bindCdGroupBodies() {
   document.querySelectorAll('.cd-opt-cat').forEach(function(s) { s.addEventListener('change', function() { G(this).options[+this.dataset.oi].categoryId = this.value || null; redraw(); }); });
   document.querySelectorAll('.cd-opt-cost').forEach(function(s) { s.addEventListener('input', function() { G(this).options[+this.dataset.oi].costM2 = cdNum(this.value); markDirty(); }); });
   document.querySelectorAll('.cd-opt-val').forEach(function(s) { s.addEventListener('input', function() { G(this).options[+this.dataset.oi].valueM2 = cdNum(this.value); markDirty(); }); });
+  document.querySelectorAll('.cd-opt-ground').forEach(function(s) { s.addEventListener('change', function() { G(this).options[+this.dataset.oi].groundOnly = this.checked; markDirty(); }); });
+  document.querySelectorAll('.cd-storey-mult').forEach(function(s) { s.addEventListener('input', function() { var g = G(this), v = cdNum(this.value); if (v == null) delete g.money.storeyMult[this.dataset.n]; else g.money.storeyMult[this.dataset.n] = v; markDirty(); }); });
   document.querySelectorAll('.cd-paste-go').forEach(function(b) {
     b.addEventListener('click', function() {
       var g = G(this), ta = document.querySelector('.cd-paste[data-gi="' + this.dataset.gi + '"]');
@@ -4347,6 +4410,12 @@ function bindCdGroupBodies() {
     tg('cfg-cd-block-' + gi, function() { g.money.blockOverCap = !g.money.blockOverCap; });
     tg('cfg-cd-pres-' + gi, function() { g.poll.showResults = g.poll.showResults === false; });
     bindInput('cfg-cd-cur-' + gi, function(v) { g.money.currency = v || '£'; });
+    var md = el('cfg-cd-mode-' + gi);
+    if (md) md.addEventListener('change', function() { g.money.mode = this.value; redraw(); });
+    var tg2 = el('cfg-cd-target-' + gi);
+    if (tg2) tg2.addEventListener('change', function() { g.money.target = cdNum(this.value); markDirty(); });
+    var her = el('cfg-cd-her-' + gi);
+    if (her) her.addEventListener('input', function() { g.money.heritage = cdNum(this.value) || 1; markDirty(); });
     var cap = el('cfg-cd-cap-' + gi);
     if (cap) cap.addEventListener('change', function() { g.money.cap = cdNum(this.value); redraw(); });
     bindInput('cfg-cd-ptitle-' + gi, function(v) { g.poll.title = v; });
@@ -4365,7 +4434,7 @@ function pollConfig(gi) {
   var g = cdEnsure(P.codesignGroups[gi]);
   var scene = (P.scenes || []).filter(function(sc) { return sc.codesignGroupId === g.id; })[0];
   var plots = (P.zones || []).filter(function(z) { return z.codesignGroupId === g.id && (z.coordinates || []).length > 2; }).map(function(z) {
-    return { id: z.id, name: z.name || 'Plot', ring: z.coordinates, areaM2: Math.round(zoneAreaM2(z)), color: z.color || '#888888' };
+    return { id: z.id, name: z.name || 'Plot', ring: z.coordinates, areaM2: Math.round(zoneAreaM2(z)), color: z.color || '#888888', storeys: z.cdStoreys || 1, heritage: !!z.cdHeritage, allowed: z.cdAllowed || null };
   });
   var stripTags = function(s) { var d = document.createElement('div'); d.innerHTML = s || ''; return (d.textContent || '').trim(); };
   return {
@@ -4378,8 +4447,8 @@ function pollConfig(gi) {
     group: {
       id: g.id, label: g.label || 'Budget', submitUrl: g.submitUrl || '', readUrl: g.readUrl || g.submitUrl || '',
       categories: g.categories.map(function(c) { return { id: c.id, label: c.label, color: c.color }; }),
-      options: (g.options || []).map(function(o) { return { id: o.id, label: o.label, color: o.color, categoryId: o.categoryId || null, costM2: cdNum(o.costM2), valueM2: cdNum(o.valueM2) }; }),
-      money: { on: !!g.money.on, currency: g.money.currency || '£', cap: cdNum(g.money.cap), blockOverCap: !!g.money.blockOverCap, showVoters: g.money.showVoters !== false },
+      options: (g.options || []).map(function(o) { return { id: o.id, label: o.label, color: o.color, categoryId: o.categoryId || null, costM2: cdNum(o.costM2), valueM2: cdNum(o.valueM2), groundOnly: !!o.groundOnly }; }),
+      money: { on: !!g.money.on, mode: g.money.mode || 'erv', target: cdNum(g.money.target), heritage: cdNum(g.money.heritage) || 1, storeyMult: g.money.storeyMult || {}, currency: g.money.currency || '£', cap: cdNum(g.money.cap), blockOverCap: !!g.money.blockOverCap, showVoters: g.money.showVoters !== false },
       showResults: g.poll.showResults !== false,
     },
     plots: plots,
@@ -4487,17 +4556,45 @@ function pollRuntime(C) {
     var a = Math.abs(v), s = a >= 1e6 ? (a / 1e6).toFixed(a >= 1e7 ? 0 : 1) + 'm' : a >= 1e3 ? Math.round(a / 1e3) + 'k' : String(Math.round(a));
     return (v < 0 ? '−' : '') + M.currency + s;
   };
-  /** What a use on a plot costs and brings back. */
+  var ERV = M.mode !== 'value';
+  /** The cost multiplier for a number of storeys: that figure, else the nearest lower one, else 1. */
+  var storeyMult = function(n) { for (var k = n; k >= 1; k--) if (M.storeyMult && M.storeyMult[k] != null) return +M.storeyMult[k]; return 1; };
+  /**
+   * What a use on a plot costs and brings back. Floor area = plot area × storeys (ground-only uses stay
+   * at one); cost = floor area × cost/m² × the storey multiplier × the heritage multiplier (heritage plots).
+   * ERV: rent a year = floor area × ERV/m²/month × 12. Capital value: value = floor area × value/m².
+   */
   var fin = function(o, plot) {
-    var cost = (o.costM2 || 0) * plot.areaM2, value = (o.valueM2 || 0) * plot.areaM2;
-    return { cost: cost, value: value, net: value - cost };
+    var floors = o.groundOnly ? 1 : Math.max(1, plot.storeys || 1), area = plot.areaM2 * floors;
+    var cost = (o.costM2 || 0) * area * storeyMult(floors) * (plot.heritage ? M.heritage || 1 : 1);
+    var value = ERV ? 0 : (o.valueM2 || 0) * area, rent = ERV ? (o.valueM2 || 0) * area * 12 : 0;
+    return { cost: cost, value: value, rent: rent, net: value - cost, floors: floors, area: area };
   };
   var scenario = function(picks) {
-    var t = { cost: 0, value: 0, net: 0, n: 0 };
-    C.plots.forEach(function(p) { var o = optById[picks[p.id]]; if (!o) return; var f = fin(o, p); t.cost += f.cost; t.value += f.value; t.net += f.net; t.n++; });
+    var t = { cost: 0, value: 0, rent: 0, net: 0, n: 0 };
+    C.plots.forEach(function(p) { var o = optById[picks[p.id]]; if (!o) return; var f = fin(o, p); t.cost += f.cost; t.value += f.value; t.rent += f.rent; t.net += f.net; t.n++; });
     return t;
   };
+  var years = function(y) {
+    if (!isFinite(y)) return 'never';
+    if (y < 1) return 'under a year';
+    if (y < 10) return (Math.round(y * 10) / 10) + ' years';
+    return y >= 100 ? '100+ years' : Math.round(y) + ' years';
+  };
+  /** The subsidy needed: the cost rent doesn't repay within the target (ERV), or cost less value. */
+  var shortfall = function(t) { return ERV ? (M.target != null ? Math.max(0, t.cost - t.rent * M.target) : null) : Math.max(0, -t.net); };
+  var paysItself = function(t) { return ERV ? t.cost === 0 || (t.rent > 0 && (M.target == null || t.cost / t.rent <= M.target)) : t.net >= 0; };
+  var overCap = function(t) { var sh = shortfall(t); return M.cap != null && sh != null && sh > M.cap; };
   var status = function(t, plotOnly) {
+    if (ERV) {
+      if (!t.cost) return { cls: 'ok', text: 'No cost' };
+      if (!t.rent) return { cls: 'bad', text: 'No rent: fully subsidised' + (plotOnly ? '' : ' (' + money(t.cost) + ')') };
+      var y = t.cost / t.rent, txt = 'Pays back in ' + years(y);
+      if (M.target == null || y <= M.target) return { cls: 'ok', text: txt };
+      if (plotOnly) return { cls: 'warn', text: txt };
+      var sh = shortfall(t);
+      return { cls: overCap(t) ? 'bad' : 'warn', text: txt + ': needs ' + money(sh) + ' to pay back in ' + M.target + (overCap(t) ? ', over the ' + money(M.cap) + ' available' : '') };
+    }
     if (t.net >= 0) return { cls: 'ok', text: 'Self-funding' + (t.net > 0 ? ' (+' + money(t.net) + ')' : '') };
     var need = -t.net;
     if (plotOnly) return { cls: 'warn', text: 'Needs ' + money(need) + ' subsidy' };
@@ -4505,6 +4602,7 @@ function pollRuntime(C) {
     return { cls: 'warn', text: 'Needs ' + money(need) + ' subsidy' + (M.cap != null ? ' of ' + money(M.cap) + ' available' : '') };
   };
   var showMoney = M.on && (mode === 'results' || M.showVoters);
+  var plotFacts = function(p) { return Math.round(p.areaM2).toLocaleString('en-GB') + ' m²' + (p.storeys > 1 ? ' · ' + p.storeys + ' storeys' : '') + (p.heritage ? ' · heritage' : ''); };
   var bounds = function() {
     var b = [180, 90, -180, -90];
     C.plots.forEach(function(p) { p.ring.forEach(function(c) { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); }); });
@@ -4568,14 +4666,14 @@ function pollRuntime(C) {
           m.on('mouseleave', 'plots-f', function() { m.getCanvas().style.cursor = ''; });
         });
       }
-      var t = scenario(picks), st = status(t), over = M.cap != null && -t.net > M.cap;
+      var t = scenario(picks), st = status(t), over = overCap(t);
       document.getElementById('vlist').innerHTML = '<h3>Choose a use for each plot</h3>'
         + C.plots.map(function(p) {
           var o = optById[picks[p.id]];
-          return '<button class="plot" data-p="' + esc(p.id) + '"><span class="sw" style="background:' + esc(o ? o.color : '#ddd') + '"></span><span><div class="nm">' + esc(p.name) + '</div><div class="sub">' + Math.round(p.areaM2).toLocaleString('en-GB') + ' m²</div></span>'
+          return '<button class="plot" data-p="' + esc(p.id) + '"><span class="sw" style="background:' + esc(o ? o.color : '#ddd') + '"></span><span><div class="nm">' + esc(p.name) + '</div><div class="sub">' + plotFacts(p) + '</div></span>'
             + '<span class="pick' + (o ? '' : ' none') + '">' + (o ? esc(o.label) + (showMoney ? '<div class="sub">' + esc(status(fin(o, p), true).text) + '</div>' : '') : 'Choose') + '</span></button>';
         }).join('');
-      document.getElementById('vbar').innerHTML = (showMoney && t.n ? '<div class="money"><span>Your picks cost ' + money(t.cost) + (t.value ? ', bring back ' + money(t.value) : '') + '</span><span class="chip ' + st.cls + '">' + esc(st.text) + '</span></div>' : '')
+      document.getElementById('vbar').innerHTML = (showMoney && t.n ? '<div class="money"><span>Your picks cost ' + money(t.cost) + (ERV ? (t.rent ? ' and earn ' + money(t.rent) + ' a year' : '') : t.value ? ', bring back ' + money(t.value) : '') + '</span><span class="chip ' + st.cls + '">' + esc(st.text) + '</span></div>' : '')
         + '<button class="go" id="send"' + (t.n && !(over && M.blockOverCap) ? '' : ' disabled') + '>' + (over && M.blockOverCap ? 'Over the subsidy available' : t.n ? 'Submit my picks (' + t.n + ' of ' + C.plots.length + ')' : 'Pick a use for a plot to start') + '</button>';
       app.querySelectorAll('.plot').forEach(function(b) { b.onclick = function() { pick(b.dataset.p); }; });
       document.getElementById('send').onclick = send;
@@ -4590,15 +4688,15 @@ function pollRuntime(C) {
       var p = C.plots.filter(function(x) { return x.id === pid; })[0];
       if (!p) return;
       var cats = G.categories.concat([{ id: null, label: G.categories.length ? 'Other' : '', color: '#999' }]);
-      var html = '<div class="sheet-bg"></div><div class="sheet" role="dialog" aria-label="Choose a use"><h2>' + esc(p.name) + '</h2><div class="sub">' + Math.round(p.areaM2).toLocaleString('en-GB') + ' m²</div>';
+      var html = '<div class="sheet-bg"></div><div class="sheet" role="dialog" aria-label="Choose a use"><h2>' + esc(p.name) + '</h2><div class="sub">' + plotFacts(p) + '</div>';
       cats.forEach(function(c) {
-        var opts = G.options.filter(function(o) { return (o.categoryId || null) === c.id || (c.id === null && o.categoryId && !catById[o.categoryId]); });
+        var opts = G.options.filter(function(o) { return ((o.categoryId || null) === c.id || (c.id === null && o.categoryId && !catById[o.categoryId])) && (!p.allowed || p.allowed.indexOf(o.id) >= 0); });
         if (!opts.length) return;
         if (c.label) html += '<div class="cat"><i style="background:' + esc(c.color) + '"></i>' + esc(c.label) + '</div>';
         opts.forEach(function(o) {
           var s = showMoney ? status(fin(o, p), true) : null;
           html += '<button class="opt' + (picks[pid] === o.id ? ' on' : '') + '" data-o="' + esc(o.id) + '"><span class="dot" style="background:' + esc(o.color) + '"></span>' + esc(o.label)
-            + (s ? '<span class="m ' + s.cls + '">' + esc(s.cls === 'ok' ? 'Pays for itself' : 'Needs ' + money(-fin(o, p).net)) + '</span>' : '') + '</button>';
+            + (s ? '<span class="m ' + s.cls + '">' + esc(ERV ? (s.cls === 'bad' ? 'No rent' : s.text.replace('Pays back in ', '')) : s.cls === 'ok' ? 'Pays for itself' : 'Needs ' + money(-fin(o, p).net)) + '</span>' : '') + '</button>';
         });
       });
       html += (picks[pid] ? '<button class="clear" data-o="">Clear this plot</button>' : '') + '</div>';
@@ -4616,7 +4714,9 @@ function pollRuntime(C) {
       var rows = C.plots.filter(function(p) { return picks[p.id]; }).map(function(p) {
         var o = optById[picks[p.id]], f = fin(o, p), c = catById[o.categoryId];
         return { id: sub + '-' + p.id, submissionId: sub, visitorId: vid, zoneId: p.id, zoneName: p.name, choice: o.label, category: c ? c.label : '', areaM2: Math.round(p.areaM2),
-          cost: Math.round(f.cost), value: Math.round(f.value), net: Math.round(f.net), scenarioCost: Math.round(t.cost), scenarioValue: Math.round(t.value), scenarioNet: Math.round(t.net), source: 'poll', timestamp: ts };
+          storeys: f.floors, floorAreaM2: Math.round(f.area), heritage: !!p.heritage,
+          cost: Math.round(f.cost), value: ERV ? null : Math.round(f.value), net: ERV ? null : Math.round(f.net), annualRent: ERV ? Math.round(f.rent) : null, paybackYears: f.rent ? Math.round((f.cost / f.rent) * 10) / 10 : null,
+          scenarioCost: Math.round(t.cost), scenarioValue: ERV ? null : Math.round(t.value), scenarioNet: ERV ? null : Math.round(t.net), scenarioAnnualRent: ERV ? Math.round(t.rent) : null, scenarioShortfall: shortfall(t) != null ? Math.round(shortfall(t)) : null, scenarioPaybackYears: t.rent ? Math.round((t.cost / t.rent) * 10) / 10 : null, source: 'poll', timestamp: ts };
       });
       var btn = document.getElementById('send');
       btn.disabled = true; btn.textContent = 'Sending…';
@@ -4654,7 +4754,7 @@ function pollRuntime(C) {
     voters.forEach(function(v) { Object.keys(v).forEach(function(pid) { var o = optById[v[pid]]; counts[pid][o.id] = (counts[pid][o.id] || 0) + 1; var ck = o.categoryId || ''; cats[ck] = (cats[ck] || 0) + 1; }); });
     var top = {};
     C.plots.forEach(function(p) { var best = null; G.options.forEach(function(o) { var n = counts[p.id][o.id] || 0; if (n && (!best || n > counts[p.id][best])) best = o.id; }); if (best) top[p.id] = best; });
-    var selfFunding = voters.filter(function(v) { return scenario(v).net >= 0; }).length;
+    var selfFunding = voters.filter(function(v) { return paysItself(scenario(v)); }).length;
     return { voters: voters.length, counts: counts, cats: cats, top: top, selfFunding: selfFunding };
   }
 
@@ -4683,7 +4783,8 @@ function pollRuntime(C) {
       L.push([], ['People who voted', A.voters]);
       if (M.on) {
         var t = scenario(A.top);
-        L.push(['Most popular scenario: cost', Math.round(t.cost)], ['Most popular scenario: value', Math.round(t.value)], ['Most popular scenario: net (negative = subsidy needed)', Math.round(t.net)], ['Scenarios that are self-funding', A.selfFunding + ' of ' + A.voters]);
+        if (ERV) L.push(['Most popular scenario: cost', Math.round(t.cost)], ['Most popular scenario: rent a year', Math.round(t.rent)], ['Most popular scenario: payback (years)', t.rent ? Math.round((t.cost / t.rent) * 10) / 10 : 'never'], ['Subsidy to pay back within ' + (M.target != null ? M.target + ' years' : 'the target'), shortfall(t) != null ? Math.round(shortfall(t)) : ''], ['Scenarios paying back within the target', A.selfFunding + ' of ' + A.voters]);
+        else L.push(['Most popular scenario: cost', Math.round(t.cost)], ['Most popular scenario: value', Math.round(t.value)], ['Most popular scenario: net (negative = subsidy needed)', Math.round(t.net)], ['Scenarios that are self-funding', A.selfFunding + ' of ' + A.voters]);
       }
       var text = L.map(function(r) { return r.map(function(c) { c = String(c); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(','); }).join('\n');
       var a = document.createElement('a');
@@ -4718,8 +4819,8 @@ function pollRuntime(C) {
       if (M.on) {
         var t = scenario(A.top), st = status(t);
         h += '<h2>The room’s scenario</h2><div class="scen"><div style="font-size:12px;color:var(--ghost)">The most popular use on every plot</div><div class="big">' + esc(st.text) + '</div>'
-          + '<div style="font-size:13px">Costs ' + money(t.cost) + (t.value ? ' · brings back ' + money(t.value) : '') + '</div></div>'
-          + '<div class="r-note">' + A.selfFunding + ' of ' + A.voters + ' people’s scenarios pay for themselves.</div>';
+          + '<div style="font-size:13px">Costs ' + money(t.cost) + (ERV ? (t.rent ? ' · earns ' + money(t.rent) + ' a year' : '') : t.value ? ' · brings back ' + money(t.value) : '') + '</div></div>'
+          + '<div class="r-note">' + A.selfFunding + ' of ' + A.voters + ' people’s scenarios ' + (ERV ? (M.target != null ? 'pay back within ' + M.target + ' years' : 'earn rent') : 'pay for themselves') + '.</div>';
       }
       body.innerHTML = h;
       var upd = document.getElementById('upd');
@@ -7102,7 +7203,7 @@ function buildCfg() {
 
   var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false}};})};
 
-  var constraints = {type:'FeatureCollection',features:P.zones.map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',baseColor:z.color}};})};
+  var constraints = {type:'FeatureCollection',features:P.zones.map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
   var ciLines = P.zones.map(function(z){return '  '+JSON.stringify(z.id||z.name)+': { title:'+JSON.stringify(z.name)+', body:'+JSON.stringify(z.popup||'')+' }';}).join(',\n');
 
@@ -8800,7 +8901,8 @@ function buildJS() {
 '  optsWrap.className="cd-popup-opts";',
 '  var _cats=group.categories||[], _lastCat;',
 '  var _ci=function(o){ var k=_cats.findIndex(function(c){return c.id===o.categoryId;}); return k<0?999:k; };',
-'  group.options.slice().sort(function(a,b){return _ci(a)-_ci(b);}).forEach(function(opt){',
+'  var _allowed=String(p.cdAllowed||"").split(",").filter(Boolean);',
+'  group.options.filter(function(o){return !_allowed.length||_allowed.indexOf(o.id)>=0;}).sort(function(a,b){return _ci(a)-_ci(b);}).forEach(function(opt){',
 '    if(_cats.length && opt.categoryId!==_lastCat){ _lastCat=opt.categoryId; var cat=_cats.filter(function(c){return c.id===opt.categoryId;})[0]; var ch=document.createElement("div"); ch.className="cd-popup-cat"; ch.textContent=cat?cat.label:"Other"; optsWrap.appendChild(ch); }',
 '    var btn=document.createElement("button");',
 '    btn.type="button";',
@@ -9763,7 +9865,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, cdParsePaste: cdParsePaste };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
