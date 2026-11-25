@@ -1885,6 +1885,315 @@ function renderOverlays() {
     });
   });
 }
+// ── CAD DRAWINGS (DXF) AS MAP OVERLAYS ──
+// A DXF is read in the browser (dxf-parser), flattened to lines in drawing units (blocks expanded, arcs
+// and curves sampled, hidden and frozen layers left out, stray far-off entities dropped), sized by its
+// units, and drawn to a transparent PNG for an image overlay. Drawings on British National Grid
+// coordinates are placed exactly; others are centred on the site to be moved and rotated.
+var CAD_DXF_PARSER = 'https://cdn.jsdelivr.net/npm/dxf-parser@1.1.2/dist/dxf-parser.js';
+var CAD_PROJ4 = 'https://cdn.jsdelivr.net/npm/proj4@2.15.0/dist/proj4.js';
+var CAD_BNG = '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489 +units=m +no_defs';
+// $INSUNITS: drawing units in metres
+var CAD_UNITS = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1, 14: 0.1 };
+var CAD_UNIT_NAMES = [[0.001, 'Millimetres'], [0.01, 'Centimetres'], [1, 'Metres'], [0.0254, 'Inches'], [0.3048, 'Feet']];
+
+function cadLoadScript(url) {
+  window._cadScripts = window._cadScripts || {};
+  if (window._cadScripts[url]) return window._cadScripts[url];
+  window._cadScripts[url] = new Promise(function(res, rej) {
+    var s = document.createElement('script');
+    s.src = url; s.crossOrigin = 'anonymous';
+    s.onload = function() { res(); };
+    s.onerror = function() { delete window._cadScripts[url]; rej(new Error('Could not load ' + url)); };
+    document.head.appendChild(s);
+  });
+  return window._cadScripts[url];
+}
+
+/** Flatten a parsed DXF to polylines (arrays of [x, y]) in drawing units. */
+function cadPaths(dxf) {
+  var layers = (dxf.tables && dxf.tables.layer && dxf.tables.layer.layers) || {};
+  var blocks = dxf.blocks || {};
+  var out = [];
+  function hiddenLayer(name) {
+    var l = layers[name];
+    return !!l && (l.visible === false || l.frozen === true);
+  }
+  // A transform is [a, b, c, d, e, f]: x' = a x + c y + e, y' = b x + d y + f
+  function apply(t, p) { return [t[0] * p[0] + t[2] * p[1] + t[4], t[1] * p[0] + t[3] * p[1] + t[5]]; }
+  function mul(t, u) { // t after u
+    return [t[0] * u[0] + t[2] * u[1], t[1] * u[0] + t[3] * u[1], t[0] * u[2] + t[2] * u[3], t[1] * u[2] + t[3] * u[3], t[0] * u[4] + t[2] * u[5] + t[4], t[1] * u[4] + t[3] * u[5] + t[5]];
+  }
+  function arcPts(cx, cy, r, a0, a1, mirror) {
+    if (a1 < a0) a1 += Math.PI * 2;
+    var n = Math.max(6, Math.min(72, Math.ceil(((a1 - a0) / (Math.PI * 2)) * 72)));
+    var pts = [];
+    for (var k = 0; k <= n; k++) { var a = a0 + ((a1 - a0) * k) / n; pts.push([cx + (mirror ? -1 : 1) * r * Math.cos(a), cy + r * Math.sin(a)]); }
+    return pts;
+  }
+  function bulgePts(p, q, b) { // a polyline segment with a bulge is an arc
+    if (!b) return [q];
+    var ang = 4 * Math.atan(b), dx = q[0] - p[0], dy = q[1] - p[1], chord = Math.hypot(dx, dy);
+    if (!chord) return [q];
+    var r = chord / (2 * Math.sin(ang / 2)), mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    var h = r * Math.cos(ang / 2), nx = -dy / chord, ny = dx / chord;
+    var cx = mx + nx * h, cy = my + ny * h;
+    var a0 = Math.atan2(p[1] - cy, p[0] - cx), n = Math.max(4, Math.ceil(Math.abs(ang) / (Math.PI / 18))), pts = [];
+    for (var k = 1; k <= n; k++) { var a = a0 + (ang * k) / n; pts.push([cx + Math.abs(r) * Math.cos(a), cy + Math.abs(r) * Math.sin(a)]); }
+    pts[pts.length - 1] = q;
+    return pts;
+  }
+  function walk(entities, t, depth, parentLayer) {
+    (entities || []).forEach(function(e) {
+      if (!e || e.visible === false || e.inPaperSpace) return;
+      var layer = e.layer === '0' && parentLayer ? parentLayer : e.layer;
+      if (hiddenLayer(layer)) return;
+      var mirror = e.extrusionDirectionZ < 0 || (e.extrusionDirection && e.extrusionDirection.z < 0);
+      var m = function(p) { return [mirror ? -p[0] : p[0], p[1]]; };
+      var add = function(pts, closed) {
+        if (pts.length < 2) return;
+        if (closed) pts = pts.concat([pts[0]]);
+        out.push(pts.map(function(p) { return apply(t, p); }));
+      };
+      var v = function(p) { return [p.x, p.y]; };
+      switch (e.type) {
+        case 'LINE': add(e.vertices.map(v)); break; // world coordinates, not mirrored
+        case 'LWPOLYLINE':
+        case 'POLYLINE': {
+          var vs = (e.vertices || []).filter(function(x) { return x && isFinite(x.x); });
+          if (vs.length < 2) break;
+          var pts = [m(v(vs[0]))], closed = !!(e.shape || e.closed);
+          for (var i = 1; i <= vs.length - (closed ? 0 : 1); i++) {
+            var a = vs[i - 1], b = vs[i % vs.length];
+            pts = pts.concat(bulgePts(m(v(a)), m(v(b)), (a.bulge || 0) * (mirror ? -1 : 1)));
+          }
+          add(pts);
+          break;
+        }
+        case 'CIRCLE': add(arcPts(e.center.x * (mirror ? -1 : 1), e.center.y, e.radius, 0, Math.PI * 2, false)); break;
+        case 'ARC': add(arcPts(mirror ? -e.center.x : e.center.x, e.center.y, e.radius, e.startAngle, e.endAngle, mirror)); break;
+        case 'ELLIPSE': {
+          var c = e.center, ma = e.majorAxisEndPoint, ratio = e.axisRatio || 1;
+          var R = Math.hypot(ma.x, ma.y), rot = Math.atan2(ma.y, ma.x);
+          var s0 = e.startAngle || 0, s1 = e.endAngle || Math.PI * 2;
+          if (s1 <= s0) s1 += Math.PI * 2;
+          var ep = [];
+          for (var k = 0; k <= 48; k++) {
+            var u = s0 + ((s1 - s0) * k) / 48, x = R * Math.cos(u), y = R * ratio * Math.sin(u);
+            ep.push([c.x + x * Math.cos(rot) - y * Math.sin(rot), c.y + x * Math.sin(rot) + y * Math.cos(rot)]);
+          }
+          add(ep);
+          break;
+        }
+        case 'SPLINE': add((e.fitPoints && e.fitPoints.length > 1 ? e.fitPoints : e.controlPoints || []).map(v)); break;
+        case 'SOLID':
+        case '3DFACE': if (e.points || e.vertices) add((e.points || e.vertices).map(v).map(m), true); break;
+        case 'INSERT': {
+          var blk = blocks[e.name];
+          if (!blk || depth > 8) break;
+          var bp = blk.position || { x: 0, y: 0 };
+          var sx = e.xScale || 1, sy = e.yScale || 1, r = ((e.rotation || 0) * Math.PI) / 180;
+          var cols = Math.max(1, e.columnCount || 1), rows = Math.max(1, e.rowCount || 1);
+          for (var ci = 0; ci < cols; ci++)
+            for (var ri = 0; ri < rows; ri++) {
+              var ox = (e.columnSpacing || 0) * ci, oy = (e.rowSpacing || 0) * ri;
+              var px = e.position.x + Math.cos(r) * ox - Math.sin(r) * oy, py = e.position.y + Math.sin(r) * ox + Math.cos(r) * oy;
+              // block point → minus base point → scale → rotate → mirror (OCS) → at the insertion point
+              var local = [Math.cos(r) * sx, Math.sin(r) * sx, -Math.sin(r) * sy, Math.cos(r) * sy, 0, 0];
+              local = mul(local, [1, 0, 0, 1, -bp.x, -bp.y]);
+              if (mirror) local = mul([-1, 0, 0, 1, 0, 0], local);
+              local = mul([1, 0, 0, 1, mirror ? -px : px, py], local);
+              walk(blk.entities, mul(t, local), depth + 1, layer);
+            }
+          break;
+        }
+        default: break; // text, hatches and dimensions are left out: a plan of the lines
+      }
+    });
+  }
+  walk(dxf.entities, [1, 0, 0, 1, 0, 0], 0, null);
+  return out;
+}
+
+/** Bounds of the drawing, ignoring the odd entity far away from the rest (a stray at the origin, a lost title block). */
+function cadExtent(paths) {
+  var xs = [], ys = [];
+  paths.forEach(function(p) { p.forEach(function(q) { xs.push(q[0]); ys.push(q[1]); }); });
+  if (!xs.length) return null;
+  xs.sort(function(a, b) { return a - b; }); ys.sort(function(a, b) { return a - b; });
+  var q = function(a, f) { return a[Math.min(a.length - 1, Math.max(0, Math.round(f * (a.length - 1))))]; };
+  var x0 = q(xs, 0.02), x1 = q(xs, 0.98), y0 = q(ys, 0.02), y1 = q(ys, 0.98);
+  var pad = Math.max(x1 - x0, y1 - y0, 1e-9) * 0.6;
+  var keep = paths.filter(function(p) {
+    return p.some(function(c) { return c[0] >= x0 - pad && c[0] <= x1 + pad && c[1] >= y0 - pad && c[1] <= y1 + pad; });
+  });
+  var b = [Infinity, Infinity, -Infinity, -Infinity];
+  keep.forEach(function(p) { p.forEach(function(c) { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); }); });
+  return { paths: keep, box: b, dropped: paths.length - keep.length };
+}
+
+/** Read a DXF's text into a drawing ready to place: lines, bounds, units and whether it sits on the National Grid. */
+function cadFromDxf(text, DxfParserCtor) {
+  var P = DxfParserCtor.default || DxfParserCtor;
+  var dxf = new P().parseSync(text);
+  if (!dxf) throw new Error('That file could not be read as a DXF.');
+  var ext = cadExtent(cadPaths(dxf));
+  if (!ext || !ext.paths.length) throw new Error('No lines found in that drawing (only text, hatching or hidden layers?).');
+  var b = ext.box, w = b[2] - b[0], hgt = b[3] - b[1];
+  var code = dxf.header && dxf.header.$INSUNITS;
+  var mpu = CAD_UNITS[code] || (Math.max(w, hgt) > 1500 && Math.max(w, hgt) < 2e6 ? 0.001 : 1);
+  var unitsGuessed = !CAD_UNITS[code];
+  var e0 = b[0] * mpu, n0 = b[1] * mpu, e1 = b[2] * mpu, n1 = b[3] * mpu;
+  // On the National Grid: coordinates in GB's range, well away from the origin, and a site-sized drawing.
+  var bng = e0 >= 0 && e1 <= 700000 && n0 >= 0 && n1 <= 1300000 && (e0 > 1000 || n0 > 1000) && e1 - e0 < 20000 && n1 - n0 < 20000;
+  return { paths: ext.paths, box: b, mpu: mpu, unitsGuessed: unitsGuessed, bng: bng, dropped: ext.dropped, entities: (dxf.entities || []).length };
+}
+
+/** Draw the lines to a transparent PNG (longest side `size` px). Returns a data URI. */
+function cadRender(d, size, colour) {
+  var b = d.box, w = b[2] - b[0], hgt = b[3] - b[1];
+  var s = size / Math.max(w, hgt);
+  var cw = Math.max(1, Math.round(w * s)), ch = Math.max(1, Math.round(hgt * s));
+  var c = document.createElement('canvas');
+  c.width = cw; c.height = ch;
+  var g = c.getContext('2d');
+  g.strokeStyle = colour || '#141414';
+  g.lineWidth = Math.max(1.5, size / 750); // thick enough to survive the image being shrunk on the map
+  g.lineJoin = 'round'; g.lineCap = 'round';
+  g.beginPath();
+  d.paths.forEach(function(p) {
+    p.forEach(function(q, i) {
+      var x = (q[0] - b[0]) * s, y = ch - (q[1] - b[1]) * s;
+      if (i) g.lineTo(x, y); else g.moveTo(x, y);
+    });
+  });
+  g.stroke();
+  return c.toDataURL('image/png');
+}
+
+/** The overlay's four corners (NW, NE, SE, SW) from a CAD placement. */
+function cadCorners(cad) {
+  if (cad.bng && cad.useGrid && window.proj4) {
+    var pr = window.proj4(CAD_BNG, 'WGS84');
+    var e0 = cad.box[0] * cad.mpu, n0 = cad.box[1] * cad.mpu, e1 = cad.box[2] * cad.mpu, n1 = cad.box[3] * cad.mpu;
+    return [[e0, n1], [e1, n1], [e1, n0], [e0, n0]].map(function(p) { var ll = pr.forward(p); return [+ll[0].toFixed(7), +ll[1].toFixed(7)]; });
+  }
+  var w = (cad.box[2] - cad.box[0]) * cad.mpu * (cad.scale || 1), hgt = (cad.box[3] - cad.box[1]) * cad.mpu * (cad.scale || 1);
+  var th = ((cad.rotation || 0) * Math.PI) / 180, c = cad.centre;
+  var kx = 111320 * Math.cos((c[1] * Math.PI) / 180), ky = 110574;
+  return [[-w / 2, hgt / 2], [w / 2, hgt / 2], [w / 2, -hgt / 2], [-w / 2, -hgt / 2]].map(function(p) {
+    // turn clockwise by the rotation, as on a compass
+    var x = p[0] * Math.cos(th) + p[1] * Math.sin(th), y = -p[0] * Math.sin(th) + p[1] * Math.cos(th);
+    return [+(c[0] + x / kx).toFixed(7), +(c[1] + y / ky).toFixed(7)];
+  });
+}
+
+var CAD_DWG_HELP = 'DWG is AutoCAD’s own closed format, so it can’t be read here. Save it as DXF first: in AutoCAD, Save As → AutoCAD DXF; without AutoCAD, Autodesk’s free DWG TrueView (DWG Convert → DXF) or the free ODA File Converter. Then upload the DXF.';
+
+/** A DXF chosen for overlay i: read it, draw it, place it, and show it on the map. */
+function cadUpload(i, file) {
+  var st = function(msg, bad) { var e = el('ov-cad-status'); if (e) { e.textContent = msg; e.style.color = bad ? 'var(--red, #c0392b)' : ''; } };
+  if (/\.dwg$/i.test(file.name)) return st(CAD_DWG_HELP, true);
+  if (!/\.dxf$/i.test(file.name)) return st('Choose a .dxf file.', true);
+  st('Reading the drawing…');
+  Promise.all([cadLoadScript(CAD_DXF_PARSER), file.text()]).then(function(r) {
+    var d = cadFromDxf(r[1], window.DxfParser);
+    return (d.bng ? cadLoadScript(CAD_PROJ4) : Promise.resolve()).then(function() { return d; });
+  }).then(function(d) {
+    var ov = P.overlays[i];
+    var centre = pMap ? pMap.getCenter() : null;
+    window._cadDrawings = window._cadDrawings || {};
+    window._cadDrawings[ov.id] = d;
+    var dark = /dark|satellite|night/i.test(P.mapboxStyle || '');
+    ov.url = cadRender(d, 2400, dark ? '#ffffff' : '#141414');
+    if (!ov.global && !(ov.scenes || []).length) ov.global = true; // show it straight away
+    if (!ov.name || ov.name === 'New Image Overlay') ov.name = file.name.replace(/\.dxf$/i, '');
+    ov.cad = { file: file.name, box: d.box, mpu: d.mpu, unitsGuessed: d.unitsGuessed, bng: d.bng, useGrid: d.bng, colour: dark ? '#ffffff' : '#141414',
+      centre: centre ? [+centre.lng.toFixed(7), +centre.lat.toFixed(7)] : (P.siteCentre || [-2.23, 53.48]), rotation: 0 };
+    ov.coords = cadCorners(ov.cad);
+    ov.opacity = 0.9;
+    markDirty(); refreshOV(); renderOverlays(); renderOverlayEditor(i);
+    cadFit(ov);
+    var w = ((d.box[2] - d.box[0]) * d.mpu).toFixed(1), hh = ((d.box[3] - d.box[1]) * d.mpu).toFixed(1);
+    st(d.paths.length + ' lines, ' + w + ' × ' + hh + ' m. ' + (d.bng ? 'Placed from its National Grid coordinates.' : 'Not geo-referenced: centred on the map; move and rotate it below.') + (d.unitsGuessed ? ' Units not set in the file: check them below.' : '') + (d.dropped ? ' ' + d.dropped + ' far-off item' + (d.dropped > 1 ? 's' : '') + ' left out.' : ''));
+  }).catch(function(e) { st(e.message || 'Could not read that drawing.', true); });
+}
+function cadFit(ov) {
+  if (!pMap || !ov.coords) return;
+  var xs = ov.coords.map(function(c) { return c[0]; }), ys = ov.coords.map(function(c) { return c[1]; });
+  pMap.fitBounds([[Math.min.apply(null, xs), Math.min.apply(null, ys)], [Math.max.apply(null, xs), Math.max.apply(null, ys)]], { padding: 80, duration: 800 });
+}
+/** Re-place a CAD overlay after its units, rotation, position or grid setting change. */
+function cadReplace(i, rerender) {
+  var ov = P.overlays[i];
+  var go = function() {
+    ov.coords = cadCorners(ov.cad);
+    refreshOV(); markDirty();
+    for (var ci = 0; ci < 4; ci++) {
+      var x = el('ov-c' + ci + 'x'), y = el('ov-c' + ci + 'y');
+      if (x) x.value = ov.coords[ci][0];
+      if (y) y.value = ov.coords[ci][1];
+    }
+    if (rerender) renderOverlayEditor(i);
+  };
+  if (ov.cad.useGrid) cadLoadScript(CAD_PROJ4).then(go); else go();
+}
+function cadEditorHTML(ov) {
+  var html = '<div class="f"><label class="fl">Or a CAD drawing' + infoBtn('Upload a <b>DXF</b> (a floor plan, site plan or survey). Its lines are drawn as a transparent image at true size from the drawing’s units. Drawings on British National Grid coordinates (most surveys and many site plans) land in the right place; others (most floor plans) are centred on the map for you to move and rotate. Text, hatching and dimensions are left out. <b>DWG?</b> Save it as DXF first.') + '</label>'
+    + '<label class="btn btn-g btn-ic" style="width:100%;justify-content:center;cursor:pointer">' + lucideSVG('upload', 13, 'currentColor') + (ov.cad ? 'Replace with another DXF' : 'Upload a DXF drawing') + '<input type="file" id="ov-cad-file" accept=".dxf,.dwg" style="display:none"/></label>'
+    + '<div id="ov-cad-status" style="font-size:11px;margin-top:6px;line-height:1.45"></div></div>';
+  return html;
+}
+var CAD_COLOURS = [['#141414', 'Dark grey'], ['#ffffff', 'White'], ['#d7262e', 'Red'], ['#2433e0', 'Blue']];
+function cadPlacementHTML(ov) {
+  if (!ov.cad) return '';
+  var html = '';
+  var c = ov.cad, wM = (c.box[2] - c.box[0]) * c.mpu, hM = (c.box[3] - c.box[1]) * c.mpu;
+  html += '<div class="rs"><div class="st">CAD drawing</div>';
+  html += '<div style="font-size:11px;margin-bottom:8px;line-height:1.45">' + h(c.file || 'Drawing') + ': ' + wM.toFixed(1) + ' × ' + hM.toFixed(1) + ' m</div>';
+  html += '<div class="f"><label class="fl">Drawing units' + (c.unitsGuessed ? ' <span style="color:var(--accent)">(guessed: check)</span>' : '') + '</label><select id="ov-cad-units">'
+    + CAD_UNIT_NAMES.map(function(u) { return '<option value="' + u[0] + '"' + (Math.abs(u[0] - c.mpu) < 1e-9 ? ' selected' : '') + '>' + u[1] + '</option>'; }).join('') + '</select></div>';
+  if (window._cadDrawings && window._cadDrawings[ov.id]) html += '<div class="f"><label class="fl">Line colour</label><select id="ov-cad-col">' + CAD_COLOURS.map(function(k) { return '<option value="' + k[0] + '"' + (c.colour === k[0] ? ' selected' : '') + '>' + k[1] + '</option>'; }).join('') + '</select></div>';
+  if (c.bng) html += '<div class="lr" style="margin-bottom:10px"><span class="ll">Place by its National Grid coordinates</span><button class="tg' + (c.useGrid ? ' on' : '') + '" id="ov-cad-grid"></button></div>';
+  if (!c.useGrid) {
+    html += '<div class="f"><label class="fl">Rotation <span id="ov-cad-rot-v" style="font-family:var(--mono)">' + (c.rotation || 0) + '°</span></label><input type="range" id="ov-cad-rot" min="-180" max="180" step="0.5" value="' + (c.rotation || 0) + '"/></div>';
+    html += '<button class="btn btn-g btn-ic" id="ov-cad-move" style="width:100%;justify-content:center">' + lucideSVG('crosshair', 13, 'currentColor') + 'Move: click the map where its centre goes</button>';
+  }
+  html += '</div>';
+  return html;
+}
+function bindCadEditor(i) {
+  var f = el('ov-cad-file');
+  if (f) f.addEventListener('change', function() { if (this.files && this.files[0]) cadUpload(i, this.files[0]); this.value = ''; });
+  var ov = P.overlays[i];
+  if (!ov.cad) return;
+  var col = el('ov-cad-col');
+  if (col) col.addEventListener('change', function() {
+    var d = window._cadDrawings && window._cadDrawings[ov.id];
+    if (!d) return;
+    ov.cad.colour = this.value;
+    ov.url = cadRender(d, 2400, this.value);
+    refreshOV(); markDirty();
+  });
+  var u = el('ov-cad-units');
+  if (u) u.addEventListener('change', function() { ov.cad.mpu = parseFloat(this.value); ov.cad.unitsGuessed = false; ov.cad.useGrid = false; cadReplace(i, true); });
+  var g = el('ov-cad-grid');
+  if (g) g.addEventListener('click', function() { ov.cad.useGrid = !ov.cad.useGrid; cadReplace(i, true); cadFit(ov); });
+  var r = el('ov-cad-rot');
+  if (r) r.addEventListener('input', function() { ov.cad.rotation = parseFloat(this.value); var v = el('ov-cad-rot-v'); if (v) v.textContent = this.value + '°'; cadReplace(i, false); });
+  var mv = el('ov-cad-move');
+  if (mv && pMap) mv.addEventListener('click', function() {
+    var btn = this;
+    btn.textContent = 'Click the map…';
+    pMap.getCanvas().style.cursor = 'crosshair';
+    pMap.once('click', function(e) {
+      pMap.getCanvas().style.cursor = '';
+      ov.cad.centre = [+e.lngLat.lng.toFixed(7), +e.lngLat.lat.toFixed(7)];
+      cadReplace(i, true);
+    });
+  });
+}
+
 function renderOverlayEditor(i) {
   P.overlays = P.overlays || [];
   var ov = P.overlays[i];
@@ -1893,10 +2202,12 @@ function renderOverlayEditor(i) {
   html += '<div class="rs"><div class="st">Image</div>';
   html += fld('Name','ov-name',h(ov.name||''));
   html += '<div class="f"><label class="fl">Image URL <span style="font-size:9px;color:var(--ghost);font-family:var(--mono)">PNG with transparency recommended</span>'+infoBtn('Prefer <b>Upload image</b> over pasting a URL — it auto-resizes to a safe size. A pasted URL skips that, and large images (common with high-res masterplan exports) can render fine on desktop but fail silently on mobile, especially iOS Safari, which has much tighter texture-size limits. If you must use a URL, keep the image under ~2000–2400px on its longest side.')+'</label>';
-  html += '<input type="text" id="ov-url" value="'+h(ov.url||'')+'" placeholder="https://... (.png, .jpg, .webp)"/>' + imageUploadRowHTML('ov-url')
+  html += '<input type="text" id="ov-url" value="'+h(ov.url && ov.url.indexOf('data:')===0 ? '' : (ov.url||''))+'" placeholder="'+(ov.url && ov.url.indexOf('data:')===0 ? 'Uploaded image or drawing (paste a URL to replace)' : 'https://... (.png, .jpg, .webp)')+'"/>' + imageUploadRowHTML('ov-url')
     + '</div>';
+  html += cadEditorHTML(ov);
   html += '<div class="f"><label class="fl">Opacity</label>'+rng('ov-op','Opacity',0,1,0.05,ov.opacity||0.85,'')+'</div>';
   html += '</div>';
+  html += cadPlacementHTML(ov);
   html += '<div class="rs"><div class="st">Visible on scenes</div>';
   html += '<div class="lr" style="margin-bottom:8px"><span class="ll">Show on all scenes (global)</span>';
   html += '<button class="tg'+(ov.global?' on':'')+'" id="ov-global"></button></div>';
@@ -1926,8 +2237,9 @@ function renderOverlayEditor(i) {
   setHTML('rpc', html);
   // Bindings
   bindInput('ov-name', function(v){ P.overlays[i].name=v; renderOverlays(); markDirty(); });
-  bindInput('ov-url',  function(v){ P.overlays[i].url=v;  refreshOV(); markDirty(); });
-  bindImageUpload('ov-url', 2400, function(dataUri){ P.overlays[i].url=dataUri; refreshOV(); });
+  bindInput('ov-url',  function(v){ P.overlays[i].url=v; delete P.overlays[i].cad; refreshOV(); markDirty(); });
+  bindImageUpload('ov-url', 2400, function(dataUri){ P.overlays[i].url=dataUri; delete P.overlays[i].cad; refreshOV(); renderOverlayEditor(i); });
+  bindCadEditor(i);
   var opEl = el('ov-op'), opvEl = el('ov-op-v');
   if(opEl) opEl.addEventListener('input', function() {
     P.overlays[i].opacity = parseFloat(this.value);
@@ -2136,6 +2448,8 @@ function bindTopbar() {
   });
 }
 
+// The tab buttons and the map's "Go to Settings" button call this from inline handlers.
+window.switchMain = function(tab) { switchMain(tab); };
 function switchMain(tab) {
   mainTab = tab;
   el('tt-editor').classList.toggle('on', tab==='editor');
@@ -2421,7 +2735,7 @@ function renderScenes() {
 }
 function selScene(i) { AS=i; AM=null; AZ=null; ensureEditorTab(); renderScenes(); renderRightPanel(); updatePreview(); updateCtxMarkerSelection(); }
 function addScene() {
-  markDirty(); P.scenes.push({id:'s'+Date.now(),label:'New Scene',title:'Scene Title',body:'<p>Add your scene description here.</p>',camera:{zoom:15,pitch:30,bearing:0,duration:2000},layers:{redline:true,context:false,constraints:false,buildings3d:false,orbit:false,buildings:true},codesignGroupId:null});
+  markDirty(); P.scenes.push({id:'s'+Date.now(),label:'New Scene',title:'Scene Title',body:'<p>Add your scene description here.</p>',camera:{zoom:15,pitch:30,bearing:0,duration:2000},layers:{redline:true,context:false,constraints:false,buildings3d:false,orbit:false,buildings:true,feedback:false},codesignGroupId:null});
   AS = P.scenes.length-1;
   ensureEditorTab(); renderScenes(); renderRightPanel();
 }
@@ -2906,7 +3220,7 @@ function renderOnboarding() {
     {done: P.redLine.coordinates.length>3, num:'3', label:'Draw your red line',       hint:'Draw on geojson.io > Settings > Red Line Boundary > paste'},
     {done: P.scenes.length > 1,            num:'4', label:'Add your scenes',          hint:'Scenes tab > use Quick Presets to set up each scene'},
     {done: P.markers.length > 0,           num:'5', label:'Place context markers',    hint:'Markers tab > add markers and click the map to place'},
-    {done: P.sheetdbUrl.length > 0,        num:'6', label:'Connect feedback map storage', hint:'Settings > Have Your Say > paste your Power Automate submit/read URLs'},
+    {done: P.feedbackEnabled===false || P.sheetdbUrl.length > 0, num:'6', label:'Connect feedback map storage', hint:'Settings > Have Your Say > paste your Power Automate submit/read URLs'},
   ]
   var done = steps.filter(function(s){return s.done;}).length;
   var html = '<div class="rh"><div class="re">Getting started</div><div class="rt">Setup checklist</div></div>';
@@ -3058,6 +3372,8 @@ function renderRightPanel() {
   html += lyr('sc-l-custom-bld','Custom Buildings', sc.layers.buildings!==false);
   html += lyr('sc-l-buildings3d','3D Buildings', sc.layers.buildings3d);
   html += lyr('sc-l-orbit','3D Buildings + Orbit', sc.layers.orbit||false);
+  sc.layers.feedback = isFeedbackScene(sc);
+  html += '<div class="lr"><span class="ll">Have Your Say'+infoBtn('Visitors can drop a pin and leave a comment on this slide. Turn it off for a slide that only shows information. Feedback can also be switched off for the whole site in Settings &gt; Have Your Say.')+'</span><button class="tg'+(sc.layers.feedback && P.feedbackEnabled!==false?' on':'')+'" id="sc-l-feedback"'+(P.feedbackEnabled===false?' disabled title="Feedback is off for the whole site (Settings)"':'')+'></button></div>';
   html += '</div></div>';
   if(P.codesignEnabled && (P.codesignGroups||[]).length) {
     html += '<div class="rs"><div class="st">Co-Design</div>';
@@ -3077,7 +3393,7 @@ function renderRightPanel() {
     {label:'Study Area',layers:{redline:true,context:false,constraints:false,buildings3d:false,orbit:false,buildings:true},zoom:14,pitch:15,bearing:0},
     {label:'Constraints',layers:{redline:true,context:false,constraints:true,buildings3d:false,orbit:false},zoom:17,pitch:40,bearing:10},
     {label:'3D View',layers:{redline:true,context:false,constraints:false,buildings3d:true,orbit:false},zoom:17,pitch:65,bearing:30},
-    {label:'Have Your Say',layers:{redline:true,context:false,constraints:false,buildings3d:false,orbit:false,buildings:true},zoom:16,pitch:0,bearing:0}
+    {label:'Have Your Say',layers:{redline:true,context:false,constraints:false,buildings3d:false,orbit:false,buildings:true,feedback:true},zoom:16,pitch:0,bearing:0}
   ];
   document.querySelectorAll('[data-pi]').forEach(function(presetBtn) {
     presetBtn.addEventListener('click', function() {
@@ -3247,6 +3563,7 @@ function renderRightPanel() {
   bindTg('sc-l-custom-bld', function(v){ P.scenes[AS].layers.buildings=v; markDirty(); updatePreview(); });
   bindTg('sc-l-buildings3d', function(v) { P.scenes[AS].layers.buildings3d=v; updatePreview(); });
   bindTg('sc-l-orbit', function(v) { if(!P.scenes[AS].layers) P.scenes[AS].layers={}; P.scenes[AS].layers.orbit=v; updatePreview(); });
+  bindTg('sc-l-feedback', function(v) { markDirty(); renderScenes(); });
   bindInput('sc-l-cd-group', function(v) { P.scenes[AS].codesignGroupId = v || null; renderRightPanel(); });
 
 
@@ -3929,9 +4246,7 @@ function renderSettings() {
     + '</div>'
     + '<div id="sdb-read-status" style="font-size:11px;font-family:var(--mono);margin-top:6px;height:16px"></div>'
     + '</div>';
-  html += '<div class="f"><label class="fl">Disable feedback (hide Have Your Say scene)</label>'
-    + '<div class="lr"><span class="ll">Leave blank to disable feedback entirely</span></div>'
-    + '</div>';
+  html += '<div class="lr" style="margin-bottom:12px"><span class="ll">Feedback map on this site'+infoBtn('Off: no slide collects pins, whatever its own Have Your Say switch says, and the Have Your Say section is left out of the published site. On: slides with Have Your Say switched on (in the slide editor) let visitors drop pins.')+'</span><button class="tg'+(P.feedbackEnabled!==false?' on':'')+'" id="cfg-fb-enabled-tog"></button></div>';
   html += '<div class="lr" style="margin-bottom:12px"><span class="ll">Filter offensive language'+infoBtn('Checked against a small built-in list plus anything you add here — add project-specific names or terms you want blocked too. Blocks the pin from being submitted at all, with an inline message asking them to revise it. This runs entirely in the visitor’s browser, same caveat as everything else client-side in this tool: someone determined could bypass it via devtools, and it won’t catch clever misspellings — it’s a basic courtesy filter, not real moderation.')+'</span><button class="tg'+(P.profanityFilterEnabled!==false?' on':'')+'" id="cfg-fb-profanity-tog"></button></div>';
   if(P.profanityFilterEnabled!==false) {
     html += '<div class="f"><label class="fl">Extra words to block (optional)</label>'
@@ -4205,6 +4520,11 @@ function renderSettings() {
     markDirty(); renderSettings();
   });
   bindRng('cfg-fb-reveal-delay', function(v){ P.feedbackRevealDelay=v; });
+  var fbEnabledTog = el('cfg-fb-enabled-tog');
+  if(fbEnabledTog) fbEnabledTog.addEventListener('click', function(){
+    P.feedbackEnabled = P.feedbackEnabled===false ? true : false;
+    markDirty(); renderSettings();
+  });
   var fbClusterTog = el('cfg-fb-cluster-tog');
   if(fbClusterTog) fbClusterTog.addEventListener('click', function(){
     P.feedbackClusterEnabled = P.feedbackClusterEnabled===false ? true : false;
@@ -5021,6 +5341,18 @@ function rng(id, label, mn, mx, step, val, unit) {
     + '<input type="text" class="rng-val" id="'+id+'-v" data-unit="'+h(unit)+'" data-min="'+mn+'" data-max="'+mx+'" value="'+val+unit+'"/>'
     + '</div></div>';
 }
+// Have Your Say (pin dropping) is a per-slide switch. Older projects didn't store one: a slide
+// whose label mentions "say" counts as on, as before.
+function isFeedbackScene(sc) {
+  if (sc && sc.layers && sc.layers.feedback !== undefined) return !!sc.layers.feedback;
+  return ((sc && sc.label) || '').toLowerCase().indexOf('say') >= 0;
+}
+function feedbackSceneIndexes() {
+  if (P.feedbackEnabled === false) return [];
+  var out = [];
+  (P.scenes || []).forEach(function(sc, i) { if (isFeedbackScene(sc)) out.push(i); });
+  return out;
+}
 function lyr(id, label, on) {
   return '<div class="lr"><span class="ll">'+label+'</span><button class="tg'+(on?' on':'')+'" id="'+id+'"></button></div>';
 }
@@ -5624,7 +5956,9 @@ function ps(id,v) { if(pMap&&pMap.getLayer(id))pMap.setLayoutProperty(id,'visibi
 
 function updatePreview() {
   if (!pMap) return;
-  if (!pMap.isStyleLoaded()) { pMap.once('style.load',function(){updatePreview();}); return; }
+  // While a new source (an image overlay, say) loads, the style reads as not loaded; 'style.load' has
+  // already fired by then, so wait for the map to settle instead.
+  if (!pMap.isStyleLoaded()) { var noFly = !!window._pNoFly; pMap.once('idle',function(){ var was = window._pNoFly; window._pNoFly = noFly; updatePreview(); window._pNoFly = was; }); return; }
   // Close any open popups when switching scene in preview
   if(pMap) { try { pMap.getContainer().querySelectorAll('.mapboxgl-popup').forEach(function(e){e.remove();}); } catch(e){} }
   var sc = P.scenes[AS]; if (!sc) return;
@@ -5777,7 +6111,8 @@ function refreshOV() {
         layout:{visibility:'none'}}, 'p-rl-f');
     } catch(e) {}
   });
-  updatePreview();
+  // A change to an overlay keeps the view where it is (only switching scenes flies).
+  window._pNoFly=true; updatePreview(); window._pNoFly=false;
 }
 
 // ═══════════════════════════════════════════════════
@@ -6062,7 +6397,7 @@ function buildChapters() {
   var out = '';
   P.scenes.forEach(function(sc, i) {
     var col = sc.tagColor || SCENE_TAG_COLORS[i % SCENE_TAG_COLORS.length];
-    var isHYS = (sc.label||'').toLowerCase().indexOf('say') >= 0 || (sc.label||'').toLowerCase().indexOf('your say') >= 0;
+    var isHYS = P.feedbackEnabled !== false && isFeedbackScene(sc);
     if (isHYS) { out += buildHYS(i, col); return; }
     var tag = 'h1';
     var isCD = P.codesignEnabled && !!sc.codesignGroupId;
@@ -6270,6 +6605,7 @@ function buildCfg() {
     'var FEEDBACK_GATE_ENABLED = ' + (!!P.feedbackGateEnabled) + ';',
     'var FEEDBACK_REVEAL_DELAY = ' + (P.feedbackRevealDelay!=null ? P.feedbackRevealDelay : 1200) + ';',
     'var FB_CLUSTER_ENABLED = ' + (P.feedbackClusterEnabled!==false) + ';',
+    'var FB_SCENES = ' + JSON.stringify(feedbackSceneIndexes()) + ';',
     'var FB_VOTING_ENABLED = ' + (!!P.feedbackVotingEnabled) + ';',
     'var FB_VOTE_SUBMIT_URL = ' + JSON.stringify(P.feedbackVoteSubmitUrl||'') + ';',
     'var FB_VOTE_READ_URL = ' + JSON.stringify(P.feedbackVoteReadUrl||'') + ';',
@@ -7566,12 +7902,12 @@ function buildJS() {
 '  var _showBld=L.buildings3d||L.orbit;',
 '  if(_showBld){ showStyleExtrusions(); }',
 '  else{ hideStyleExtrusions(); setTimeout(hideStyleExtrusions,200); setTimeout(hideStyleExtrusions,600); }',
-'  setFbMarkersVisible(idx===SCENES.length-1);',
+'  setFbMarkersVisible(FB_SCENES.indexOf(idx)>=0);',
 
 '  if(map.getLayer("wo"))map.setLayoutProperty("wo","visibility","none");',
 '  if(sitePin&&sitePin._el)sitePin._el.style.display=(idx===0)?"flex":"none";',
 '  if(L.orbit){var delay=anim?sc.camera.duration+400:100;var myS=++orbitSess;orbitTO=setTimeout(function(){orbitTO=null;if(myS!==orbitSess||cS!==idx)return;orbitBearing=sc.camera.bearing;document.getElementById("orbit-btn").style.display="block";startOrbit();},delay);}',
-'  if(idx===SCENES.length-1)enableFB();else disableFB();',
+'  if(FB_SCENES.indexOf(idx)>=0)enableFB();else disableFB();',
 '  document.getElementById("map-label").textContent=sc.label;',
 '  document.querySelectorAll(".scene-pip").forEach(function(p,i){p.classList.toggle("active",i===idx);});',
 '  document.querySelectorAll(".drawer-item").forEach(function(d,i){d.classList.toggle("active",i===idx);});',
@@ -8843,7 +9179,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, refreshRL: refreshRL, markDirty: markDirty };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); } };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
