@@ -826,6 +826,10 @@ function migrateProject(data) {
   }
   delete data.codesignOptions; delete data.codesignSheetdbUrl; delete data.codesignReadUrl;
   (data.codesignGroups||[]).forEach(function(g){ cdEnsure(g); });
+  (data.zones||[]).forEach(function(z){
+    if(z.cdHeritage && z.cdHeritageMult==null){ var g=(data.codesignGroups||[]).filter(function(x){return x.id===z.codesignGroupId;})[0]; z.cdHeritageMult=(g&&g.money&&g.money.heritage)||1; }
+    delete z.cdHeritage;
+  });
   data.zones.forEach(function(z){
     if(z.codesignGroupId===undefined) z.codesignGroupId = (_cdMigratedGroupId && z.codesign) ? _cdMigratedGroupId : null;
     delete z.codesign;
@@ -4267,8 +4271,9 @@ function cdPlotHTML(z) {
   var allowed = z.cdAllowed || null; // null: every use
   var on = function(o) { return !allowed || allowed.indexOf(o.id) >= 0; };
   var html = '<div class="cr" style="gap:8px;margin-bottom:8px">'
-    + '<div class="f" style="flex:1;margin:0"><label class="fl">Storeys' + infoBtn('Floor area for costs and rent is the plot area times this (uses marked ground only stay at one storey). The budget\u2019s storey cost multiplier applies.') + '</label><input type="number" min="1" max="60" id="zn-cd-storeys" value="' + (z.cdStoreys || 1) + '"/></div>'
-    + '<div class="f" style="flex:1;margin:0"><label class="fl">Heritage' + infoBtn('Costs on this plot take the budget\u2019s heritage multiplier (' + (g.money.heritage || 1) + '\u00d7, set in Settings > Co-Design).') + '</label><div class="lr" style="margin:0"><span class="ll">Heritage plot</span><button class="tg' + (z.cdHeritage ? ' on' : '') + '" id="zn-cd-heritage"></button></div></div></div>';
+    + '<div class="f" style="flex:1;margin:0"><label class="fl">' + (z.cdStoreysChoice ? 'Most storeys' : 'Storeys') + infoBtn('Floor area for costs and rent is the plot area times the storeys (uses marked ground only stay at one). The budget\u2019s cost multiplier for that many storeys applies. With \u201cvoters choose\u201d on, each voter picks from 1 up to this.') + '</label><input type="number" min="1" max="60" id="zn-cd-storeys" value="' + (z.cdStoreys || 1) + '"/></div>'
+    + '<div class="f" style="flex:1;margin:0"><label class="fl">Heritage multiplier' + infoBtn('Costs on this plot are multiplied by this: 1 for none, 1.25 for 25% more, and so on.') + '</label><input type="number" step="0.05" min="1" id="zn-cd-heritage" value="' + (z.cdHeritageMult != null ? z.cdHeritageMult : 1) + '"/></div></div>'
+    + '<div class="lr" style="margin-bottom:10px"><span class="ll">Voters choose the storeys' + infoBtn('Voters pick how many storeys (1 up to the number above) for this plot, and see what it does to the cost and payback.') + '</span><button class="tg' + (z.cdStoreysChoice ? ' on' : '') + '" id="zn-cd-storeys-choice"></button></div>';
   html += '<div class="f"><label class="fl">Uses allowed here' + infoBtn('Untick the uses voters can\u2019t choose on this plot. They are left out of its picker, here and in the presentation poll.') + ' <span style="font-weight:400;color:var(--ghost)">' + (allowed ? allowed.length + ' of ' + g.options.length : 'all') + '</span></label>';
   var cats = g.categories.concat([{ id: null, label: g.categories.length ? 'No category' : '', color: '#999' }]);
   cats.forEach(function(c) {
@@ -4287,7 +4292,9 @@ function bindCdPlot(i) {
   var st = el('zn-cd-storeys');
   if (st) st.addEventListener('input', function() { z.cdStoreys = Math.max(1, Math.round(cdNum(this.value) || 1)); markDirty(); });
   var hr = el('zn-cd-heritage');
-  if (hr) hr.addEventListener('click', function() { z.cdHeritage = !z.cdHeritage; this.classList.toggle('on', z.cdHeritage); markDirty(); });
+  if (hr) hr.addEventListener('input', function() { z.cdHeritageMult = Math.max(1, cdNum(this.value) || 1); markDirty(); });
+  var ch = el('zn-cd-storeys-choice');
+  if (ch) ch.addEventListener('click', function() { z.cdStoreysChoice = !z.cdStoreysChoice; markDirty(); renderZoneEditor(i); });
   var g = (P.codesignGroups || []).filter(function(x) { return x.id === z.codesignGroupId; })[0];
   if (!g) return;
   var setAllowed = function(ids) { z.cdAllowed = ids.length === g.options.length ? null : ids; markDirty(); renderZoneEditor(i); };
@@ -4362,8 +4369,7 @@ function cdGroupBodyHTML(g, gi) {
     html += '<div class="cr" style="gap:8px;margin-bottom:8px"><div class="f" style="flex:0 0 70px;margin:0"><label class="fl">Currency</label><input type="text" id="cfg-cd-cur-' + gi + '" value="' + h(m.currency || '£') + '"/></div>'
       + (m.mode !== 'value' ? '<div class="f" style="flex:1;margin:0"><label class="fl">Pay back within' + infoBtn('Years. A pick or scenario whose rent repays its cost within this reads as paying for itself; beyond it, the gap is the subsidy needed. Blank: just show the payback period.') + '</label><input type="number" id="cfg-cd-target-' + gi + '" value="' + (m.target != null ? m.target : '') + '" placeholder="No target"/></div>' : '')
       + '<div class="f" style="flex:1;margin:0"><label class="fl">Subsidy available' + infoBtn('Optional. The most subsidy the scheme can carry' + (m.mode !== 'value' ? ' (the cost not repaid by rent within the payback target)' : '') + '. Voters see how their picks compare with it.') + '</label><input type="number" id="cfg-cd-cap-' + gi + '" value="' + (m.cap != null ? m.cap : '') + '" placeholder="No limit"/></div></div>';
-    html += '<div class="f"><label class="fl">Heritage cost multiplier' + infoBtn('Applied to the cost of any use on a plot marked as heritage (on the plot, under Constraint Zones). 1.2 = 20% more.') + '</label><input type="number" step="0.01" id="cfg-cd-her-' + gi + '" value="' + (m.heritage != null ? m.heritage : 1) + '"/></div>';
-    html += '<div class="f"><label class="fl">Cost multiplier by number of storeys' + infoBtn('A plot\u2019s floor area is its footprint times its storeys (set on the plot). The cost per m² is multiplied by the figure for that many storeys; blank uses the nearest lower one, or 1.') + '</label><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'
+    html += '<div class="f"><label class="fl">Cost multiplier by number of storeys' + infoBtn('A plot\u2019s floor area is its footprint times its storeys (set on the plot, or chosen by voters where you allow it). The cost per m² is multiplied by the figure for that many storeys; blank uses the nearest lower one, or 1. Heritage multipliers are set on each plot.') + '</label><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">'
       + [1, 2, 3, 4, 5, 6, 7, 8].map(function(n) { return '<label style="font-size:10px;color:var(--ghost);display:flex;align-items:center;gap:4px;margin:0">' + n + '<input type="number" step="0.01" class="cd-storey-mult" data-gi="' + gi + '" data-n="' + n + '" value="' + (m.storeyMult[n] != null ? m.storeyMult[n] : '') + '" placeholder="' + (n === 1 ? '1' : '') + '" style="width:100%;min-width:0;font-size:11px;padding:4px 4px"/></label>'; }).join('') + '</div></div>';
     html += '<div class="lr" style="margin-bottom:6px"><span class="ll">Show costs to voters</span><button class="tg' + (m.showVoters !== false ? ' on' : '') + '" id="cfg-cd-showmoney-' + gi + '"></button></div>';
     if (m.cap != null) html += '<div class="lr" style="margin-bottom:6px"><span class="ll">Voters can’t submit over the subsidy available</span><button class="tg' + (m.blockOverCap ? ' on' : '') + '" id="cfg-cd-block-' + gi + '"></button></div>';
@@ -4414,8 +4420,7 @@ function bindCdGroupBodies() {
     if (md) md.addEventListener('change', function() { g.money.mode = this.value; redraw(); });
     var tg2 = el('cfg-cd-target-' + gi);
     if (tg2) tg2.addEventListener('change', function() { g.money.target = cdNum(this.value); markDirty(); });
-    var her = el('cfg-cd-her-' + gi);
-    if (her) her.addEventListener('input', function() { g.money.heritage = cdNum(this.value) || 1; markDirty(); });
+
     var cap = el('cfg-cd-cap-' + gi);
     if (cap) cap.addEventListener('change', function() { g.money.cap = cdNum(this.value); redraw(); });
     bindInput('cfg-cd-ptitle-' + gi, function(v) { g.poll.title = v; });
@@ -4434,7 +4439,7 @@ function pollConfig(gi) {
   var g = cdEnsure(P.codesignGroups[gi]);
   var scene = (P.scenes || []).filter(function(sc) { return sc.codesignGroupId === g.id; })[0];
   var plots = (P.zones || []).filter(function(z) { return z.codesignGroupId === g.id && (z.coordinates || []).length > 2; }).map(function(z) {
-    return { id: z.id, name: z.name || 'Plot', ring: z.coordinates, areaM2: Math.round(zoneAreaM2(z)), color: z.color || '#888888', storeys: z.cdStoreys || 1, heritage: !!z.cdHeritage, allowed: z.cdAllowed || null };
+    return { id: z.id, name: z.name || 'Plot', ring: z.coordinates, areaM2: Math.round(zoneAreaM2(z)), color: z.color || '#888888', storeys: z.cdStoreys || 1, chooseStoreys: !!z.cdStoreysChoice, heritage: cdNum(z.cdHeritageMult) || 1, allowed: z.cdAllowed || null };
   });
   var stripTags = function(s) { var d = document.createElement('div'); d.innerHTML = s || ''; return (d.textContent || '').trim(); };
   return {
@@ -4516,7 +4521,10 @@ var POLL_CSS = [
   '.cat{display:flex;align-items:center;gap:8px;margin:18px 2px 8px}.cat i{width:8px;height:8px;border-radius:50%;display:inline-block}',
   '.opt{width:100%;display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid rgba(15,14,13,.14);border-radius:6px;padding:11px 12px;margin-bottom:6px;text-align:left;font-size:13.5px;font-weight:600;transition:border-color .15s,background .15s}',
   '.opt:hover{background:rgba(0,0,0,.02)}.opt.on{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink) inset}',
-  '.opt .dot{width:14px;height:14px;border-radius:50%;flex:none}.opt .m{margin-left:auto;font-size:11px;font-weight:600}',
+  '.opt .dot{width:14px;height:14px;border-radius:50%;flex:none}.opt .m{margin-left:auto;font-size:11px;font-weight:600}.opt small{font-size:11px;font-weight:500;color:var(--ghost)}',
+  '.storeys{display:flex;align-items:center;gap:10px;margin:10px 0 4px;padding:10px 12px;border-radius:6px;background:rgba(15,14,13,.05);font-size:13px;font-weight:600}',
+  '.storeys span{margin-right:auto}.storeys b{min-width:18px;text-align:center;font-size:16px}.storeys em{font-style:normal;font-size:11px;color:var(--ghost);font-weight:500}',
+  '.storeys .step{width:34px;height:34px;border-radius:50%;border:1.5px solid rgba(15,14,13,.2);background:#fff;font-size:18px;line-height:1;font-weight:600}.storeys .step:disabled{opacity:.35}',
   '.m.ok{color:var(--teal)}.m.warn{color:#9a5d05}',
   '.clear{background:none;border:0;color:var(--ghost);text-decoration:underline;padding:10px 2px;font-size:12px}',
   '.thanks{padding:64px 28px;max-width:520px;margin:0 auto}.thanks h2{font-size:clamp(26px,7vw,36px);font-weight:700;line-height:1.1;margin:0 0 14px}.thanks p{font-size:15px;line-height:1.8;color:#3a3733}',
@@ -4564,15 +4572,16 @@ function pollRuntime(C) {
    * at one); cost = floor area × cost/m² × the storey multiplier × the heritage multiplier (heritage plots).
    * ERV: rent a year = floor area × ERV/m²/month × 12. Capital value: value = floor area × value/m².
    */
-  var fin = function(o, plot) {
-    var floors = o.groundOnly ? 1 : Math.max(1, plot.storeys || 1), area = plot.areaM2 * floors;
-    var cost = (o.costM2 || 0) * area * storeyMult(floors) * (plot.heritage ? M.heritage || 1 : 1);
+  var fin = function(o, plot, chosen) {
+    var most = Math.max(1, plot.storeys || 1);
+    var floors = o.groundOnly ? 1 : plot.chooseStoreys ? Math.min(most, Math.max(1, chosen || 1)) : most, area = plot.areaM2 * floors;
+    var cost = (o.costM2 || 0) * area * storeyMult(floors) * (+plot.heritage || 1);
     var value = ERV ? 0 : (o.valueM2 || 0) * area, rent = ERV ? (o.valueM2 || 0) * area * 12 : 0;
     return { cost: cost, value: value, rent: rent, net: value - cost, floors: floors, area: area };
   };
-  var scenario = function(picks) {
+  var scenario = function(picks, storeys) {
     var t = { cost: 0, value: 0, rent: 0, net: 0, n: 0 };
-    C.plots.forEach(function(p) { var o = optById[picks[p.id]]; if (!o) return; var f = fin(o, p); t.cost += f.cost; t.value += f.value; t.rent += f.rent; t.net += f.net; t.n++; });
+    C.plots.forEach(function(p) { var o = optById[picks[p.id]]; if (!o) return; var f = fin(o, p, storeys && storeys[p.id]); t.cost += f.cost; t.value += f.value; t.rent += f.rent; t.net += f.net; t.n++; });
     return t;
   };
   var years = function(y) {
@@ -4602,7 +4611,12 @@ function pollRuntime(C) {
     return { cls: 'warn', text: 'Needs ' + money(need) + ' subsidy' + (M.cap != null ? ' of ' + money(M.cap) + ' available' : '') };
   };
   var showMoney = M.on && (mode === 'results' || M.showVoters);
-  var plotFacts = function(p) { return Math.round(p.areaM2).toLocaleString('en-GB') + ' m²' + (p.storeys > 1 ? ' · ' + p.storeys + ' storeys' : '') + (p.heritage ? ' · heritage' : ''); };
+  var plotFacts = function(p, chosen) {
+    var n = p.chooseStoreys ? Math.min(p.storeys || 1, chosen || 1) : p.storeys || 1;
+    return Math.round(p.areaM2).toLocaleString('en-GB') + ' m²'
+      + (p.chooseStoreys && p.storeys > 1 ? ' · ' + n + ' storey' + (n > 1 ? 's' : '') + ' (up to ' + p.storeys + ')' : n > 1 ? ' · ' + n + ' storeys' : '')
+      + (+p.heritage > 1 ? ' · heritage ×' + +p.heritage : '');
+  };
   var bounds = function() {
     var b = [180, 90, -180, -90];
     C.plots.forEach(function(p) { p.ring.forEach(function(c) { b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]); b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]); }); });
@@ -4648,8 +4662,8 @@ function pollRuntime(C) {
 
   // ------------------------------------------------------------------ voting
   function vote() {
-    var picks = {}, done = false;
-    try { var saved = JSON.parse(localStorage.getItem(DONE_KEY) || 'null'); if (saved) { picks = saved; done = true; } } catch (e) {}
+    var picks = {}, storeys = {}, done = false;
+    try { var saved = JSON.parse(localStorage.getItem(DONE_KEY) || 'null'); if (saved) { if (saved.picks) { picks = saved.picks; storeys = saved.storeys || {}; } else picks = saved; done = true; } } catch (e) {}
     var map = null, built = false;
     function render() {
       if (done) { if (map) map.remove(); map = null; built = false; return thanks(); }
@@ -4666,12 +4680,12 @@ function pollRuntime(C) {
           m.on('mouseleave', 'plots-f', function() { m.getCanvas().style.cursor = ''; });
         });
       }
-      var t = scenario(picks), st = status(t), over = overCap(t);
+      var t = scenario(picks, storeys), st = status(t), over = overCap(t);
       document.getElementById('vlist').innerHTML = '<h3>Choose a use for each plot</h3>'
         + C.plots.map(function(p) {
           var o = optById[picks[p.id]];
-          return '<button class="plot" data-p="' + esc(p.id) + '"><span class="sw" style="background:' + esc(o ? o.color : '#ddd') + '"></span><span><div class="nm">' + esc(p.name) + '</div><div class="sub">' + plotFacts(p) + '</div></span>'
-            + '<span class="pick' + (o ? '' : ' none') + '">' + (o ? esc(o.label) + (showMoney ? '<div class="sub">' + esc(status(fin(o, p), true).text) + '</div>' : '') : 'Choose') + '</span></button>';
+          return '<button class="plot" data-p="' + esc(p.id) + '"><span class="sw" style="background:' + esc(o ? o.color : '#ddd') + '"></span><span><div class="nm">' + esc(p.name) + '</div><div class="sub">' + plotFacts(p, storeys[p.id]) + '</div></span>'
+            + '<span class="pick' + (o ? '' : ' none') + '">' + (o ? esc(o.label) + (showMoney ? '<div class="sub">' + esc(status(fin(o, p, storeys[p.id]), true).text) + '</div>' : '') : 'Choose') + '</span></button>';
         }).join('');
       document.getElementById('vbar').innerHTML = (showMoney && t.n ? '<div class="money"><span>Your picks cost ' + money(t.cost) + (ERV ? (t.rent ? ' and earn ' + money(t.rent) + ' a year' : '') : t.value ? ', bring back ' + money(t.value) : '') + '</span><span class="chip ' + st.cls + '">' + esc(st.text) + '</span></div>' : '')
         + '<button class="go" id="send"' + (t.n && !(over && M.blockOverCap) ? '' : ' disabled') + '>' + (over && M.blockOverCap ? 'Over the subsidy available' : t.n ? 'Submit my picks (' + t.n + ' of ' + C.plots.length + ')' : 'Pick a use for a plot to start') + '</button>';
@@ -4688,15 +4702,21 @@ function pollRuntime(C) {
       var p = C.plots.filter(function(x) { return x.id === pid; })[0];
       if (!p) return;
       var cats = G.categories.concat([{ id: null, label: G.categories.length ? 'Other' : '', color: '#999' }]);
-      var html = '<div class="sheet-bg"></div><div class="sheet" role="dialog" aria-label="Choose a use"><h2>' + esc(p.name) + '</h2><div class="sub">' + plotFacts(p) + '</div>';
+      var html = '<div class="sheet-bg"></div><div class="sheet" role="dialog" aria-label="Choose a use"><h2>' + esc(p.name) + '</h2><div class="sub">' + plotFacts(p, storeys[pid]) + '</div>';
+      if (p.chooseStoreys && p.storeys > 1) {
+        var ns = Math.min(p.storeys, storeys[pid] || 1), mult = storeyMult(ns);
+        html += '<div class="storeys"><span>How many storeys?</span><button class="step" data-s="-1" aria-label="Fewer storeys"' + (ns <= 1 ? ' disabled' : '') + '>−</button><b>' + ns + '</b><button class="step" data-s="1" aria-label="More storeys"' + (ns >= p.storeys ? ' disabled' : '') + '>+</button>'
+          + (showMoney && mult !== 1 ? '<em>build cost ×' + mult + '</em>' : '') + '</div>';
+      }
       cats.forEach(function(c) {
         var opts = G.options.filter(function(o) { return ((o.categoryId || null) === c.id || (c.id === null && o.categoryId && !catById[o.categoryId])) && (!p.allowed || p.allowed.indexOf(o.id) >= 0); });
         if (!opts.length) return;
         if (c.label) html += '<div class="cat"><i style="background:' + esc(c.color) + '"></i>' + esc(c.label) + '</div>';
         opts.forEach(function(o) {
-          var s = showMoney ? status(fin(o, p), true) : null;
+          var fo = fin(o, p, storeys[pid]), s = showMoney ? status(fo, true) : null;
           html += '<button class="opt' + (picks[pid] === o.id ? ' on' : '') + '" data-o="' + esc(o.id) + '"><span class="dot" style="background:' + esc(o.color) + '"></span>' + esc(o.label)
-            + (s ? '<span class="m ' + s.cls + '">' + esc(ERV ? (s.cls === 'bad' ? 'No rent' : s.text.replace('Pays back in ', '')) : s.cls === 'ok' ? 'Pays for itself' : 'Needs ' + money(-fin(o, p).net)) + '</span>' : '') + '</button>';
+            + (o.groundOnly && p.chooseStoreys && p.storeys > 1 ? '<small>ground floor only</small>' : '')
+            + (s ? '<span class="m ' + s.cls + '">' + esc(ERV ? (s.cls === 'bad' ? 'No rent' : s.text.replace('Pays back in ', '')) : s.cls === 'ok' ? 'Pays for itself' : 'Needs ' + money(-fo.net)) + '</span>' : '') + '</button>';
         });
       });
       html += (picks[pid] ? '<button class="clear" data-o="">Clear this plot</button>' : '') + '</div>';
@@ -4708,13 +4728,16 @@ function pollRuntime(C) {
       box.querySelectorAll('[data-o]').forEach(function(b) {
         b.onclick = function() { if (b.dataset.o) picks[pid] = b.dataset.o; else delete picks[pid]; close(); render(); };
       });
+      box.querySelectorAll('[data-s]').forEach(function(b) {
+        b.onclick = function() { storeys[pid] = Math.max(1, Math.min(p.storeys, (storeys[pid] || 1) + +b.dataset.s)); close(); render(); pick(pid); };
+      });
     }
     function send() {
-      var t = scenario(picks), sub = String(Date.now()), ts = new Date().toISOString();
+      var t = scenario(picks, storeys), sub = String(Date.now()), ts = new Date().toISOString();
       var rows = C.plots.filter(function(p) { return picks[p.id]; }).map(function(p) {
-        var o = optById[picks[p.id]], f = fin(o, p), c = catById[o.categoryId];
+        var o = optById[picks[p.id]], f = fin(o, p, storeys[p.id]), c = catById[o.categoryId];
         return { id: sub + '-' + p.id, submissionId: sub, visitorId: vid, zoneId: p.id, zoneName: p.name, choice: o.label, category: c ? c.label : '', areaM2: Math.round(p.areaM2),
-          storeys: f.floors, floorAreaM2: Math.round(f.area), heritage: !!p.heritage,
+          storeys: f.floors, floorAreaM2: Math.round(f.area), heritageMultiplier: +p.heritage || 1, storeyMultiplier: storeyMult(f.floors),
           cost: Math.round(f.cost), value: ERV ? null : Math.round(f.value), net: ERV ? null : Math.round(f.net), annualRent: ERV ? Math.round(f.rent) : null, paybackYears: f.rent ? Math.round((f.cost / f.rent) * 10) / 10 : null,
           scenarioCost: Math.round(t.cost), scenarioValue: ERV ? null : Math.round(t.value), scenarioNet: ERV ? null : Math.round(t.net), scenarioAnnualRent: ERV ? Math.round(t.rent) : null, scenarioShortfall: shortfall(t) != null ? Math.round(shortfall(t)) : null, scenarioPaybackYears: t.rent ? Math.round((t.cost / t.rent) * 10) / 10 : null, source: 'poll', timestamp: ts };
       });
@@ -4722,7 +4745,7 @@ function pollRuntime(C) {
       btn.disabled = true; btn.textContent = 'Sending…';
       var post = G.submitUrl ? fetch(G.submitUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: rows }) }) : Promise.resolve();
       post.then(function() {
-        try { localStorage.setItem(DONE_KEY, JSON.stringify(picks)); } catch (e) {}
+        try { localStorage.setItem(DONE_KEY, JSON.stringify({ picks: picks, storeys: storeys })); } catch (e) {}
         done = true; render();
       }).catch(function() { btn.disabled = false; btn.textContent = 'Couldn’t send — try again'; });
     }
@@ -4745,17 +4768,25 @@ function pollRuntime(C) {
     rows.filter(function(r) { return r && r.choice && plotIds[r.zoneId]; }).forEach(function(r) {
       var who = r.visitorId || r.submissionId || r.id, sub = String(r.submissionId || r.timestamp || '');
       var cur = latest[who];
-      if (!cur || sub > cur.sub) latest[who] = { sub: sub, picks: {} };
-      if (latest[who].sub === sub) { var o = optByLabel[r.choice]; if (o) latest[who].picks[r.zoneId] = o.id; }
+      if (!cur || sub > cur.sub) latest[who] = { sub: sub, picks: {}, storeys: {} };
+      if (latest[who].sub === sub) { var o = optByLabel[r.choice]; if (o) { latest[who].picks[r.zoneId] = o.id; if (+r.storeys) latest[who].storeys[r.zoneId] = +r.storeys; } }
     });
-    var voters = Object.keys(latest).map(function(k) { return latest[k].picks; }).filter(function(p) { return Object.keys(p).length; });
+    var ballots = Object.keys(latest).map(function(k) { return latest[k]; }).filter(function(b) { return Object.keys(b.picks).length; });
+    var voters = ballots.map(function(b) { return b.picks; });
     var counts = {}, cats = {};
     C.plots.forEach(function(p) { counts[p.id] = {}; });
     voters.forEach(function(v) { Object.keys(v).forEach(function(pid) { var o = optById[v[pid]]; counts[pid][o.id] = (counts[pid][o.id] || 0) + 1; var ck = o.categoryId || ''; cats[ck] = (cats[ck] || 0) + 1; }); });
     var top = {};
     C.plots.forEach(function(p) { var best = null; G.options.forEach(function(o) { var n = counts[p.id][o.id] || 0; if (n && (!best || n > counts[p.id][best])) best = o.id; }); if (best) top[p.id] = best; });
-    var selfFunding = voters.filter(function(v) { return paysItself(scenario(v)); }).length;
-    return { voters: voters.length, counts: counts, cats: cats, top: top, selfFunding: selfFunding };
+    // On plots where voters choose the storeys: the median choice of those who picked the winning use.
+    var topStoreys = {};
+    C.plots.forEach(function(p) {
+      if (!p.chooseStoreys || !top[p.id]) return;
+      var ns = ballots.filter(function(b) { return b.picks[p.id] === top[p.id] && b.storeys[p.id]; }).map(function(b) { return b.storeys[p.id]; }).sort(function(a, b) { return a - b; });
+      if (ns.length) topStoreys[p.id] = ns[Math.floor((ns.length - 1) / 2)];
+    });
+    var selfFunding = ballots.filter(function(b) { return paysItself(scenario(b.picks, b.storeys)); }).length;
+    return { voters: voters.length, counts: counts, cats: cats, top: top, topStoreys: topStoreys, selfFunding: selfFunding };
   }
 
   function results(inline) {
@@ -4782,7 +4813,8 @@ function pollRuntime(C) {
       });
       L.push([], ['People who voted', A.voters]);
       if (M.on) {
-        var t = scenario(A.top);
+        var t = scenario(A.top, A.topStoreys);
+        C.plots.forEach(function(p) { if (A.topStoreys[p.id]) L.push([p.name + ': storeys for the most popular use (median)', A.topStoreys[p.id]]); });
         if (ERV) L.push(['Most popular scenario: cost', Math.round(t.cost)], ['Most popular scenario: rent a year', Math.round(t.rent)], ['Most popular scenario: payback (years)', t.rent ? Math.round((t.cost / t.rent) * 10) / 10 : 'never'], ['Subsidy to pay back within ' + (M.target != null ? M.target + ' years' : 'the target'), shortfall(t) != null ? Math.round(shortfall(t)) : ''], ['Scenarios paying back within the target', A.selfFunding + ' of ' + A.voters]);
         else L.push(['Most popular scenario: cost', Math.round(t.cost)], ['Most popular scenario: value', Math.round(t.value)], ['Most popular scenario: net (negative = subsidy needed)', Math.round(t.net)], ['Scenarios that are self-funding', A.selfFunding + ' of ' + A.voters]);
       }
@@ -4806,7 +4838,7 @@ function pollRuntime(C) {
       var h = '<h2>Each plot</h2>';
       C.plots.forEach(function(p) {
         var c = A.counts[p.id], tot = Object.keys(c).reduce(function(s, k) { return s + c[k]; }, 0), o = optById[A.top[p.id]];
-        h += '<div class="rp"><div class="t"><span>' + esc(p.name) + '</span><b>' + (o ? esc(o.label) + ' ' + Math.round((c[o.id] / tot) * 100) + '%' : '—') + '</b></div><div class="stack">'
+        h += '<div class="rp"><div class="t"><span>' + esc(p.name) + '</span><b>' + (o ? esc(o.label) + ' ' + Math.round((c[o.id] / tot) * 100) + '%' + (A.topStoreys[p.id] ? ' · ' + A.topStoreys[p.id] + ' storeys' : '') : '—') + '</b></div><div class="stack">'
           + G.options.filter(function(x) { return c[x.id]; }).sort(function(a, b) { return c[b.id] - c[a.id]; }).map(function(x) { return '<i title="' + esc(x.label) + ': ' + c[x.id] + '" style="width:' + (c[x.id] / tot * 100) + '%;background:' + esc(x.color) + '"></i>'; }).join('') + '</div></div>';
       });
       var used = G.options.filter(function(o) { return C.plots.some(function(p) { return A.counts[p.id][o.id]; }); });
@@ -4817,7 +4849,7 @@ function pollRuntime(C) {
           + '<div class="leg">' + G.categories.filter(function(c) { return A.cats[c.id]; }).sort(function(a, b) { return A.cats[b.id] - A.cats[a.id]; }).map(function(c) { return '<span><i style="background:' + esc(c.color) + '"></i>' + esc(c.label) + ' ' + Math.round(A.cats[c.id] / ct * 100) + '%</span>'; }).join('') + '</div>';
       }
       if (M.on) {
-        var t = scenario(A.top), st = status(t);
+        var t = scenario(A.top, A.topStoreys), st = status(t);
         h += '<h2>The room’s scenario</h2><div class="scen"><div style="font-size:12px;color:var(--ghost)">The most popular use on every plot</div><div class="big">' + esc(st.text) + '</div>'
           + '<div style="font-size:13px">Costs ' + money(t.cost) + (ERV ? (t.rent ? ' · earns ' + money(t.rent) + ' a year' : '') : t.value ? ' · brings back ' + money(t.value) : '') + '</div></div>'
           + '<div class="r-note">' + A.selfFunding + ' of ' + A.voters + ' people’s scenarios ' + (ERV ? (M.target != null ? 'pay back within ' + M.target + ' years' : 'earn rent') : 'pay for themselves') + '.</div>';
