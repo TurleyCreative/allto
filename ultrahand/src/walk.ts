@@ -243,6 +243,34 @@ export function withDrawn(base: { coords: number[][] }[], drawn: number[][][], f
         }
     }
   }
+  // A drawn end that stops short of a street (or lands on a slightly different version of its line)
+  // joins the nearest street or path within 10 m: the drawn line is carried on to it.
+  const lead = all.map(() => null as XY | null), tail = all.map(() => null as XY | null);
+  for (let d = firstDrawn; d < all.length; d++) {
+    const D = all[d];
+    for (const end of [0, D.length - 1]) {
+      const p = D[end];
+      let best: { o: number; seg: number; t: number; q: XY; dist: number } | null = null;
+      for (let o = 0; o < all.length; o++) {
+        if (o === d) continue;
+        const bo = boxes[o];
+        if (bo[0] - 10 > p[0] || bo[2] + 10 < p[0] || bo[1] - 10 > p[1] || bo[3] + 10 < p[1]) continue;
+        const O = all[o];
+        for (let j = 0; j < O.length - 1; j++) {
+          const a = O[j], e = O[j + 1];
+          const dx = e[0] - a[0], dy = e[1] - a[1], L2 = dx * dx + dy * dy || 1e-9;
+          const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2));
+          const q: XY = [a[0] + dx * t, a[1] + dy * t];
+          const dist = Math.hypot(q[0] - p[0], q[1] - p[1]);
+          if (dist <= 10 && (!best || dist < best.dist)) best = { o, seg: j, t, q, dist };
+        }
+      }
+      if (!best || best.dist < 0.5) continue; // already on it: buildGraph joins it
+      if (best.t > 0.001 && best.t < 0.999) inserts[best.o].push({ seg: best.seg, t: best.t, p: best.q });
+      if (end === 0) lead[d] = best.q;
+      else tail[d] = best.q;
+    }
+  }
   return all.map((c, k) => {
     const ins = inserts[k].sort((x, y) => x.seg - y.seg || x.t - y.t);
     const out: XY[] = [];
@@ -251,6 +279,8 @@ export function withDrawn(base: { coords: number[][] }[], drawn: number[][][], f
       out.push(c[i]);
       while (q < ins.length && ins[q].seg === i) out.push(ins[q++].p);
     }
+    if (lead[k]) out.unshift(lead[k]!);
+    if (tail[k]) out.push(tail[k]!);
     return { coords: out.map((p) => frame.toLngLat(p)) };
   });
 }

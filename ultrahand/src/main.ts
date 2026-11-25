@@ -395,6 +395,8 @@ function addLayers() {
   map.addLayer({ id: 'pois-label', type: 'symbol', source: 'pois', filter: ['==', ['get', 'cat'], 'rail'], layout: { 'text-field': ['get', 'name'], 'text-size': 11, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': font }, paint: { 'text-color': '#141414', 'text-halo-color': '#fff', 'text-halo-width': 1.5 } });
   map.addLayer({ id: 'atlas-labels', type: 'symbol', source: 'atlas-labels', layout: { 'text-field': ['get', 'text'], 'text-size': 10.5, 'text-anchor': 'top', 'text-font': font, 'text-letter-spacing': 0.06, 'text-allow-overlap': true }, paint: { 'text-color': '#141414' } });
 
+  // Walking lines run along the drawn streets too, so they sit above the masterplan streets (under the homes).
+  if (map.getLayer('mp-homes-flat')) map.moveLayer('walkpt', 'mp-homes-flat');
   pen.addLayers();
   unlitFlatLayers();
   setModelColours();
