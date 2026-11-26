@@ -4376,9 +4376,10 @@ function cdGroupBodyHTML(g, gi) {
   }
   // Presentation poll
   html += '<details style="margin-top:8px"><summary style="font-size:11px;cursor:pointer">Presentation poll</summary>'
-    + '<p style="font-size:11px;line-height:1.5;margin:6px 0">A phone page for a QR code on a slide: no navigation, just your text, the map and the plots. Download it from <b>Export</b>; open it with <b>?results</b> on the big screen for live results and the QR code.</p>'
+    + '<p style="font-size:11px;line-height:1.5;margin:6px 0">A phone page for a QR code on a slide: no navigation, just your text, the map and the plots. Download it from <b>Export</b>; download the results page there too for the big screen (live results and the QR code).</p>'
     + '<div class="f"><label class="fl">Title</label><input type="text" id="cfg-cd-ptitle-' + gi + '" value="' + h(g.poll.title || '') + '" placeholder="' + h(g.label || 'Have your say') + '"/></div>'
     + '<div class="f"><label class="fl">Introduction</label><textarea id="cfg-cd-pintro-' + gi + '" style="min-height:70px" placeholder="What the plots are, what you’d like people to do, and that it’s anonymous.">' + h(g.poll.intro || '') + '</textarea></div>'
+    + '<div class="f"><label class="fl">Poll page web address' + infoBtn('Where the poll page will live once uploaded, e.g. https://yoursite.com/poll.html. The results screen’s QR code points here. Leave blank if you open the poll page itself with ?results.') + '</label><input type="text" id="cfg-cd-purl-' + gi + '" value="' + h(g.poll.url || '') + '" placeholder="https://…/poll.html"/></div>'
     + '<div class="lr"><span class="ll">Show results to voters after they vote</span><button class="tg' + (g.poll.showResults !== false ? ' on' : '') + '" id="cfg-cd-pres-' + gi + '"></button></div>'
     + '</details>';
   return html;
@@ -4424,6 +4425,7 @@ function bindCdGroupBodies() {
     var cap = el('cfg-cd-cap-' + gi);
     if (cap) cap.addEventListener('change', function() { g.money.cap = cdNum(this.value); redraw(); });
     bindInput('cfg-cd-ptitle-' + gi, function(v) { g.poll.title = v; });
+    bindInput('cfg-cd-purl-' + gi, function(v) { g.poll.url = v.trim(); });
     var intro = el('cfg-cd-pintro-' + gi);
     if (intro) intro.addEventListener('input', function() { g.poll.intro = this.value; markDirty(); });
   });
@@ -4456,6 +4458,7 @@ function pollConfig(gi) {
       money: { on: !!g.money.on, mode: g.money.mode || 'erv', target: cdNum(g.money.target), heritage: cdNum(g.money.heritage) || 1, storeyMult: g.money.storeyMult || {}, currency: g.money.currency || '£', cap: cdNum(g.money.cap), blockOverCap: !!g.money.blockOverCap, showVoters: g.money.showVoters !== false },
       showResults: g.poll.showResults !== false,
     },
+    voteUrl: g.poll.url || '',
     plots: plots,
   };
 }
@@ -4791,7 +4794,9 @@ function pollRuntime(C) {
 
   function results(inline) {
     var map = null, A = null, last = null;
-    var url = location.href.replace(/[?#].*$/, '');
+    // The QR points at the poll page: its set address, else this page itself (when it is the poll page opened with ?results).
+    var url = C.voteUrl || (window.__POLL_MODE ? '' : location.href.replace(/[?#].*$/, ''));
+    if (/^file:/.test(url)) url = '';
     app.innerHTML = inline
       ? '<div class="r-right" style="border:0;padding:20px 16px"><h2>What everyone picked</h2><div id="rbody">Loading…</div><button class="link" id="back">Back</button></div>'
       : '<div class="r"><nav class="r-nav"><i></i><span>' + esc(C.project || G.label) + '</span></nav><div class="r-left"><div class="tag"><i></i><span>Live results</span></div><h1>' + esc(C.title) + '</h1>'
@@ -4801,7 +4806,8 @@ function pollRuntime(C) {
         + '<div class="r-foot"><span id="upd"></span><button id="csv">Download results (CSV)</button></div></div></div>';
     if (inline) document.getElementById('back').onclick = function() { vote(); };
     var qr = document.getElementById('qr');
-    if (qr && window.qrcode) { var q = qrcode(0, 'M'); q.addData(url); q.make(); qr.innerHTML = q.createSvgTag({ cellSize: 6, margin: 0, scalable: true }); }
+    if (qr && !url) qr.innerHTML = '<p style="font-size:12px;line-height:1.5;padding:12px">Add the poll page’s web address in Settings › Co-Design › Presentation poll, then download this screen again, for a QR code here.</p>';
+    else if (qr && window.qrcode) { var q = qrcode(0, 'M'); q.addData(url); q.make(); qr.innerHTML = q.createSvgTag({ cellSize: 6, margin: 0, scalable: true }); }
     if (!inline) map = makeMap(document.getElementById('rmap'), false, function() { draw(); });
     var csv = document.getElementById('csv');
     if (csv) csv.onclick = function() {
@@ -6824,21 +6830,24 @@ function renderPollExports() {
   box.style.display = groups.length ? '' : 'none';
   if (!groups.length) return;
   box.innerHTML = '<h4><span class="ico-h">' + lucideSVG('users', 15, 'currentColor') + '</span>Presentation poll</h4>'
-    + '<p>A phone page for a QR code on a slide: your text, the map and the plots, no navigation. Upload it next to your site. Open it with <b>?results</b> on the big screen for its QR code and live results.</p>'
+    + '<p>Two pages: the <b>poll page</b> for phones (upload it, and put its address in a QR code on your slide) and the <b>results page</b> for the big screen, with the QR code and live results. The results page can be opened straight from your computer.</p>'
     + groups.map(function(x) {
       return '<div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap"><b style="flex:1;font-size:12px;min-width:120px">' + h(x.g.label || 'Budget') + ' <span style="font-weight:400;color:var(--ghost)">(' + x.n + ' plots)</span></b>'
         + '<button class="btn btn-g" data-poll-dl="' + x.gi + '">Download poll page</button>'
         + '<button class="btn btn-g" data-poll-pv="' + x.gi + '">Preview</button>'
-        + '<button class="btn btn-g" data-poll-rs="' + x.gi + '">Preview results screen</button></div>';
+        + '<button class="btn btn-g" data-poll-rdl="' + x.gi + '">Download results page</button>'
+        + '<button class="btn btn-g" data-poll-rs="' + x.gi + '">Preview results screen</button>'
+        + (x.g.poll && x.g.poll.url ? '' : '<div style="width:100%;font-size:11px;color:var(--ghost)">Add the poll page’s web address (Settings › Co-Design › Presentation poll) so the results page’s QR code points to it.</div>') + '</div>';
     }).join('');
   var open = function(html) { var w = window.open('', '_blank'); if (!w) return alert('Pop-up blocked — please allow pop-ups for this page.'); w.document.open(); w.document.write(html); w.document.close(); };
-  box.querySelectorAll('[data-poll-dl]').forEach(function(b) { b.onclick = function() {
-    var gi = +this.dataset.pollDl, g = P.codesignGroups[gi];
-    var a = document.createElement('a');
-    a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(buildPollHTML(gi));
-    a.download = ((P.name || 'consultation') + '-' + (g.label || 'poll')).toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-poll.html';
+  var dl = function(gi, mode) {
+    var g = P.codesignGroups[gi], a = document.createElement('a');
+    a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(buildPollHTML(gi, mode));
+    a.download = ((P.name || 'consultation') + '-' + (g.label || 'poll')).toLowerCase().replace(/[^a-z0-9]+/g, '-') + (mode ? '-results.html' : '-poll.html');
     document.body.appendChild(a); a.click(); a.remove();
-  }; });
+  };
+  box.querySelectorAll('[data-poll-dl]').forEach(function(b) { b.onclick = function() { dl(+this.dataset.pollDl); }; });
+  box.querySelectorAll('[data-poll-rdl]').forEach(function(b) { b.onclick = function() { dl(+this.dataset.pollRdl, 'results'); }; });
   box.querySelectorAll('[data-poll-pv]').forEach(function(b) { b.onclick = function() { open(buildPollHTML(+this.dataset.pollPv)); }; });
   box.querySelectorAll('[data-poll-rs]').forEach(function(b) { b.onclick = function() { open(buildPollHTML(+this.dataset.pollRs, 'results')); }; });
 }
