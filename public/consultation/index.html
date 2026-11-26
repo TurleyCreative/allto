@@ -237,6 +237,8 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .st-fp-list button:hover{background:rgba(127,127,127,.12)}.st-fp-list button.on{background:var(--accent);color:#fff}.st-fp-list button.on small{color:rgba(255,255,255,.75)}
 #ld-frame{width:100%;height:100%;border:0;background:#fff;transition:width .25s}
 #ld-stage.phone #ld-frame{width:390px;height:calc(100% - 76px);margin-top:56px;border-radius:18px;box-shadow:0 0 0 8px #0f0e0d,0 20px 60px rgba(0,0,0,.5)}
+.ld-ip summary{cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;list-style:none}.ld-ip-cur{display:inline-flex;width:18px;height:18px}
+.ld-ip-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-height:180px;overflow:auto;border:1px solid var(--border);border-top:0;padding:5px;border-radius:0 0 5px 5px}.ld-ip-grid button{aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:none;border:0;border-radius:4px;color:inherit;cursor:pointer}.ld-ip-grid button:hover{background:rgba(127,127,127,.15)}.ld-ip-grid button.on{background:var(--accent);color:#fff}
 .ld-dev{position:absolute;top:10px;right:12px;z-index:2;display:flex;gap:4px}.ld-dev .btn{font-size:11px;padding:5px 10px;background:var(--bg)}.ld-dev .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 </style>
 </head>
@@ -518,6 +520,8 @@ var LUCIDE_PATHS = {
   'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
   'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
   'pen-tool': '<path d="M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z"/><path d="m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18"/><path d="m2.3 2.3 7.286 7.286"/><circle cx="11" cy="11" r="2"/>',
+  'arrow-up-right': '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>',
+  'sparkles': '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/>',
   'circle': '<circle cx="12" cy="12" r="9"/>',
   'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'type': '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
@@ -7470,6 +7474,29 @@ function buildLanding(preview) {
     + '.ld-foot{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:28px 48px;background:#0f0e0d;color:#bdb8b0;font-size:13px;line-height:1.6;font-family:var(--f-body)}'
     + '.ld-foot a{color:inherit}.ld-foot .ld-top{text-decoration:none;font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:#f8f6f1}'
     + '#nav-home{width:38px;height:38px;margin-top:10px;background:none;border:0;border-radius:4px;color:#f8f6f1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.75}#nav-home:hover{opacity:1;background:rgba(255,255,255,.08)}'
+    + 'a.ld-card,a.ld-ic-card,a.ld-fan-card,a.ld-pn-card,a.ld-ph-card{text-decoration:none;color:inherit}'
+    + '.ld-card .ld-cb p{font-size:15px;line-height:1.65;opacity:.85}.ld-card-ic{color:var(--accent);margin-bottom:16px}'
+    + '.ld-cards.s-icon{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px}'
+    + '.ld-ic-card{display:flex;flex-direction:column;min-height:340px;padding:30px 30px 28px;border-radius:var(--radius,8px);background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.08);transition:transform .25s,box-shadow .25s}'
+    + '.ld-ic-card.outline{background:transparent;border:1.5px solid currentColor;box-shadow:none}.ld-ic-card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(0,0,0,.12)}'
+    + '.ld-ic{margin-bottom:auto;padding-bottom:40px}.ld-ic-card h3{font-size:24px;line-height:1.2;font-weight:600;margin:0}.ld-cm{margin-top:18px;font-size:12px;letter-spacing:.04em;opacity:.8}'
+    + '.ld-cards.s-fan{display:flex;justify-content:center;align-items:flex-end;gap:0;padding:30px 0 40px;margin-top:30px}'
+    + '.ld-fan-card{position:relative;flex:none;width:230px;height:310px;margin:0 -28px;border-radius:calc(var(--radius,8px) + 8px);padding:18px;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,.16);transform:translateY(var(--y)) rotate(var(--r));transform-origin:50% 120%;transition:transform .35s var(--ease),box-shadow .35s}'
+    + '.ld-fan-card:hover{transform:translateY(calc(var(--y) - 26px)) rotate(0deg);z-index:50!important;box-shadow:0 22px 50px rgba(0,0,0,.25)}'
+    + '.ld-fan-img,.ld-fan-art{flex:1;border-radius:calc(var(--radius,8px) + 2px);overflow:hidden;display:flex;align-items:center;justify-content:center;opacity:.95}.ld-fan-img img{width:100%;height:100%;object-fit:cover;display:block}'
+    + '.ld-fan-card h3{font-family:var(--f-head);font-size:22px;line-height:1.08;font-weight:500;margin:16px 4px 4px}'
+    + '.ld-cards.s-panel{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px}'
+    + '.ld-pn-card{display:flex;flex-direction:column;clip-path:polygon(64px 0,100% 0,100% calc(100% - 64px),calc(100% - 96px) 100%,0 100%,0 64px);border-radius:var(--radius,8px);overflow:hidden;transition:transform .25s}.ld-pn-card:hover{transform:translateY(-4px)}'
+    + '.ld-pn-img{aspect-ratio:1/1}.ld-pn-img img{width:100%;height:100%;object-fit:cover;display:block}'
+    + '.ld-pn-body{padding:28px 30px 70px;min-height:170px}.ld-pn-body h3{font-size:22px;line-height:1.25;font-weight:400;margin:0 0 18px}.ld-pn-btn{display:inline-block;border:1.5px solid currentColor;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600}'
+    + '.ld-cards.s-photo{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:26px}'
+    + '.ld-ph-media{position:relative;margin-bottom:18px}.ld-ph-img{aspect-ratio:5/4;border-radius:calc(var(--radius,8px) + 8px);overflow:hidden}.ld-ph-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s}'
+    + '.ld-ph-card:hover .ld-ph-img img{transform:scale(1.04)}'
+    + '.ld-ph-btn{position:absolute;right:-2px;bottom:-2px;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px var(--paper);transition:transform .25s}.ld-ph-card:hover .ld-ph-btn{transform:rotate(45deg)}'
+    + '.t-white .ld-ph-btn{box-shadow:0 0 0 10px #fff}.t-dark .ld-ph-btn{box-shadow:0 0 0 10px var(--dark,#0f0e0d)}.t-accent .ld-ph-btn{box-shadow:0 0 0 10px var(--accent)}'
+    + '.ld-ph-card h3{font-size:24px;font-weight:500;margin:0 0 8px}.ld-ph-card .ld-cb p{font-size:14.5px;line-height:1.6;opacity:.75}.ld-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.ld-tags span{font-size:11px;font-weight:600;padding:4px 8px;border-radius:4px}'
+    + '.ld-ph{background:linear-gradient(135deg,rgba(127,127,127,.18),rgba(127,127,127,.08))}'
+    + '@media(max-width:900px){.ld-cards.s-fan{flex-wrap:wrap;gap:14px;padding:0}.ld-fan-card{margin:0;width:calc(50% - 7px);height:240px;transform:none}.ld-fan-card:hover{transform:translateY(-6px)}.ld-pn-card{clip-path:polygon(40px 0,100% 0,100% calc(100% - 40px),calc(100% - 60px) 100%,0 100%,0 40px)}}'
     + '@media(max-width:900px){.ld-head{padding:0 20px;height:64px}.ld-burger{display:flex}'
     + '.ld-nav{position:fixed;top:64px;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--paper);color:var(--ink);padding:8px 20px 20px;box-shadow:0 12px 30px rgba(0,0,0,.15);display:none}'
     + '.ld-nav.open{display:flex}.ld-nav a{padding:16px 0;border-bottom:1px solid var(--mid);font-size:13px}.ld-nav a.ld-nav-cta{margin-top:14px;text-align:center;border:0}'
@@ -7548,6 +7575,75 @@ function buildLanding(preview) {
   };
   return { css: css, html: html, foot: foot, js: '(' + js.toString() + ')(' + (preview ? 'true' : 'false') + ',' + JSON.stringify(feedbackSceneIndexes()) + ');' };
 }
+// ── CARD STYLES for the Cards block: simple (icon, title, text), icon (tall coloured cards with a big
+// line icon), fan (overlapping playing cards), panel (image over a coloured panel, cut corners) and
+// photo (rounded image with a round button tucked in its corner, text and tags below).
+var LD_CARD_STYLES = [['simple', 'Simple'], ['icon', 'Icon cards'], ['fan', 'Playing cards (fanned)'], ['panel', 'Image and colour panel'], ['photo', 'Photo with round button']];
+var LD_CARD_FIELDS = {
+  simple: ['icon', 'title', 'body', 'link'],
+  icon: ['icon', 'title', 'meta', 'color', 'link'],
+  fan: ['image', 'icon', 'title', 'color', 'link'],
+  panel: ['image', 'title', 'color', 'link'],
+  photo: ['image', 'icon', 'title', 'body', 'meta', 'color', 'link']
+};
+var LD_CARD_PALETTES = {
+  icon: ['#ffffff', 'accent', ''],
+  fan: ['#f3501f', '#f6ead8', '#1d8fd8', '#2ee59d', '#1f1e1d'],
+  panel: ['#c486c8', '#e6ad37', '#e8693f'],
+  photo: ['#f2c99b', '#a9cc9c', '#b7acd8']
+};
+/** Dark text on light colours, white on dark. */
+function ldInkFor(c) {
+  var m = /^#?([0-9a-f]{6})$/i.exec(c || '');
+  if (!m) return '';
+  var n = parseInt(m[1], 16), r = n >> 16 & 255, g = n >> 8 & 255, b = n & 255;
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 160 ? '#141414' : '#ffffff';
+}
+function ldCardIcon(icon, size, colour) {
+  if (!icon) return '';
+  if (/^data:/.test(icon)) return '<img src="' + h(icon) + '" alt="" style="width:' + size + 'px;height:' + size + 'px;object-fit:contain;display:block"/>';
+  if (LUCIDE_PATHS[icon]) return lucideSVG(icon, size, colour || 'currentColor').replace('stroke-width="1.75"', 'stroke-width="' + (size > 40 ? 1.25 : 1.6) + '"');
+  return '<span style="font-size:' + Math.round(size * 0.8) + 'px;line-height:1">' + h(icon) + '</span>';
+}
+function ldCardsHTML(b, items, I) {
+  var st = b.cardStyle || 'simple', pal = LD_CARD_PALETTES[st] || [];
+  var colourOf = function(x) { var c = x.it.color || pal[x.i % (pal.length || 1)] || ''; return c === 'accent' ? (P.accentColor || '#c0392b') : c; };
+  var wrap = function(x, cls, style, inner) {
+    var tag = x.it.link && !_LD_PREVIEW ? 'a' : 'div';
+    return '<' + tag + ' class="' + cls + '"' + (style ? ' style="' + style + '"' : '') + (tag === 'a' ? ' href="' + h(x.it.link) + '" target="_blank" rel="noopener"' : '') + '>' + inner + '</' + tag + '>';
+  };
+  var title = function(x, tagName) { return '<' + (tagName || 'h3') + I(x.i, 'title') + '>' + h(x.it.title) + '</' + (tagName || 'h3') + '>'; };
+  var text = function(x) { return x.it.body ? '<div class="ld-cb"' + I(x.i, 'body', 1) + '>' + ldFmt(x.it.body) + '</div>' : ''; };
+  var meta = function(x) { return x.it.meta ? '<div class="ld-cm"' + I(x.i, 'meta') + '>' + h(x.it.meta) + '</div>' : ''; };
+  var img = function(x, cls) { return x.it.image ? '<div class="' + cls + '"><img src="' + h(x.it.image) + '" alt="' + h(x.it.alt || '') + '" loading="lazy"/></div>' : '<div class="' + cls + ' ld-ph"></div>'; };
+  var html = '';
+  if (st === 'icon') html = items.map(function(x) {
+    var c = colourOf(x), ink = ldInkFor(c);
+    return wrap(x, 'ld-ic-card' + (c ? '' : ' outline'), c ? 'background:' + c + ';color:' + ink : '', '<div class="ld-ic">' + ldCardIcon(x.it.icon, 64) + '</div>' + title(x) + meta(x));
+  }).join('');
+  else if (st === 'fan') {
+    var n = items.length, mid = (n - 1) / 2;
+    html = items.map(function(x, k) {
+      var c = colourOf(x), ink = ldInkFor(c) || '#141414', off = k - mid;
+      return wrap(x, 'ld-fan-card', 'background:' + (c || '#fff') + ';color:' + ink + ';--r:' + (off * 6).toFixed(1) + 'deg;--y:' + (Math.abs(off) * 14).toFixed(0) + 'px;z-index:' + (10 + k),
+        (x.it.image ? img(x, 'ld-fan-img') : '<div class="ld-fan-art">' + ldCardIcon(x.it.icon || 'sparkles', 72) + '</div>') + title(x));
+    }).join('');
+  }
+  else if (st === 'panel') html = items.map(function(x) {
+    var c = colourOf(x), ink = ldInkFor(c) || '#141414';
+    return wrap(x, 'ld-pn-card', '', img(x, 'ld-pn-img') + '<div class="ld-pn-body" style="background:' + (c || 'var(--mid)') + ';color:' + ink + '">' + title(x) + (x.it.link ? '<span class="ld-pn-btn">View ↗</span>' : '') + '</div>');
+  }).join('');
+  else if (st === 'photo') html = items.map(function(x) {
+    var c = colourOf(x) || 'var(--mid)', ink = ldInkFor(c) || '#141414';
+    var tags = String(x.it.meta || '').split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+    return wrap(x, 'ld-ph-card', '', '<div class="ld-ph-media">' + img(x, 'ld-ph-img') + '<span class="ld-ph-btn" style="background:' + c + ';color:' + ink + '">' + ldCardIcon(x.it.icon || 'arrow-up-right', 18) + '</span></div>'
+      + title(x) + text(x) + (tags.length ? '<div class="ld-tags"' + I(x.i, 'meta') + '>' + tags.map(function(t) { return '<span style="background:' + c + ';color:' + ink + '">' + h(t) + '</span>'; }).join('') + '</div>' : ''));
+  }).join('');
+  else html = items.map(function(x) {
+    return wrap(x, 'ld-card', '', (x.it.icon ? '<div class="ld-card-ic">' + ldCardIcon(x.it.icon, 30) + '</div>' : '') + title(x) + text(x));
+  }).join('');
+  return '<div class="ld-cards s-' + st + '">' + html + '</div>';
+}
 var _LD_PREVIEW = false;
 /** In the editor's preview, text can be edited in place: data-ed names what it edits (data-ml: paragraphs). */
 function ldEd(ref, ml) { return _LD_PREVIEW ? ' data-ed="' + h(ref) + '"' + (ml ? ' data-ml="1"' : '') : ''; }
@@ -7565,8 +7661,7 @@ function ldBlockHTML(b) {
     + '<div class="ld-it-img">' + (b.image ? '<img src="' + h(b.image) + '" alt="' + h(b.alt || '') + '" loading="lazy"/>' : '<div class="ld-it-ph">Add an image</div>') + '</div></div>';
   else if (b.type === 'facts') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
     + '<div class="ld-facts">' + items.map(function(x) { return '<div class="ld-fact"><b' + I(x.i, 'value') + '>' + h(x.it.value) + '</b><span' + I(x.i, 'label') + '>' + h(x.it.label) + '</span></div>'; }).join('') + '</div></div>';
-  else if (b.type === 'cards') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
-    + '<div class="ld-cards">' + items.map(function(x) { return '<div class="ld-card"><h3' + I(x.i, 'title') + '>' + h(x.it.title) + '</h3><div' + I(x.i, 'body', 1) + '>' + ldFmt(x.it.body) + '</div></div>'; }).join('') + '</div></div>';
+  else if (b.type === 'cards') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '') + ldCardsHTML(b, items, I) + '</div>';
   else if (b.type === 'timeline') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
     + '<ol class="ld-tl">' + items.map(function(x) { return '<li><small' + I(x.i, 'date') + '>' + h(x.it.date) + '</small><h3' + I(x.i, 'title') + '>' + h(x.it.title) + '</h3><div' + I(x.i, 'body', 1) + '>' + ldFmt(x.it.body) + '</div></li>'; }).join('') + '</ol></div>';
   else if (b.type === 'quote') inner = '<div class="ld-in"><div class="ld-narrow ld-quote">' + tag + '<blockquote' + ldEd(B + 'body') + '>' + h(b.body) + '</blockquote>' + (b.by ? '<cite' + ldEd(B + 'by') + '>' + h(b.by) + '</cite>' : '') + '</div></div>';
@@ -7735,7 +7830,28 @@ function renderLandingEditor() {
         + ldSelect('Button goes to', 'block', 'target', b.target || 'story', [['story', 'The narrative'], ['feedback', 'Have your say (feedback scene)'], ['url', 'A web address']], true)
         + (b.target === 'url' ? ldField('Web address', 'block', 'url', b.url, 'https://') : '');
     }
-    if (LD_ITEM_FIELDS[b.type]) {
+    if (b.type === 'cards') {
+      var CF = LD_CARD_FIELDS[b.cardStyle || 'simple'];
+      html += '</div><div class="rs"><div class="st">Cards</div>' + ldSelect('Card style', 'block', 'cardStyle', b.cardStyle || 'simple', LD_CARD_STYLES, true);
+      (b.items || []).forEach(function(it, i) {
+        html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 10px 2px;margin-bottom:8px;position:relative"><div style="font-size:10.5px;color:var(--ghost);margin-bottom:6px">Card ' + (i + 1) + '</div>'
+          + '<button class="ib d" data-ld-item-del="' + i + '" title="Remove" style="position:absolute;top:6px;right:6px">' + lucideSVG('x', 12, 'currentColor') + '</button>'
+          + CF.map(function(f) {
+            if (f === 'title') return '<div class="f"><label class="fl">Title</label><input type="text" data-s="item" data-i="' + i + '" data-k="title" value="' + ldEsc(it.title) + '"/></div>';
+            if (f === 'body') return '<div class="f"><label class="fl">Text</label><textarea data-s="item" data-i="' + i + '" data-k="body" rows="2" style="min-height:44px">' + ldEsc(it.body) + '</textarea></div>';
+            if (f === 'meta') return '<div class="f"><label class="fl">' + (b.cardStyle === 'photo' ? 'Tags (separate with commas)' : 'Small print') + '</label><input type="text" data-s="item" data-i="' + i + '" data-k="meta" value="' + ldEsc(it.meta) + '" placeholder="' + (b.cardStyle === 'photo' ? 'Homes, Open space' : 'e.g. By the design team') + '"/></div>';
+            if (f === 'link') return '<div class="f"><label class="fl">Link (optional)</label><input type="text" data-s="item" data-i="' + i + '" data-k="link" value="' + ldEsc(it.link) + '" placeholder="https://"/></div>';
+            if (f === 'color') return '<div class="f"><label class="fl">Colour</label><div class="cr"><input type="color" data-card-col="' + i + '" value="' + h(/^#[0-9a-f]{6}$/i.test(it.color || '') ? it.color : '#ffffff') + '"/><button class="btn btn-g" data-card-col-clear="' + i + '" style="font-size:10.5px">' + (it.color ? 'Use default' : 'Default colour') + '</button></div></div>';
+            if (f === 'image') return '<div class="f"><label class="fl">Image</label>' + (it.image ? '<img src="' + ldEsc(it.image) + '" alt="" style="display:block;width:100%;max-height:90px;object-fit:cover;border-radius:4px;margin-bottom:6px"/>' : '')
+              + '<div style="display:flex;gap:6px"><button class="btn btn-g" data-card-img="' + i + '" style="flex:1">' + (it.image ? 'Replace' : 'Upload image') + '</button>' + (it.image ? '<button class="btn btn-g" data-card-img-clear="' + i + '">Remove</button>' : '') + '</div></div>';
+            if (f === 'icon') return '<div class="f"><label class="fl">Icon</label><details class="ld-ip"><summary><span class="ld-ip-cur">' + (it.icon ? ldCardIcon(it.icon, 18) : '') + '</span>' + (it.icon ? (/^data:/.test(it.icon) ? 'Uploaded icon' : h(it.icon)) : 'None') + '</summary>'
+              + '<div class="ld-ip-grid"><button data-card-icon="' + i + '" data-name="" title="No icon">–</button>' + Object.keys(LUCIDE_PATHS).map(function(k) { return '<button data-card-icon="' + i + '" data-name="' + k + '" title="' + k + '"' + (it.icon === k ? ' class="on"' : '') + '>' + lucideSVG(k, 16, 'currentColor') + '</button>'; }).join('') + '</div>'
+              + '<button class="btn btn-g" data-card-icon-up="' + i + '" style="width:100%;margin-top:6px">Upload your own (SVG or PNG)</button></details></div>';
+            return '';
+          }).join('') + '</div>';
+      });
+      html += '<button class="btn btn-g btn-ic" id="ld-item-add" style="width:100%">' + lucideSVG('plus', 12, 'currentColor') + 'Add card</button>';
+    } else if (LD_ITEM_FIELDS[b.type]) {
       var F = LD_ITEM_FIELDS[b.type], nm = { facts: 'Figure', cards: 'Card', timeline: 'Stage' }[b.type];
       html += '</div><div class="rs"><div class="st">' + nm + 's</div>';
       (b.items || []).forEach(function(it, i) {
@@ -7781,6 +7897,14 @@ function renderLandingEditor() {
   rp.querySelectorAll('[data-img-clear-s]').forEach(function(b) {
     b.onclick = function() { var o = ldScope(b.dataset.imgClearS); if (o) o[b.dataset.imgClearK] = ''; markDirty(); renderLandingEditor(); ldRefresh(); };
   });
+  var cardItem = function(i) { var bb = ldBlock(); return bb && bb.items && bb.items[+i]; };
+  var cardDone = function() { markDirty(); renderLandingEditor(); ldRefresh(); };
+  rp.querySelectorAll('[data-card-col]').forEach(function(inp) { inp.addEventListener('input', function() { var it = cardItem(inp.dataset.cardCol); if (it) { it.color = inp.value; markDirty(); ldRefresh(); } }); });
+  rp.querySelectorAll('[data-card-col-clear]').forEach(function(bt) { bt.onclick = function() { var it = cardItem(bt.dataset.cardColClear); if (it) { delete it.color; cardDone(); } }; });
+  rp.querySelectorAll('[data-card-img]').forEach(function(bt) { bt.onclick = function() { ldPickImage(false, function(url) { var it = cardItem(bt.dataset.cardImg); if (it) { it.image = url; cardDone(); } }); }; });
+  rp.querySelectorAll('[data-card-img-clear]').forEach(function(bt) { bt.onclick = function() { var it = cardItem(bt.dataset.cardImgClear); if (it) { it.image = ''; cardDone(); } }; });
+  rp.querySelectorAll('[data-card-icon]').forEach(function(bt) { bt.onclick = function() { var it = cardItem(bt.dataset.cardIcon); if (it) { it.icon = bt.dataset.name; cardDone(); } }; });
+  rp.querySelectorAll('[data-card-icon-up]').forEach(function(bt) { bt.onclick = function() { ldPickImage(true, function(url) { var it = cardItem(bt.dataset.cardIconUp); if (it) { it.icon = url; cardDone(); } }); }; });
   rp.querySelectorAll('[data-ld-item-del]').forEach(function(b) {
     b.onclick = function() { var bb = ldBlock(); bb.items.splice(+b.dataset.ldItemDel, 1); markDirty(); renderLandingEditor(); ldRefresh(); };
   });
