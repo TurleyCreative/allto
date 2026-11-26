@@ -4751,7 +4751,12 @@ function pollRuntime(C) {
         if (r && !r.ok) throw new Error('flow ' + r.status);
         try { localStorage.setItem(DONE_KEY, JSON.stringify({ picks: picks, storeys: storeys })); } catch (e) {}
         done = true; render();
-      }).catch(function() { btn.disabled = false; btn.textContent = 'Couldn’t send — try again'; });
+      }).catch(function(err) {
+        // A status means the flow answered with an error; no status means the reply never reached the page (network, or blocked by the browser).
+        var m = /^flow (\d+)/.exec(err && err.message || '');
+        btn.disabled = false; btn.textContent = m ? 'The flow replied ' + m[1] + ' — try again' : 'Couldn’t reach the flow — try again';
+        if (window.console) console.warn('Poll submit failed', err);
+      });
     }
     function thanks() {
       app.innerHTML = '<div class="thanks"><div class="tag"><i></i><span>' + esc(C.project || G.label) + '</span></div><h2>Thank you</h2><p>Your picks are in. Keep an eye on the screen for what everyone chose.</p>'
