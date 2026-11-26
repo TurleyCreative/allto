@@ -3653,6 +3653,12 @@ function renderMarkerEditor(i) {
   var previewContent = (curIcon && curIcon.indexOf('data:') === 0)
     ? '<img src="'+h(curIcon)+'" width="20" height="20" style="display:block"/>'
     : (isLucide(curIcon) ? lucideSVG(curIcon,20,'rgba(255,255,255,.9)') : (curIcon || '&nbsp;'));
+  html += '<div class="f"><label class="fl">Style</label><select id="mk-style"><option value="pin"'+(m.style!=='label'?' selected':'')+'>Pin</option><option value="label"'+(m.style==='label'?' selected':'')+'>Pin with label</option></select></div>';
+  if (m.style === 'label') {
+    html += '<div class="f"><label class="fl">Label side</label><select id="mk-lside"><option value="right"'+(m.labelSide!=='left'?' selected':'')+'>Right</option><option value="left"'+(m.labelSide==='left'?' selected':'')+'>Left</option></select></div>';
+    html += '<div class="f"><label class="fl">Label background</label><div class="cr"><input type="color" id="mk-lbg-p" value="'+h(m.labelBg||'#2b2b2b')+'"/><input type="text" id="mk-lbg-t" value="'+h(m.labelBg||'#2b2b2b')+'"/></div></div>';
+    html += '<div style="font-size:10.5px;color:var(--ghost);margin:-4px 0 10px;line-height:1.5">The label shows the marker’s name. Without an icon the pin shows a small ring.</div>';
+  }
   html += '<div class="f"><label class="fl">Icon</label>';
   html += '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">';
   html += '<div class="icon-preview" id="mk-icon-preview">'+previewContent+'</div>';
@@ -3868,6 +3874,11 @@ function renderMarkerEditor(i) {
   });
   // Other marker bindings
   bindInput('mk-name', function(v) { P.markers[i].name=v; renderMarkers(); refreshMK(); });
+  var mkSt = el('mk-style'); if (mkSt) mkSt.addEventListener('change', function() { P.markers[i].style = this.value; markDirty(); renderMarkerEditor(i); refreshMK(); });
+  var mkSd = el('mk-lside'); if (mkSd) mkSd.addEventListener('change', function() { P.markers[i].labelSide = this.value; markDirty(); refreshMK(); });
+  var lbp = el('mk-lbg-p'), lbt = el('mk-lbg-t');
+  if (lbp) lbp.addEventListener('input', function() { lbt.value = this.value; P.markers[i].labelBg = this.value; markDirty(); refreshMK(); });
+  if (lbt) lbt.addEventListener('change', function() { if (/^#[0-9a-f]{6}$/i.test(this.value)) { lbp.value = this.value; P.markers[i].labelBg = this.value; markDirty(); refreshMK(); } });
   bindGroupSelect('mk-group', 'markerGroups', P.markers[i], function(){ renderMarkers(); renderMarkerEditor(i); });
   bindTA('mk-desc', function(v) { P.markers[i].desc=v; });
   var cp = el('mk-col-p'), ct = el('mk-col-t');
@@ -5150,7 +5161,8 @@ function renderSettings() {
     + '</div>'
     + '<div style="font-size:10px;color:var(--ghost);margin-top:4px;font-family:var(--mono)">lng, lat &nbsp;&mdash;&nbsp; or click Map to use current preview camera</div>'
     + '</div>';
-  html += fld('Site pin label','cfg-pin',h(P.sitePinLabel));
+  html += '<div class="lr" style="margin-bottom:8px"><span class="ll">Show the site pin on the first scene</span><button class="tg'+(P.sitePinShow!==false?' on':'')+'" id="cfg-pin-show"></button></div>';
+  if (P.sitePinShow !== false) html += fld('Site pin label','cfg-pin',h(P.sitePinLabel));
   html += '</div>';
   html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('pentagon',14,'currentColor')+'Red Line Boundary</span>'+infoBtn('Draw on <a href="https://geojson.io" target="_blank">geojson.io</a> → paste coordinates array.')+'</div>';
   html += '<div class="f"><label class="fl">Coordinates JSON</label><textarea id="cfg-rl" style="min-height:110px;font-size:10px">'+h(JSON.stringify(P.redLine.coordinates,null,1))+'</textarea></div>';
@@ -5419,6 +5431,7 @@ function renderSettings() {
   bindInputNum('cfg-lng', function(v){P.siteCentre[0]=v;});
   bindInputNum('cfg-lat', function(v){P.siteCentre[1]=v;});
   bindInput('cfg-pin', function(v){P.sitePinLabel=v;});
+  var pinShow = el('cfg-pin-show'); if (pinShow) pinShow.addEventListener('click', function() { P.sitePinShow = P.sitePinShow === false; markDirty(); renderSettings(); });
   bindInput('cfg-sdb', function(v){P.sheetdbUrl=v;});
   bindInput('cfg-sdb-read', function(v){P.sheetdbReadUrl=v;});
   var fbProfanityTog = el('cfg-fb-profanity-tog');
@@ -6767,6 +6780,26 @@ pMap.addLayer({id:'p-ln-pt',type:'circle',source:'p-ln-pts',paint:{'circle-radiu
   pMap.addLayer({id:'p-zn-s',type:'line',source:'p-zn',paint:{'line-color':['get','color'],'line-width':1.5,'line-opacity':['case',['get','interactive'],1,0]},layout:{visibility:'none'}});
 }
 
+/** A 'label' marker: a round pin with a dark pill label tucked behind it (to its right or left). The
+ *  element is 0×0 with its anchor at the pin's centre, so place it with anchor 'center'. */
+function makeCtxLabelEl(m) {
+  var wrap = document.createElement('div');
+  wrap.className = 'ctx-lbl';
+  wrap.style.cssText = 'position:relative;width:0;height:0';
+  var dot = document.createElement('div');
+  dot.className = 'ctx-marker ctx-lbl-dot';
+  dot.style.cssText = 'position:absolute;left:-15px;top:-15px;width:30px;height:30px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;z-index:2;cursor:pointer;box-sizing:border-box;background:' + (m.color || '#6366f1');
+  var ic = m.icon || '';
+  if (ic && ic.indexOf('data:') === 0) dot.innerHTML = '<img src="' + h(ic) + '" alt="" style="width:15px;height:15px;display:block;filter:none"/>';
+  else if (ic && /^[a-z][a-z0-9-]+$/.test(ic)) dot.innerHTML = lucideSVG(ic, 14, '#fff');
+  else dot.innerHTML = '<span style="width:10px;height:10px;border-radius:50%;border:2.5px solid #fff;box-sizing:border-box;display:block"></span>';
+  var pill = document.createElement('div');
+  var left = m.labelSide === 'left';
+  pill.style.cssText = 'position:absolute;' + (left ? 'right:0;top:0;padding:7px 20px 7px 14px' : 'left:0;bottom:0;padding:7px 14px 7px 20px') + ';background:' + (m.labelBg || '#2b2b2b') + ';color:#fff;border-radius:12px;white-space:nowrap;font:500 13.5px/1.25 var(--f-body,system-ui),system-ui,sans-serif;pointer-events:none;z-index:1';
+  pill.textContent = m.name || '';
+  wrap.appendChild(dot); wrap.appendChild(pill);
+  return wrap;
+}
 function makeCtxMarkerEl(color, icon) {
   var wrap = document.createElement('div');
   wrap.className = 'ctx-marker-wrap';
@@ -7116,8 +7149,8 @@ function refreshMK() {
   pCtxMarkers = [];
   // Add fresh HTML markers
   P.markers.forEach(function(mk, mi) {
-    var el = makeCtxMarkerEl(mk.color, mk.icon);
-    var marker = new mapboxgl.Marker({element:el, anchor:'bottom'})
+    var el = mk.style === 'label' ? makeCtxLabelEl(mk) : makeCtxMarkerEl(mk.color, mk.icon);
+    var marker = new mapboxgl.Marker({element:el, anchor: mk.style === 'label' ? 'center' : 'bottom'})
       .setLngLat(mk.coords)
       .addTo(pMap);
     // Check current scene visibility
@@ -7368,7 +7401,8 @@ function buildLanding(preview) {
   var hasFb = feedbackSceneIndexes().length > 0;
   var nav = L.blocks.filter(function(b) { return b.nav; }).map(function(b) { return '<a href="#ld-' + h(b.id) + '">' + h(b.nav) + '</a>'; });
   nav.push('<a href="#shell" data-go="story">' + h(L.storyLabel || 'The proposals') + '</a>');
-  if (hasFb) nav.push('<a href="#shell" data-go="feedback" class="ld-nav-cta">Have your say</a>');
+  var hys = L.hysLabel || 'Have your say';
+  if (hasFb && L.hysNav !== false) nav.push('<a href="#shell" data-go="feedback" class="ld-nav-cta">' + h(hys) + '</a>');
   var logo = L.logo ? '<img src="' + h(L.logo) + '" alt="' + h(P.name || '') + '" style="height:' + (+L.logoHeight || 34) + 'px"/>' : '<span class="ld-wordmark">' + h(P.siteTitle || P.name || '') + '</span>';
   var html = '<div id="landing" class="' + (dark ? 'ld-dark-hero' : '') + '">'
     + '<header class="ld-head" id="ld-head"><a class="ld-logo" href="#landing">' + logo + '</a>'
@@ -7380,7 +7414,7 @@ function buildLanding(preview) {
     + '<h1' + ldEd('hero|title') + '>' + h(H.title || P.siteTitle || P.name || '') + '</h1>'
     + ((H.text || P.siteSubtitle) ? '<div class="ld-hero-text"' + ldEd('hero|text', 1) + '>' + ldFmt(H.text || P.siteSubtitle) + '</div>' : '')
     + '<div class="ld-actions"><a class="ld-btn" href="#shell" data-go="story"' + ldEd('hero|cta') + '>' + h(H.cta || 'Explore the proposals') + '</a>'
-    + (hasFb ? '<a class="ld-btn ld-btn-ghost" href="#shell" data-go="feedback">Have your say</a>' : '') + '</div></div>'
+    + (hasFb && H.hysBtn !== false ? '<a class="ld-btn ld-btn-ghost" href="#shell" data-go="feedback"' + ldEd('land|hysLabel') + '>' + h(hys) + '</a>' : '') + '</div></div>'
     + '<a class="ld-scroll" href="#ld-main" aria-label="Scroll down"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="6 9 12 15 18 9"/></svg></a>'
     + (H.bg === 'map' && bgImg ? '<div class="ld-attr">© Mapbox © OpenStreetMap</div>' : '') + '</section>'
     + '<main id="ld-main">' + L.blocks.map(ldBlockHTML).join('') + '</main></div>';
@@ -7390,8 +7424,9 @@ function buildLanding(preview) {
     + 'html.has-landing{scrollbar-width:none}html.has-landing::-webkit-scrollbar{display:none}'
     + 'html.has-landing #shell{position:relative;width:100%;transform:translateZ(0);scroll-snap-align:start}'
     + 'html.has-landing body:not(.in-story) #shell{pointer-events:none}'
-    + 'html.has-landing #navbar{transition:transform .55s var(--ease)}html.has-landing body:not(.in-story) #navbar{transform:translateX(-100%)}'
-    + '@media(max-width:768px){html.has-landing body:not(.in-story) #navbar{transform:translateY(-100%)}}'
+    + 'html.has-landing #navbar{transition:margin-left .55s var(--ease),transform .55s var(--ease)}html.has-landing body:not(.in-story) #navbar{margin-left:calc(-1 * var(--nav-w))}'
+    + 'html.has-landing body:not(.in-story) #drawer,html.has-landing body:not(.in-story) #drawer-overlay,html.has-landing body:not(.in-story) #progress-bar{visibility:hidden}'
+    + '@media(max-width:768px){html.has-landing body:not(.in-story) #navbar{margin-left:0;transform:translateY(-100%)}}'
     + '[data-ed]{cursor:text;border-radius:2px;outline:1px dashed transparent;outline-offset:4px;transition:outline-color .15s}[data-ed]:hover{outline-color:rgba(127,127,127,.6)}[data-ed]:focus{outline:2px solid var(--accent);outline-offset:4px}'
     + '#landing{position:relative;background:var(--paper);color:var(--ink);font-family:var(--f-body)}'
     + '.ld-head{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;gap:24px;height:76px;padding:0 48px;transition:background .3s,box-shadow .3s,color .3s,transform .35s var(--ease);color:var(--ink)}.ld-head.gone{transform:translateY(-100%);pointer-events:none}'
@@ -7451,7 +7486,7 @@ function buildLanding(preview) {
       if (head) { head.classList.toggle('solid', se.scrollTop > 40); head.classList.toggle('gone', !!shell && !PREVIEW && shell.getBoundingClientRect().top < head.offsetHeight); }
       if (!shell || PREVIEW) return;
       var top = shell.getBoundingClientRect().top, now = Math.abs(top) < 6;
-      if (now !== inStory) { inStory = now; document.body.classList.toggle('in-story', now); if (now && window.map && map.resize) map.resize(); }
+      if (now !== inStory) { inStory = now; document.body.classList.toggle('in-story', now); if (window.map && map.resize) { map.resize(); setTimeout(function() { map.resize(); }, 600); } }
     };
     window.addEventListener('scroll', check, { passive: true }); window.addEventListener('resize', check); check();
     if (burger) burger.onclick = function() { var o = menu.classList.toggle('open'); burger.setAttribute('aria-expanded', o ? 'true' : 'false'); };
@@ -7663,6 +7698,8 @@ function renderLandingEditor() {
       + ldImage('Logo', 'land', 'logo', L.logo, 'PNG or SVG with a transparent background works best. On a dark hero it’s shown in white. Without a logo, the site title is used.')
       + '<div class="f"><label class="fl">Logo height (px)</label><input type="number" min="16" max="80" data-s="land" data-k="logoHeight" value="' + (+L.logoHeight || 34) + '"/></div>'
       + ldField('Menu label for the narrative', 'land', 'storyLabel', L.storyLabel, 'The proposals')
+      + ldField('“Have your say” button text', 'land', 'hysLabel', L.hysLabel, 'Have your say', 'Used for the button in the menu and in the hero. They take people to the scene that collects feedback.')
+      + '<div class="lr" style="margin-bottom:8px"><span class="ll">Show it in the menu</span><button class="tg' + (L.hysNav !== false ? ' on' : '') + '" data-flag-s="land" data-flag-k="hysNav"></button></div>'
       + '<p style="font-size:11px;line-height:1.55;color:var(--ghost)">The menu (top right) lists blocks you’ve given a menu label, then the narrative, then <b>Have your say</b> if a scene collects feedback.</p></div>';
   } else if (LDSEL === 'hero') {
     html = '<div class="rh"><div class="re">Landing page</div><div class="rt">Hero</div></div><div class="rs">'
@@ -7671,6 +7708,7 @@ function renderLandingEditor() {
       + ldField('Title', 'hero', 'title', H.title, P.siteTitle || '')
       + ldArea('Text', 'hero', 'text', H.text, P.siteSubtitle || '', 3, LD_BODY_HINT)
       + ldField('Button', 'hero', 'cta', H.cta, 'Explore the proposals')
+      + '<div class="lr" style="margin-bottom:8px"><span class="ll">Second button: ' + h(L.hysLabel || 'Have your say') + '</span><button class="tg' + (H.hysBtn !== false ? ' on' : '') + '" data-flag-s="hero" data-flag-k="hysBtn"></button></div>'
       + ldSelect('Background', 'hero', 'bg', H.bg || 'map', [['map', 'Map of the site'], ['image', 'Image'], ['plain', 'Plain']], true)
       + (H.bg === 'image' ? ldImage('Background image', 'hero', 'image', H.image, 'A wide photo or render, at least 1600px across.') : '')
       + (H.bg === 'map' && !P.mapboxToken ? '<p style="font-size:11px;color:var(--amber)">Add your Mapbox token in Settings for the map background.</p>' : '')
@@ -7728,6 +7766,9 @@ function renderLandingEditor() {
       ldRefresh();
     });
   });
+  rp.querySelectorAll('[data-flag-s]').forEach(function(t) {
+    t.onclick = function() { var o = ldScope(t.dataset.flagS); if (!o) return; o[t.dataset.flagK] = o[t.dataset.flagK] === false; markDirty(); renderLandingEditor(); ldRefresh(); };
+  });
   rp.querySelectorAll('[data-tag-s]').forEach(function(t) {
     t.onclick = function() { var o = ldScope(t.dataset.tagS); if (!o) return; o.showTag = o.showTag === false; if (o.showTag && !o.eyebrow) o.eyebrow = t.dataset.tagS === 'hero' ? 'Public consultation' : 'Label'; markDirty(); renderLandingEditor(); ldRefresh(); };
   });
@@ -7753,6 +7794,7 @@ var _ldSync = null;
 window.__ldInline = function(ref, v) {
   var p = ref.split('|'), L = ldEnsure(), b;
   if (p[0] === 'hero') L.hero[p[1]] = v;
+  else if (p[0] === 'land') L[p[1]] = v;
   else if (p[0] === 'block') { b = L.blocks.filter(function(x) { return x.id === p[1]; })[0]; if (b) b[p[2]] = v; }
   else if (p[0] === 'item') { b = L.blocks.filter(function(x) { return x.id === p[1]; })[0]; if (b && b.items && b.items[+p[2]]) b.items[+p[2]][p[3]] = v; }
   markDirty();
@@ -8369,7 +8411,7 @@ function buildCfg() {
 
   var labels = P.scenes.map(function(sc){return JSON.stringify(sc.label||'Scene');}).join(',');
 
-  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false}};})};
+  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false}};})};
 
   var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
@@ -8418,6 +8460,7 @@ function buildCfg() {
     'var LB_ANIM_DELAY = ' + (P.lbAnimDelay||0) + ';',
     'var SITE_CENTRE  = [' + P.siteCentre[0] + ', ' + P.siteCentre[1] + '];',
     'var SITE_PIN_LABEL = ' + JSON.stringify(P.sitePinLabel||'The Site') + ';',
+    'var SITE_PIN_SHOW = ' + (P.sitePinShow !== false) + ';',
     'var SHEETDB_URL  = ' + JSON.stringify(P.sheetdbUrl||'') + ';',
     'var SHEETDB_READ_URL = ' + JSON.stringify(P.sheetdbReadUrl||P.sheetdbUrl||'') + ';',
     'var QUESTIONS_SHEETDB_URL = ' + JSON.stringify(P.questionsSheetdbUrl||'') + ';',
@@ -8663,6 +8706,21 @@ function buildJS() {
 '  }',
 '  return "<span style=\'font-size:22px;display:block;margin-bottom:6px\'>"+icon+"</span>";',
 '}',
+'function mkCtxLabelEl(p){',
+'  var wrap=document.createElement("div");wrap.style.cssText="position:relative;width:0;height:0";',
+'  var dot=document.createElement("div");',
+'  dot.style.cssText="position:absolute;left:-15px;top:-15px;width:30px;height:30px;border-radius:50%;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;z-index:2;cursor:pointer;box-sizing:border-box;transition:transform .15s";',
+'  dot.style.background=p.color||"#6366f1";',
+'  var ic=p.icon||"";',
+'  if(ic&&ic.indexOf("data:")===0){var im=document.createElement("img");im.src=ic;im.alt="";im.style.cssText="width:15px;height:15px;display:block;pointer-events:none";dot.appendChild(im);}',
+'  else if(ic&&/^[a-z][a-z0-9-]+$/.test(ic)){var im2=document.createElement("img");im2.src="https://unpkg.com/lucide-static@latest/icons/"+ic+".svg";im2.alt="";im2.style.cssText="width:14px;height:14px;filter:invert(1);pointer-events:none";dot.appendChild(im2);}',
+'  else{var ring=document.createElement("span");ring.style.cssText="width:10px;height:10px;border-radius:50%;border:2.5px solid #fff;box-sizing:border-box;display:block;pointer-events:none";dot.appendChild(ring);}',
+'  var pill=document.createElement("div");var lf=p.labelSide==="left";',
+'  pill.style.cssText="position:absolute;"+(lf?"right:0;top:0;padding:7px 20px 7px 14px":"left:0;bottom:0;padding:7px 14px 7px 20px")+";color:#fff;border-radius:12px;white-space:nowrap;font:500 13.5px/1.25 var(--f-body),system-ui,sans-serif;pointer-events:none;z-index:1";',
+'  pill.style.background=p.labelBg||"#2b2b2b";pill.textContent=p.name||"";',
+'  wrap.appendChild(dot);wrap.appendChild(pill);',
+'  return wrap;',
+'}',
 'function mkCtxEl(color,icon){',
 '  var wrap=document.createElement("div");',
 // wrap is the Marker\'s own root element, so applyScene() toggling visibility clears its
@@ -8748,7 +8806,7 @@ function buildJS() {
 '  ctxMarkers.forEach(function(m){m.remove();});ctxMarkers=[];',
 '  CONTEXT_MARKERS.features.forEach(function(f,fi){',
 '    var p=f.properties;',
-'    var el=mkCtxEl(p.color,p.icon);',
+'    var el=p.mkStyle==="label"?mkCtxLabelEl(p):mkCtxEl(p.color,p.icon);',
 
 '    (function(feat,props){',
 '      var dot=el.querySelector("div");',
@@ -8789,7 +8847,7 @@ function buildJS() {
 '        _mkPopup.remove();',
 '      });',
 '    })(f,p);',
-'    var mk=new mapboxgl.Marker({element:el,anchor:"bottom"})',
+'    var mk=new mapboxgl.Marker({element:el,anchor:p.mkStyle==="label"?"center":"bottom"})',
 '      .setLngLat(f.geometry.coordinates).addTo(map);',
 '    mk.getElement().style.display="none";',
 '    mk._sceneIds = p.scenes ? p.scenes.split(",").filter(Boolean).map(Number) : [];',
@@ -9754,7 +9812,7 @@ function buildJS() {
 '  setFbMarkersVisible(FB_SCENES.indexOf(idx)>=0);',
 
 '  if(map.getLayer("wo"))map.setLayoutProperty("wo","visibility","none");',
-'  if(sitePin&&sitePin._el)sitePin._el.style.display=(idx===0)?"flex":"none";',
+'  if(sitePin&&sitePin._el)sitePin._el.style.display=(idx===0&&SITE_PIN_SHOW)?"flex":"none";',
 '  if(L.orbit){var delay=anim?sc.camera.duration+400:100;var myS=++orbitSess;orbitTO=setTimeout(function(){orbitTO=null;if(myS!==orbitSess||cS!==idx)return;orbitBearing=sc.camera.bearing;document.getElementById("orbit-btn").style.display="block";startOrbit();},delay);}',
 '  if(FB_SCENES.indexOf(idx)>=0)enableFB();else disableFB();',
 '  document.getElementById("map-label").textContent=sc.label;',
