@@ -4735,8 +4735,9 @@ function pollRuntime(C) {
       var html = '<div class="sheet-bg"></div><div class="sheet" role="dialog" aria-label="Choose a use"><h2>' + esc(p.name) + '</h2><div class="sub">' + plotFacts(p, storeys[pid]) + '</div>';
       if (p.chooseStoreys && p.storeys > 1) {
         var ns = Math.min(p.storeys, storeys[pid] || 1), mult = storeyMult(ns);
-        html += '<div class="storeys"><span>How many storeys?</span><button class="step" data-s="-1" aria-label="Fewer storeys"' + (ns <= 1 ? ' disabled' : '') + '>−</button><b>' + ns + '</b><button class="step" data-s="1" aria-label="More storeys"' + (ns >= p.storeys ? ' disabled' : '') + '>+</button>'
-          + (showMoney && mult !== 1 ? '<em>build cost ×' + mult + '</em>' : '') + '</div>';
+        // Build cost sits left of the stepper so the − / + buttons never move as it appears.
+        html += '<div class="storeys"><span>How many storeys?</span>' + (showMoney && mult !== 1 ? '<em>build cost ×' + mult + '</em>' : '')
+          + '<button class="step" data-s="-1" aria-label="Fewer storeys"' + (ns <= 1 ? ' disabled' : '') + '>−</button><b>' + ns + '</b><button class="step" data-s="1" aria-label="More storeys"' + (ns >= p.storeys ? ' disabled' : '') + '>+</button></div>';
       }
       cats.forEach(function(c) {
         var opts = G.options.filter(function(o) { return ((o.categoryId || null) === c.id || (c.id === null && o.categoryId && !catById[o.categoryId])) && (!p.allowed || p.allowed.indexOf(o.id) >= 0); });
