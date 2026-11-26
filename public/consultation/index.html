@@ -282,7 +282,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
     <div id="marker-list"></div></div>
   </div>
   <div class="tc" id="tc-zn">
-    <div class="ps"><div class="st"><span>Constraint Zones <button type="button" class="rs-info" data-info="Draw on &lt;a href=&quot;https://geojson.io&quot; target=&quot;_blank&quot;&gt;geojson.io&lt;/a&gt; then paste coordinates, or import a GeoJSON file of Polygons." aria-label="More info">i</button></span><div style="display:flex;gap:4px"><button class="ab" id="btn-import-zn" title="Import from GeoJSON" aria-label="Import zones from GeoJSON"><span data-icon="upload" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn-grp" title="New group" aria-label="Add zone group"><span data-icon="folder-plus" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn" aria-label="Add zone"><span data-icon="plus" data-icon-size="13"></span></button></div></div>
+    <div class="ps"><div class="st"><span>Constraint Zones <button type="button" class="rs-info" data-info="Draw on &lt;a href=&quot;https://geojson.io&quot; target=&quot;_blank&quot;&gt;geojson.io&lt;/a&gt; then paste coordinates, or import a GeoJSON file of Polygons." aria-label="More info">i</button></span><div style="display:flex;gap:4px"><button class="ab" id="btn-import-zn" title="Import from GeoJSON" aria-label="Import zones from GeoJSON"><span data-icon="upload" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn-grp" title="New group" aria-label="Add zone group"><span data-icon="folder-plus" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn-circ" title="Add a circle" aria-label="Add circle zone"><span data-icon="circle" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn" aria-label="Add zone"><span data-icon="plus" data-icon-size="13"></span></button></div></div>
     <div id="zone-list"></div></div>
   </div>
   <div class="tc" id="tc-ln">
@@ -515,6 +515,7 @@ var LUCIDE_PATHS = {
   'panel-bottom': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>',
   'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
   'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  'circle': '<circle cx="12" cy="12" r="9"/>',
   'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'type': '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
   'text': '<path d="M21 5H3"/><path d="M15 12H3"/><path d="M17 19H3"/>',
@@ -2536,6 +2537,12 @@ function bindLeftPanel() {
   el('btn-add-sc').addEventListener('click', addScene);
   el('btn-add-mk').addEventListener('click', addMarker);
   el('btn-add-zn').addEventListener('click', addZone);
+  el('btn-add-zn-circ').addEventListener('click', function() {
+    addZone();
+    var z = P.zones[P.zones.length - 1], c = pMap ? [pMap.getCenter().lng, pMap.getCenter().lat] : P.siteCentre;
+    z.name = 'New Circle'; z.circle = { center: [+c[0].toFixed(7), +c[1].toFixed(7)], radius: 400, rings: 3 }; z.opacity = 0.15;
+    zoneSyncCircle(z); renderZones(); renderZoneEditor(AZ); refreshZN();
+  });
   var addMkGrp = el('btn-add-mk-grp');
   if(addMkGrp) addMkGrp.addEventListener('click', function(){ addGroup('markerGroups', renderMarkers); });
   var addZnGrp = el('btn-add-zn-grp');
@@ -4006,7 +4013,15 @@ function renderZoneEditor(i) {
   html += '<div class="f"><label class="fl">Fill opacity <span id="zn-op-v" style="font-family:var(--mono);color:var(--ink)">'+z.opacity+'</span></label>';
   html += '<input type="range" id="zn-op" min="0.05" max="0.5" step="0.05" value="'+z.opacity+'"/></div>';
   html += '<div class="f"><label class="fl">Corner rounding <span id="zn-sm-v" style="font-family:var(--mono);color:var(--ink)">'+(z.smoothRadius||0)+'</span></label>';
-  html += '<input type="range" id="zn-sm" min="0" max="1" step="0.05" value="'+(z.smoothRadius||0)+'"/></div>';
+  if (!z.circle) html += '<input type="range" id="zn-sm" min="0" max="1" step="0.05" value="'+(z.smoothRadius||0)+'"/></div>';
+  else html += '<div style="font-size:10.5px;color:var(--ghost)">Not used for circles.</div></div>';
+  html += '</div>';
+  html += '<div class="rs"><div class="st">Circle</div><div class="lr"><span class="ll">Make this zone a circle</span><button class="tg'+(z.circle?' on':'')+'" id="zn-circ-tog"></button></div>';
+  if (z.circle) {
+    html += '<div class="f" style="margin-top:10px"><label class="fl">Radius (metres)</label><input type="number" id="zn-circ-r" min="5" step="10" value="'+Math.round(z.circle.radius)+'"/></div>'
+      + '<div class="f"><label class="fl">Rings <span id="zn-circ-n-v" style="font-family:var(--mono);color:var(--ink)">'+(z.circle.rings||1)+'</span>'+infoBtn('More than one ring stacks circles of the same colour inside each other, so the colour builds up towards the centre — the look of a town centre’s reach. The fill opacity above sets each ring’s strength.')+'</label><input type="range" id="zn-circ-n" min="1" max="8" step="1" value="'+(z.circle.rings||1)+'"/></div>'
+      + '<div class="f"><label class="fl">Centre</label><div style="display:flex;gap:6px;align-items:center"><button class="btn btn-g btn-ic" id="zn-circ-pick">'+lucideSVG('crosshair',12,'currentColor')+'Pick on map</button><span id="zn-circ-c" style="font-size:10.5px;font-family:var(--mono);color:var(--ghost)">'+z.circle.center[1].toFixed(5)+', '+z.circle.center[0].toFixed(5)+'</span></div></div>';
+  }
   html += '</div>';
   html += '<div class="rs"><div class="lr"><span class="ll">Interactive'+infoBtn('Turn off to make this zone a pure colour wash — no outline, no hover highlight or tooltip, no cursor change, and clicks fall straight through to whatever\'s underneath (so it never opens a lightbox and never blocks pin placement on Have Your Say). Useful for a soft land-use tint you want visible but not clickable, e.g. shading a whole neighbourhood without every zone competing for attention as a distinct feature. Leave on for anything meant to be a distinct, clickable feature.')+'</span>'
     + '<button class="tg'+(z.interactive!==false?' on':'')+'" id="zn-interactive-tog"></button></div>';
@@ -4089,13 +4104,44 @@ function renderZoneEditor(i) {
     }
   }
   html += '</div>';
+  if (z.circle) html += '<div class="rs" style="display:none">';
   html += '<div class="rs"><div class="st">Polygon Coordinates</div>';
   html += '<button class="btn btn-g btn-ic" id="zn-draw-btn" style="width:100%;margin-bottom:8px;justify-content:center">'+lucideSVG('pencil',13,'currentColor')+'Draw on map</button>';
   html += '<div class="nt w">Draw on <a href="https://geojson.io" target="_blank">geojson.io</a> &rarr; copy coordinates array &rarr; paste below.</div>';
   html += '<div class="f"><label class="fl">Coordinates JSON</label><textarea id="zn-coords" style="min-height:110px;font-size:10px">'+h(JSON.stringify(z.coordinates,null,1))+'</textarea></div>';
   html += '</div>';
+  if (z.circle) html += '</div>';
 
   setHTML('rpc', html);
+
+  // Circle zone controls
+  var circTog = el('zn-circ-tog');
+  if (circTog) circTog.addEventListener('click', function() {
+    var zz = P.zones[i];
+    if (zz.circle) { zz.circle = null; }
+    else {
+      var c = zoneCentroid(zz.coordinates || [P.siteCentre]), lat = c[1] * Math.PI / 180, r = 0;
+      (zz.coordinates || []).forEach(function(p) { var dx = (p[0] - c[0]) * 111320 * Math.cos(lat), dy = (p[1] - c[1]) * 110574; r = Math.max(r, Math.sqrt(dx * dx + dy * dy)); });
+      zz.circle = { center: c, radius: Math.round(Math.min(5000, r || 250) / 5) * 5 || 250, rings: 1 };
+      zoneSyncCircle(zz);
+    }
+    markDirty(); renderZoneEditor(i); refreshZN();
+  });
+  var circR = el('zn-circ-r');
+  if (circR) circR.addEventListener('input', function() { var v = parseFloat(this.value); if (!(v > 0)) return; P.zones[i].circle.radius = v; zoneSyncCircle(P.zones[i]); markDirty(); refreshZN(); });
+  var circN = el('zn-circ-n');
+  if (circN) circN.addEventListener('input', function() { P.zones[i].circle.rings = +this.value; el('zn-circ-n-v').textContent = this.value; markDirty(); refreshZN(); });
+  var circPick = el('zn-circ-pick');
+  if (circPick) circPick.addEventListener('click', function() {
+    if (!pMap) return;
+    circPick.textContent = 'Click the map…';
+    pMap.getCanvas().style.cursor = 'crosshair';
+    pMap.once('click', function(e) {
+      pMap.getCanvas().style.cursor = '';
+      P.zones[i].circle.center = [+e.lngLat.lng.toFixed(7), +e.lngLat.lat.toFixed(7)];
+      zoneSyncCircle(P.zones[i]); markDirty(); renderZoneEditor(i); refreshZN();
+    });
+  });
 
   bindInput('zn-name', function(v) { P.zones[i].name=v; renderZones(); refreshZN(); });
   bindGroupSelect('zn-group', 'zoneGroups', P.zones[i], function(){ renderZones(); renderZoneEditor(i); });
@@ -6807,7 +6853,34 @@ function refreshLines() {
   if(pMap.getSource('p-ln')) pMap.getSource('p-ln').setData(lnGJ());
   if(pMap.getSource('p-ln-pts')) pMap.getSource('p-ln-pts').setData(lnPtsGJ());
 }
-function znGJ() { return {type:'FeatureCollection',features:P.zones.map(function(z){var co=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;return{type:'Feature',geometry:{type:'Polygon',coordinates:[co]},properties:{color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};})};  }
+// ── CIRCLE ZONES: a zone can be a circle (centre + radius in metres) with optional rings inside it.
+// Its coordinates are kept as the circle's polygon, so everything else treats it as any other zone; the
+// rings are extra, non-interactive shapes of the same colour, stacked so the centre reads strongest.
+function circleRing(center, r, n) {
+  n = n || 96;
+  var lat = center[1] * Math.PI / 180, kx = 1 / (111320 * Math.cos(lat)), ky = 1 / 110574, out = [];
+  for (var i = 0; i <= n; i++) { var a = (i % n) / n * 2 * Math.PI; out.push([+(center[0] + r * Math.cos(a) * kx).toFixed(7), +(center[1] + r * Math.sin(a) * ky).toFixed(7)]); }
+  return out;
+}
+function zoneSyncCircle(z) { if (z && z.circle) { z.coordinates = circleRing(z.circle.center, Math.max(1, +z.circle.radius || 1)); z.smoothRadius = 0; } }
+function zonesForMap(list) {
+  var out = [];
+  (list || P.zones).forEach(function(z) {
+    out.push(z);
+    var c = z.circle, n = c ? Math.max(1, Math.min(8, +c.rings || 1)) : 1;
+    for (var k = 1; k < n; k++) out.push(Object.assign({}, z, {
+      id: (z.id || z.name) + '-ring' + k, coordinates: circleRing(c.center, c.radius * (n - k) / n), smoothRadius: 0, interactive: false, showInDrawer: false,
+      lightbox: { enabled: false }, codesignGroupId: null, render3d: false, extrude: false, clipMap: false, popup: '', circle: null, _ring: true
+    }));
+  });
+  return out;
+}
+function zoneCentroid(co) {
+  var x = 0, y = 0, n = Math.max(1, co.length - 1);
+  for (var i = 0; i < n; i++) { x += co[i][0]; y += co[i][1]; }
+  return [x / n, y / n];
+}
+function znGJ() { return {type:'FeatureCollection',features:zonesForMap().map(function(z){var co=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;return{type:'Feature',geometry:{type:'Polygon',coordinates:[co]},properties:{color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};})};  }
 
 function ps(id,v) { if(pMap&&pMap.getLayer(id))pMap.setLayoutProperty(id,'visibility',v?'visible':'none'); }
 
@@ -6869,7 +6942,7 @@ function updatePreview() {
       var zs = z.scenes || [];
       return zs.length === 0 || (sceneId && zs.indexOf(sceneId) >= 0);
     });
-    pMap.getSource('p-zn').setData({type:'FeatureCollection',features:visibleZones.map(function(z){
+    pMap.getSource('p-zn').setData({type:'FeatureCollection',features:zonesForMap(visibleZones).map(function(z){
       var zco = z.smoothRadius > 0.01 ? smoothPolygon(z.coordinates, z.smoothRadius) : z.coordinates;
       return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20}};
     })});
@@ -8160,7 +8233,7 @@ function buildCfg() {
 
   var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false}};})};
 
-  var constraints = {type:'FeatureCollection',features:P.zones.map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
+  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
   var ciLines = P.zones.map(function(z){return '  '+JSON.stringify(z.id||z.name)+': { title:'+JSON.stringify(z.name)+', body:'+JSON.stringify(z.popup||'')+' }';}).join(',\n');
 
