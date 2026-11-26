@@ -221,6 +221,45 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .ctx-marker .ctx-emoji{font-size:15px;line-height:1;pointer-events:none}
 .ctx-marker-stem{width:2px;height:8px;margin:0 auto;opacity:.6}
 .ctx-marker-wrap{display:flex;flex-direction:column;align-items:center;transform:translateY(-100%)}
+/* Map tools (editor only): handles, right-click menu, align bar, snap bar, text labels. */
+.ctx-marker.mt-multi{box-shadow:0 2px 10px rgba(0,0,0,.35),0 0 0 3px #8b93ff}
+.li.mt-on{border-color:#8b93ff}
+.mt-h{width:16px;height:16px;border-radius:50%;background:#fff;border:2.5px solid var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.4);cursor:grab;box-sizing:border-box;position:relative}
+.mt-h-move{width:28px;height:28px;background:var(--accent);border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:move}
+.mt-h-edge{border-radius:4px;cursor:ew-resize}
+.mt-h.dragging,.mt-h:active{cursor:grabbing}
+.mt-rd{position:absolute;left:22px;top:50%;transform:translateY(-50%);background:rgba(13,12,11,.88);color:#fff;font:500 11px/1 var(--mono,monospace);padding:4px 6px;border-radius:5px;white-space:nowrap;display:none;pointer-events:none}
+.mt-h.dragging .mt-rd:not(:empty){display:block}
+#mt-menu{position:fixed;z-index:100000;min-width:190px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:5px;box-shadow:0 10px 32px rgba(0,0,0,.3);font-size:12px}
+#mt-menu .mt-mh{padding:6px 9px 7px;color:var(--ink);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px}
+#mt-menu .mt-mh span{color:var(--ghost);font-weight:400}
+#mt-menu button{display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border:0;background:none;color:var(--ink);font:inherit;text-align:left;border-radius:6px;cursor:pointer}
+#mt-menu button:hover:not(:disabled),#mt-menu button:focus-visible{background:var(--mid);outline:none}
+#mt-menu button:disabled{opacity:.4;cursor:default}
+#mt-menu button.d{color:var(--red)}
+#mt-menu hr{border:0;border-top:1px solid var(--border);margin:4px 2px}
+.mt-sb{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 12px}
+.mt-sb .btn{justify-content:center;font-size:11px;padding:6px 8px}
+.mt-sb .btn:disabled{opacity:.45;cursor:default}
+#mt-bar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:4px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+#mt-bar .btn{padding:5px 8px;font-size:11px}
+#mt-bar .btn:disabled{opacity:.4;cursor:default}
+#mt-bar select{font-size:11px;padding:4px 6px;width:auto;height:auto;border-radius:6px}
+#mt-bar .mt-sep{width:1px;height:18px;background:var(--border2);margin:0 3px}
+#mt-bar label{display:flex;align-items:center;gap:5px;color:var(--ghost);font-size:11px;padding-left:4px}
+#mt-align{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:9;display:none;align-items:center;gap:3px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:4px 6px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+#mt-align .mt-n{font-size:11px;color:var(--ghost);padding:0 6px 0 2px;white-space:nowrap}
+#mt-align button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:0;border-radius:6px;background:none;color:var(--ink);cursor:pointer}
+#mt-align button:hover:not(:disabled){background:var(--mid)}
+#mt-align button:disabled{opacity:.35;cursor:default}
+#mt-align .mt-sep{width:1px;height:18px;background:var(--border2);margin:0 3px}
+#mt-toast{position:absolute;bottom:58px;left:50%;transform:translate(-50%,6px);z-index:11;background:rgba(13,12,11,.9);color:#f8f6f1;font-size:11.5px;padding:7px 12px;border-radius:7px;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;white-space:nowrap}
+#mt-toast.on{opacity:1;transform:translate(-50%,0)}
+.map-lb{cursor:grab;padding:4px}
+.map-lb-t{position:relative;user-select:none;-webkit-user-select:none}
+.map-lb-t[contenteditable="true"]{user-select:text;-webkit-user-select:text;outline:none;cursor:text}
+.map-lb.on .map-lb-t{outline:1.5px dashed rgba(139,147,255,.95);outline-offset:4px}
+.map-lb-rz{position:absolute;right:-9px;bottom:-9px;width:11px;height:11px;background:#fff;border:2px solid #8b93ff;border-radius:2px;cursor:nwse-resize;box-sizing:border-box}
 </style>
 <link rel="stylesheet" href="../shared/allto-editor.css"/>
 <script src="../shared/allto-pen.js"></script>
@@ -239,7 +278,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 #ld-stage.phone #ld-frame{width:390px;height:calc(100% - 76px);margin-top:56px;border-radius:18px;box-shadow:0 0 0 8px #0f0e0d,0 20px 60px rgba(0,0,0,.5)}
 .ld-ip summary{cursor:pointer;display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;font-size:12px;list-style:none}.ld-ip-cur{display:inline-flex;width:18px;height:18px}
 .ld-ip-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-height:180px;overflow:auto;border:1px solid var(--border);border-top:0;padding:5px;border-radius:0 0 5px 5px}.ld-ip-grid button{aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:none;border:0;border-radius:4px;color:inherit;cursor:pointer}.ld-ip-grid button:hover{background:rgba(127,127,127,.15)}.ld-ip-grid button.on{background:var(--accent);color:#fff}
-.ld-dev{position:absolute;top:10px;right:12px;z-index:2;display:flex;gap:4px}.ld-dev .btn{font-size:11px;padding:5px 10px;background:var(--bg)}.ld-dev .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.ld-dev{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);z-index:2;display:flex;gap:4px;padding:4px;background:var(--bg);border:1px solid var(--border2);border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.22)}#ld-stage.phone .ld-dev{top:10px;bottom:auto}.ld-dev .btn:disabled{opacity:.4;cursor:default}.ld-dev .btn{font-size:11px;padding:5px 10px;background:var(--bg)}.ld-dev .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 </style>
 </head>
 <body>
@@ -282,8 +321,10 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
     <div class="ps"><div class="st">Scenes <button class="ab" id="btn-add-sc" aria-label="Add scene"><span data-icon="plus" data-icon-size="13"></span></button></div><div id="scene-list"></div></div>
   </div>
   <div class="tc" id="tc-mk">
-    <div class="ps"><div class="st"><span>Context Markers <button type="button" class="rs-info" data-info="Shown on Wider Context scenes. Click map to place." aria-label="More info">i</button></span><div style="display:flex;gap:4px"><button class="ab" id="btn-import-mk" title="Import from GeoJSON" aria-label="Import markers from GeoJSON"><span data-icon="upload" data-icon-size="13"></span></button><button class="ab" id="btn-add-mk-grp" title="New group" aria-label="Add marker group"><span data-icon="folder-plus" data-icon-size="13"></span></button><button class="ab" id="btn-add-mk" aria-label="Add marker"><span data-icon="plus" data-icon-size="13"></span></button></div></div>
+    <div class="ps"><div class="st"><span>Context Markers <button type="button" class="rs-info" data-info="Shown on Wider Context scenes. Drag markers on the map to move them; Shift-click several to line them up or spread them out. Right-click one for more." aria-label="More info">i</button></span><div style="display:flex;gap:4px"><button class="ab" id="btn-import-mk" title="Import from GeoJSON" aria-label="Import markers from GeoJSON"><span data-icon="upload" data-icon-size="13"></span></button><button class="ab" id="btn-add-mk-grp" title="New group" aria-label="Add marker group"><span data-icon="folder-plus" data-icon-size="13"></span></button><button class="ab" id="btn-add-mk" aria-label="Add marker"><span data-icon="plus" data-icon-size="13"></span></button></div></div>
     <div id="marker-list"></div></div>
+    <div class="ps"><div class="st"><span>Text labels <button type="button" class="rs-info" data-info="Big place names and headings drawn on the map, like Town centre or Growth corridor. Drag them on the map to place them." aria-label="More info">i</button></span><button class="ab" id="btn-add-lb" aria-label="Add text label"><span data-icon="plus" data-icon-size="13"></span></button></div>
+    <div id="label-list"></div></div>
   </div>
   <div class="tc" id="tc-zn">
     <div class="ps"><div class="st"><span>Constraint Zones <button type="button" class="rs-info" data-info="Draw on &lt;a href=&quot;https://geojson.io&quot; target=&quot;_blank&quot;&gt;geojson.io&lt;/a&gt; then paste coordinates, or import a GeoJSON file of Polygons." aria-label="More info">i</button></span><div style="display:flex;gap:4px"><button class="ab" id="btn-import-zn" title="Import from GeoJSON" aria-label="Import zones from GeoJSON"><span data-icon="upload" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn-grp" title="New group" aria-label="Add zone group"><span data-icon="folder-plus" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn-circ" title="Add a circle" aria-label="Add circle zone"><span data-icon="circle" data-icon-size="13"></span></button><button class="ab" id="btn-add-zn" aria-label="Add zone"><span data-icon="plus" data-icon-size="13"></span></button></div></div>
@@ -543,7 +584,7 @@ var LUCIDE_PATHS = {
 function lucideSVG(name, size, color) {
   size = size || 16;
   color = color || 'currentColor';
-  var paths = LUCIDE_PATHS[name] || '<circle cx="12" cy="12" r="3"/>';
+  var paths = LUCIDE_PATHS[name] || (typeof MT_ICONS !== 'undefined' && MT_ICONS[name]) || '<circle cx="12" cy="12" r="3"/>';
   return '<svg xmlns="http://www.w3.org/2000/svg" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="'+color+'" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="display:block;flex-shrink:0">'+paths+'</svg>';
 }
 function renderStaticIcons(root) {
@@ -930,7 +971,7 @@ function h(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function el(id) { return document.getElementById(id); }
-function setHTML(id, html) { var e = el(id); if(e) e.innerHTML = html; if (id === 'rpc' && window.__penSync) setTimeout(window.__penSync, 0); }
+function setHTML(id, html) { var e = el(id); if(e) e.innerHTML = html; if (id === 'rpc') setTimeout(function() { if (window.__penSync) window.__penSync(); if (window.__mtSync) window.__mtSync(); }, 0); }
 function mk(tag, cls, html) { var e = document.createElement(tag); if(cls) e.className=cls; if(html) e.innerHTML=html; return e; }
 
 // ═══════════════════════════════════════════════════
@@ -938,6 +979,7 @@ function mk(tag, cls, html) { var e = document.createElement(tag); if(cls) e.cla
 // ═══════════════════════════════════════════════════
 // ── AUTO-SAVE & DIRTY STATE ──────────────────────────
 function markDirty() {
+  histTouch();
   isDirty = true;
   el('dirty-dot').style.display = 'inline-block';
   el('save-status-text').textContent = 'Unsaved changes…';
@@ -1213,7 +1255,7 @@ function addLine() {
 function renderLineEditor(i) {
   if(i<0||!P.lines||!P.lines[i]) { setHTML('rpc','<div class="es">Select a line to edit</div>'); return; }
   var ln = P.lines[i];
-  var html = '<div class="rh"><div class="re">Line</div><div class="rt">'+h(ln.name||'Untitled')+'</div></div>';
+  var html = '<div class="rh"><div class="re">Line</div><div class="rt">'+h(ln.name||'Untitled')+'</div></div>' + mtStyleBar('line');
 
   // Details
   html += '<div class="rs"><div class="st">Details</div>';
@@ -2391,7 +2433,7 @@ function renderOverlayEditor(i) {
 }
 
 function renderAll() {
-  renderScenes(); renderMarkers(); renderZones(); renderLines(); renderProps(); renderBuildings(); renderOverlays(); renderRightPanel();
+  renderScenes(); renderMarkers(); renderLabels(); renderZones(); renderLines(); renderProps(); renderBuildings(); renderOverlays(); renderRightPanel();
 }
 function clearAutoSave() {
   try { localStorage.removeItem(autoSaveKey); } catch(e) {}
@@ -2449,6 +2491,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Cmd+S / Ctrl+S → download
 document.addEventListener('keydown', function(e) {
+  if (mtKeys(e)) return;
   if((e.ctrlKey||e.metaKey) && e.key==='s') {
     e.preventDefault();
     var btn = el('btn-save-proj'); if(btn) btn.click();
@@ -2543,6 +2586,7 @@ function closeAboutModal() {
 //  LEFT PANEL BINDINGS
 // ═══════════════════════════════════════════════════
 function bindLeftPanel() {
+  mtBindUI();
   el('tab-sc').addEventListener('click', function() { switchTab('sc'); });
   el('tab-mk').addEventListener('click', function() { switchTab('mk'); });
   el('tab-zn').addEventListener('click', function() { switchTab('zn'); });
@@ -2659,7 +2703,7 @@ function switchTab(t) {
     var tc = el('tc-'+x); if(tc) tc.classList.toggle('on', x===t);
   });
   if(t==='sc')      { if(AS>=0) renderRightPanel(); }
-  else if(t==='mk') { renderMarkerEditor(AM); }
+  else if(t==='mk') { if (ALB != null && (P.mapLabels||[])[ALB]) renderLabelEditor(ALB); else renderMarkerEditor(AM); }
   else if(t==='zn') { renderZoneEditor(AZ); }
   else if(t==='ln') { renderLineEditor(ALN); }
   else if(t==='pr') { renderPropEditor(AP); }
@@ -3031,7 +3075,7 @@ function renderMarkers() {
   var selRef = {get:function(){return AM;}, set:function(v){AM=v;}};
 
   function rowEl(m, i) {
-    var div = mk('div', 'li'+(AM===i?' on':'')+(m.groupId?' grp-item':''));
+    var div = mk('div', 'li'+(AM===i?' on':'')+(MT.sel.length>1&&MT.sel.indexOf(m.id)>=0?' mt-on':'')+(m.groupId?' grp-item':''));
     div.innerHTML =
       '<div class="id" style="background:'+h(m.color)+'"></div>' +
       '<span class="nm">'+h(m.name||'Unnamed')+'</span>' +
@@ -3055,6 +3099,7 @@ function renderMarkers() {
         }
         return;
       }
+      if (e.shiftKey) { mtToggleSel(i); return; }
       selMarker(i);
     });
     makeRowDraggable(div, 'markers', i, refreshMK);
@@ -3070,6 +3115,8 @@ function renderMarkers() {
 }
 function selMarker(i) {
   AM=i; AZ=null;
+  if (ALB != null) { ALB = null; refreshLB(); }
+  MT.sel = P.markers[i] ? [mtMid(i)] : []; mtAlignBar();
   ensureEditorTab();
   switchTab('mk'); // also correct when triggered by clicking a marker on the preview map
                     // while some other left-hand tab (Zones, Lines, ...) happens to be open
@@ -3648,7 +3695,7 @@ function renderMarkerEditor(i) {
   if (!m) { setHTML('rpc','<div class="es">Select a marker to edit</div>'); return; }
   var lb = m.lightbox || {enabled:false,heading:'',body:'',img:''};
 
-  var html = '<div class="rh"><div class="re">Marker</div><div class="rt">'+h(m.name||'Unnamed')+'</div></div>';
+  var html = '<div class="rh"><div class="re">Marker</div><div class="rt">'+h(m.name||'Unnamed')+'</div></div>' + mtStyleBar('marker');
   html += '<div class="rs"><div class="st">Details</div>';
   html += fld('Name','mk-name',h(m.name));
   html += '<div class="f"><label class="fl">Group</label><select id="mk-group">'+groupSelectOptions('markerGroups', m.groupId)+'</select></div>';
@@ -4030,7 +4077,7 @@ function renderZoneEditor(i) {
   var z = P.zones[i];
   if (!z) { setHTML('rpc','<div class="es">Select a zone to edit</div>'); return; }
 
-  var html = '<div class="rh"><div class="re">Zone</div><div class="rt">'+h(z.name||'Unnamed')+'</div></div>';
+  var html = '<div class="rh"><div class="re">Zone</div><div class="rt">'+h(z.name||'Unnamed')+'</div></div>' + mtStyleBar('zone');
   html += '<div class="rs"><div class="st">Details</div>';
   html += fld('Name','zn-name',h(z.name));
   html += '<div class="f"><label class="fl">Group</label><select id="zn-group">'+groupSelectOptions('zoneGroups', z.groupId)+'</select></div>';
@@ -6569,6 +6616,7 @@ function initPreview() {
     pMap.resize();
     addPreviewLayers();
     try { penInit(); } catch (e) { console.warn('Pen unavailable', e); }
+    try { mtInit(); } catch (e) { console.warn('Map tools unavailable', e); }
     initDraw();
     refreshMK();
     refreshOV();
@@ -6859,7 +6907,7 @@ function smoothPolygon(coords, r) {
 function lnGJ() {
   var sceneId = P.scenes[AS] ? P.scenes[AS].id : null;
   var features = [];
-  (P.lines||[]).forEach(function(ln) {
+  (P.lines||[]).forEach(function(ln, li) {
     if(!ln.geojson) return;
     var ls = ln.scenes||[];
     if(ls.length>0 && (!sceneId || ls.indexOf(sceneId)<0)) return;
@@ -6872,7 +6920,7 @@ function lnGJ() {
       var dash = ln.dash==='dashed'?[6,4]:ln.dash==='dotted'?[1,3]:[1,0];
       geoms.forEach(function(g){
         features.push({type:'Feature',geometry:g,properties:{
-          z:+ln.layer||0, color:ln.color||'#fff', width:ln.width||3, opacity:ln.opacity||1,
+          z:+ln.layer||0, li:li, color:ln.color||'#fff', width:ln.width||3, opacity:ln.opacity||1,
           dash:ln.dash||'solid',
           label:ln.showLabel?(ln.labelText||ln.name||''):'',
           labelSize:ln.labelSize||12, labelColor:ln.labelColor||'#fff', labelBg:ln.labelBg||'rgba(0,0,0,0.85)'
@@ -6944,6 +6992,719 @@ function refreshLines() {
   if(pMap.getSource('p-ln-pts')) pMap.getSource('p-ln-pts').setData(lnPtsGJ());
   try { edZOrder(); } catch (e) {}
 }
+// ═══════════════════════════════════════════════════
+//  MAP TOOLS: direct manipulation on the editor's map
+// ═══════════════════════════════════════════════════
+// Click a zone or line on the map to open it; right-click anything for a menu (edit, duplicate, layer
+// order, copy and paste style, delete). Markers and text labels drag; Shift-click markers to pick several,
+// then line them up or spread them out. A selected circle zone shows handles for its centre and edge; other
+// zones and lines show a move handle. An optional grid (metres, from the site centre) snaps what you drag.
+var MT_ICONS = {
+  'undo-2': '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+  'redo-2': '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+  'move': '<path d="M12 2v20M2 12h20"/><path d="m15 19-3 3-3-3M19 9l3 3-3 3M5 9l-3 3 3 3M9 5l3-3 3 3"/>',
+  'grip-vertical': '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
+  'magnet': '<path d="m6 15-4-4 6.75-6.77a7.79 7.79 0 0 1 11 11L13 22l-4-4 6.39-6.36a2.14 2.14 0 0 0-3-3L6 15"/><path d="m5 8 4 4M12 15l4 4"/>',
+  'paintbrush': '<path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"/><path d="M9 8c-2 3-4 3.5-7 4l8 10c2-1 6-5 6-7"/>',
+  'clipboard-paste': '<path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2M16 4h2a2 2 0 0 1 2 2v2M11 14h10"/><path d="m17 10 4 4-4 4"/>',
+  'chevron-up': '<path d="m18 15-6-6-6 6"/>',
+  'arrow-up-to-line': '<path d="M5 3h14M18 13l-6-6-6 6M12 7v14"/>',
+  'arrow-down-to-line': '<path d="M12 17V3M6 11l6 6 6-6M19 21H5"/>',
+  'al-left': '<path d="M4 2v20"/><rect x="8" y="5" width="12" height="5" rx="1"/><rect x="8" y="14" width="7" height="5" rx="1"/>',
+  'al-hcenter': '<path d="M12 2v20"/><rect x="5" y="5" width="14" height="5" rx="1"/><rect x="8" y="14" width="8" height="5" rx="1"/>',
+  'al-right': '<path d="M20 2v20"/><rect x="4" y="5" width="12" height="5" rx="1"/><rect x="9" y="14" width="7" height="5" rx="1"/>',
+  'al-top': '<path d="M2 4h20"/><rect x="5" y="8" width="5" height="12" rx="1"/><rect x="14" y="8" width="5" height="7" rx="1"/>',
+  'al-vcenter': '<path d="M2 12h20"/><rect x="5" y="5" width="5" height="14" rx="1"/><rect x="14" y="8" width="5" height="8" rx="1"/>',
+  'al-bottom': '<path d="M2 20h20"/><rect x="5" y="4" width="5" height="12" rx="1"/><rect x="14" y="9" width="5" height="7" rx="1"/>',
+  'dist-h': '<path d="M3 3v18M21 3v18"/><rect x="9" y="7" width="6" height="10" rx="1"/>',
+  'dist-v': '<path d="M3 3h18M3 21h18"/><rect x="7" y="9" width="10" height="6" rx="1"/>'
+};
+var MT = { sel: [], snap: 0, clip: {} };
+try { MT.snap = +localStorage.getItem('allto:snap') || 0; MT.clip = JSON.parse(localStorage.getItem('allto:styleclip') || '{}') || {}; } catch (e) {}
+var ALB = null, pLabels = [], _mtHandles = [], _mtNoClick = 0, _mtCross = false, _mtMap = null, _mtEdgeB = 90, _mtRaf = 0;
+var MT_STYLE_KEYS = {
+  zone: ['color', 'opacity', 'layer', 'smoothRadius', 'extrude', 'extrudeHeight'],
+  line: ['color', 'width', 'opacity', 'dash', 'layer', 'showEndpoints', 'endpointRadius', 'labelSize', 'labelColor', 'labelBg'],
+  marker: ['color', 'icon', 'style', 'labelSide', 'labelBg'],
+  label: ['size', 'weight', 'font', 'italic', 'spacing', 'color', 'haloOn', 'halo', 'bg', 'opacity', 'rotate', 'flat', 'scaleWithMap', 'zoom']
+};
+var MT_KIND_NAME = { zone: 'zone', line: 'line', marker: 'marker', label: 'label' };
+
+function mtMetres(a, b) {
+  var k = Math.cos((a[1] + b[1]) / 2 * Math.PI / 180), dx = (b[0] - a[0]) * 111320 * k, dy = (b[1] - a[1]) * 110574;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+/** Snap [lng, lat] to the grid (MT.snap metres, lined up on the site centre). */
+function mtSnapLL(ll) {
+  if (!MT.snap) return ll;
+  var c = P.siteCentre, gx = MT.snap / (111320 * Math.cos(c[1] * Math.PI / 180)), gy = MT.snap / 110574;
+  return [+(c[0] + Math.round((ll[0] - c[0]) / gx) * gx).toFixed(7), +(c[1] + Math.round((ll[1] - c[1]) / gy) * gy).toFixed(7)];
+}
+function mtTabOn(t) { var e = el('tab-' + t); return !!(e && e.classList.contains('on')); }
+function mtMove(c, dx, dy) {
+  return typeof c[0] === 'number' ? [+(c[0] + dx).toFixed(7), +(c[1] + dy).toFixed(7)].concat(c.slice(2)) : c.map(function(x) { return mtMove(x, dx, dy); });
+}
+function mtMoveZone(z, dx, dy) {
+  if (z.circle) { z.circle.center = mtMove(z.circle.center, dx, dy); zoneSyncCircle(z); return; }
+  var pen = z.pen && z.pen.key === penKey(z.coordinates);
+  z.coordinates = mtMove(z.coordinates, dx, dy);
+  if (pen) { z.pen.nodes.forEach(function(n) { n.p = mtMove(n.p, dx, dy); }); z.pen.key = penKey(z.coordinates); } else z.pen = null;
+}
+function mtMoveLine(ln, dx, dy) {
+  var c0 = lineCoords(ln), pen = c0 && ln.pen && ln.pen.key === penKey(c0), g;
+  try { g = JSON.parse(ln.geojson); } catch (e) { return; }
+  var walk = function(o) {
+    if (!o) return;
+    if (o.type === 'FeatureCollection') o.features.forEach(walk);
+    else if (o.type === 'Feature') walk(o.geometry);
+    else if (o.geometries) o.geometries.forEach(walk);
+    else if (o.coordinates) o.coordinates = mtMove(o.coordinates, dx, dy);
+  };
+  walk(g); ln.geojson = JSON.stringify(g);
+  if (pen) { ln.pen.nodes.forEach(function(n) { n.p = mtMove(n.p, dx, dy); }); ln.pen.key = penKey(lineCoords(ln)); } else if (ln.pen) ln.pen = null;
+}
+function mtLineMid(ln) {
+  var c = lineCoords(ln);
+  if (!c) { try { var g = JSON.parse(ln.geojson), f = g.type === 'FeatureCollection' ? g.features[0] && g.features[0].geometry : g.type === 'Feature' ? g.geometry : g; c = f && (f.type === 'LineString' ? f.coordinates : f.type === 'MultiLineString' ? f.coordinates[0] : null); } catch (e) { c = null; } }
+  if (!c || c.length < 2) return null;
+  if (c.length === 2) return [(c[0][0] + c[1][0]) / 2, (c[0][1] + c[1][1]) / 2];
+  return c[Math.floor(c.length / 2)];
+}
+function mtToast(t) {
+  var mp = el('mp'); if (!mp) return;
+  var d = el('mt-toast');
+  if (!d) { d = document.createElement('div'); d.id = 'mt-toast'; mp.appendChild(d); }
+  d.textContent = t; d.classList.add('on');
+  clearTimeout(mtToast._t); mtToast._t = setTimeout(function() { d.classList.remove('on'); }, 1600);
+}
+
+// ── Quick redraw while dragging (scene-aware), then the full refresh once a drag ends.
+function mtZoneData() {
+  var sc = P.scenes[AS];
+  if (!sc || !sc.layers.constraints) return { type: 'FeatureCollection', features: [] };
+  var vis = P.zones.filter(function(z) { var zs = z.scenes || []; return zs.length === 0 || zs.indexOf(sc.id) >= 0; });
+  return { type: 'FeatureCollection', features: zonesForMap(vis).map(function(z) {
+    var co = z.smoothRadius > 0.01 ? smoothPolygon(z.coordinates, z.smoothRadius) : z.coordinates;
+    return { type: 'Feature', geometry: { type: 'Polygon', coordinates: [co] }, properties: { z: +z.layer || 0, zi: P.zones.indexOf(z._src || z), color: z.color, opacity: z.opacity, extrude: !!z.extrude, extrudeHeight: z.extrudeHeight || 20, render3d: !!z.render3d, height3d: z.height3d || 20, base3d: z.base3d || 0, interactive: z.interactive !== false } };
+  }) };
+}
+function mtQuick() {
+  if (_mtRaf) return;
+  _mtRaf = requestAnimationFrame(function() {
+    _mtRaf = 0;
+    if (!pMap) return;
+    if (pMap.getSource('p-zn')) pMap.getSource('p-zn').setData(mtZoneData());
+    if (pMap.getSource('p-ln')) pMap.getSource('p-ln').setData(lnGJ());
+    if (pMap.getSource('p-ln-pts')) pMap.getSource('p-ln-pts').setData(lnPtsGJ());
+    try { penSync(); } catch (e) {}
+  });
+}
+function mtDone(kind) {
+  markDirty();
+  _mtNoClick = Date.now() + 250;
+  if (kind === 'zone') { refreshZN(); if (mtTabOn('zn') && AZ != null) renderZoneEditor(AZ); }
+  else if (kind === 'line') { refreshLines(); if (mtTabOn('ln') && ALN != null) renderLineEditor(ALN); }
+}
+
+// ── Handles for the selected zone or line.
+function mtHandleEl(kind, title) {
+  var d = document.createElement('div');
+  d.className = 'mt-h mt-h-' + kind; d.title = title;
+  d.innerHTML = (kind === 'move' ? lucideSVG('move', 13, '#fff') : '') + '<span class="mt-rd"></span>';
+  return d;
+}
+function mtClearHandles() { _mtHandles.forEach(function(m) { m.remove(); }); _mtHandles = []; }
+function mtMoveHandle(pos, apply, kind) {
+  var m = new mapboxgl.Marker({ element: mtHandleEl('move', 'Drag to move the whole ' + kind), draggable: true, anchor: 'center' }).setLngLat(pos).addTo(pMap), last = pos.slice();
+  m.on('dragstart', function() { m.getElement().classList.add('dragging'); });
+  m.on('drag', function() { var ll = m.getLngLat(), q = [ll.lng, ll.lat]; apply(q[0] - last[0], q[1] - last[1]); last = q; mtQuick(); });
+  m.on('dragend', function() { var q = mtSnapLL(last); if (MT.snap) apply(q[0] - last[0], q[1] - last[1]); mtDone(kind); });
+  _mtHandles.push(m);
+}
+function mtCircleHandles(z) {
+  var c = z.circle;
+  var edgePos = function() {
+    var b = _mtEdgeB * Math.PI / 180, k = Math.cos(c.center[1] * Math.PI / 180);
+    return [c.center[0] + Math.sin(b) * c.radius / (111320 * k), c.center[1] + Math.cos(b) * c.radius / 110574];
+  };
+  var cm = new mapboxgl.Marker({ element: mtHandleEl('centre', 'Drag to move the circle'), draggable: true, anchor: 'center' }).setLngLat(c.center).addTo(pMap);
+  var em = new mapboxgl.Marker({ element: mtHandleEl('edge', 'Drag to resize the circle'), draggable: true, anchor: 'center' }).setLngLat(edgePos()).addTo(pMap);
+  var rd = em.getElement().querySelector('.mt-rd');
+  cm.on('drag', function() { var ll = cm.getLngLat(); c.center = [+ll.lng.toFixed(7), +ll.lat.toFixed(7)]; zoneSyncCircle(z); em.setLngLat(edgePos()); mtQuick(); });
+  cm.on('dragend', function() { c.center = mtSnapLL(c.center); zoneSyncCircle(z); mtDone('zone'); });
+  em.on('dragstart', function() { em.getElement().classList.add('dragging'); });
+  em.on('drag', function() {
+    var ll = em.getLngLat(), q = [ll.lng, ll.lat], k = Math.cos(c.center[1] * Math.PI / 180);
+    c.radius = Math.max(5, Math.round(mtMetres(c.center, q)));
+    if (MT.snap) c.radius = Math.max(MT.snap, Math.round(c.radius / MT.snap) * MT.snap);
+    _mtEdgeB = Math.atan2((q[0] - c.center[0]) * 111320 * k, (q[1] - c.center[1]) * 110574) * 180 / Math.PI;
+    rd.textContent = c.radius >= 1000 ? (c.radius / 1000).toFixed(2) + ' km' : c.radius + ' m';
+    zoneSyncCircle(z); mtQuick();
+  });
+  em.on('dragend', function() { mtDone('zone'); });
+  _mtHandles.push(cm, em);
+}
+/** Show the handles for whatever zone or line is open (runs after each right-panel render). */
+function mtSync() {
+  mtClearHandles();
+  mtAlignBar();
+  if (!pMap || !pReady || mainTab !== 'editor' || (pPen && pPen.drawing && pPen.drawing())) return;
+  if (mtTabOn('zn') && AZ != null && P.zones[AZ]) {
+    var z = P.zones[AZ];
+    if (z.circle) mtCircleHandles(z);
+    else if (z.coordinates && z.coordinates.length > 3) mtMoveHandle(zoneCentroid(z.coordinates), function(dx, dy) { mtMoveZone(z, dx, dy); }, 'zone');
+  }
+  if (mtTabOn('ln') && ALN != null && ALN >= 0 && P.lines[ALN]) {
+    var ln = P.lines[ALN], p = mtLineMid(ln);
+    if (p) mtMoveHandle(p, function(dx, dy) { mtMoveLine(ln, dx, dy); }, 'line');
+  }
+}
+window.__mtSync = function() { try { mtSync(); } catch (e) { console.warn(e); } };
+
+// ── Picking things on the map.
+function mtLayers(base) { return (pMap.getStyle().layers || []).map(function(l) { return l.id; }).filter(function(id) { return id === base || id.indexOf(base + '-z') === 0; }); }
+function mtHit(pt) {
+  if (!pMap || !pMap.getLayer('p-zn-f') || !pMap.getLayer('p-ln-l')) return null;
+  var zl = mtLayers('p-zn-f'), ll = mtLayers('p-ln-l'), under = {};
+  pMap.queryRenderedFeatures([pt.x, pt.y], { layers: zl }).forEach(function(f) { under[f.properties.zi] = 1; });
+  var fs = pMap.queryRenderedFeatures([[pt.x - 5, pt.y - 5], [pt.x + 5, pt.y + 5]], { layers: zl.concat(ll) });
+  for (var k = 0; k < fs.length; k++) {
+    var f = fs[k], pr = f.properties || {};
+    if (f.layer.id.indexOf('p-ln-l') === 0 && pr.li != null && P.lines[pr.li]) return { kind: 'line', i: +pr.li };
+    if (f.layer.id.indexOf('p-zn-f') === 0 && pr.zi != null && under[pr.zi] && P.zones[pr.zi]) return { kind: 'zone', i: +pr.zi };
+  }
+  return null;
+}
+function mtBusy(e) {
+  if (mainTab !== 'editor' || _mtCross || drawTargetType || (pPen && pPen.drawing && pPen.drawing()) || Date.now() < _mtNoClick) return true;
+  var pl = ['pen-anchor', 'pen-handle'].filter(function(id) { return pMap.getLayer(id); });
+  return !!(pl.length && pMap.queryRenderedFeatures([[e.point.x - 7, e.point.y - 7], [e.point.x + 7, e.point.y + 7]], { layers: pl }).length);
+}
+function mtArr(kind) { return kind === 'zone' ? P.zones : kind === 'line' ? P.lines : kind === 'marker' ? P.markers : (P.mapLabels = P.mapLabels || []); }
+/** Open an item's settings, as clicking it in its list does. */
+function mtOpen(hit) {
+  if (hit.kind === 'zone') { if (AZ === hit.i && mtTabOn('zn') && mainTab === 'editor') return; AZ = hit.i; AM = null; ensureEditorTab(); switchTab('zn'); renderZones(); updateCtxMarkerSelection(); }
+  else if (hit.kind === 'line') { if (ALN === hit.i && mtTabOn('ln') && mainTab === 'editor') return; ALN = hit.i; AM = null; ensureEditorTab(); switchTab('ln'); renderLines(); }
+  else if (hit.kind === 'marker') selMarker(hit.i);
+  else if (hit.kind === 'label') selLabel(hit.i);
+}
+
+// ── Right-click menu.
+function mtMenuClose() { var m = el('mt-menu'); if (m) m.remove(); document.removeEventListener('mousedown', mtMenuAway, true); document.removeEventListener('keydown', mtMenuKey, true); }
+function mtMenuAway(e) { var m = el('mt-menu'); if (m && !m.contains(e.target)) mtMenuClose(); }
+function mtMenuKey(e) { if (e.key === 'Escape') { e.preventDefault(); mtMenuClose(); } }
+function mtMenu(hit, x, y) {
+  mtMenuClose();
+  var it = mtArr(hit.kind)[hit.i];
+  if (!it) return;
+  var shape = hit.kind === 'zone' || hit.kind === 'line', rows = [['edit', 'pencil', 'Edit'], ['dup', 'copy', 'Duplicate']];
+  if (shape) rows.push('-', ['front', 'arrow-up-to-line', 'Bring to front'], ['fwd', 'chevron-up', 'Bring forward'], ['back', 'chevron-down', 'Send backward'], ['bottom', 'arrow-down-to-line', 'Send to back']);
+  rows.push('-', ['copy', 'paintbrush', 'Copy style'], ['paste', 'clipboard-paste', 'Paste style'], '-', ['del', 'trash-2', 'Delete']);
+  var m = document.createElement('div');
+  m.id = 'mt-menu'; m.setAttribute('role', 'menu');
+  m.innerHTML = '<div class="mt-mh">' + h(it.name || it.text || MT_KIND_NAME[hit.kind]) + (shape ? ' <span>· layer ' + (+it.layer || 0) + '</span>' : '') + '</div>'
+    + rows.map(function(r) {
+      if (r === '-') return '<hr/>';
+      var off = r[0] === 'paste' && !MT.clip[hit.kind];
+      return '<button type="button" role="menuitem" data-mt="' + r[0] + '"' + (off ? ' disabled' : '') + (r[0] === 'del' ? ' class="d"' : '') + '>' + lucideSVG(r[1], 13, 'currentColor') + '<span>' + r[2] + '</span></button>';
+    }).join('');
+  document.body.appendChild(m);
+  m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
+  m.addEventListener('click', function(ev) { var b = ev.target.closest('[data-mt]'); if (!b || b.disabled) return; mtMenuClose(); mtAct(hit, b.dataset.mt); });
+  setTimeout(function() { document.addEventListener('mousedown', mtMenuAway, true); document.addEventListener('keydown', mtMenuKey, true); }, 0);
+  var first = m.querySelector('button'); if (first) first.focus();
+}
+function mtPos(kind, it) {
+  if (kind === 'zone') return it.circle ? it.circle.center : zoneCentroid(it.coordinates || [[0, 0]]);
+  if (kind === 'line') return mtLineMid(it);
+  return it.coords;
+}
+function mtRefresh(kind) {
+  if (kind === 'zone') { refreshZN(); if (mtTabOn('zn')) renderZoneEditor(AZ); }
+  else if (kind === 'line') { refreshLines(); renderLines(); if (mtTabOn('ln')) renderLineEditor(ALN); }
+  else if (kind === 'marker') { refreshMK(); if (mtTabOn('mk') && ALB == null) renderMarkerEditor(AM); }
+  else if (kind === 'label') { refreshLB(); if (mtTabOn('mk') && ALB != null) renderLabelEditor(ALB); }
+}
+function mtAct(hit, act) {
+  var kind = hit.kind, arr = mtArr(kind), it = arr[hit.i];
+  if (!it) return;
+  if (act === 'edit') return mtOpen(hit);
+  if (act === 'copy') {
+    var o = {};
+    MT_STYLE_KEYS[kind].forEach(function(k) { if (it[k] !== undefined) o[k] = JSON.parse(JSON.stringify(it[k])); });
+    MT.clip[kind] = o;
+    try { localStorage.setItem('allto:styleclip', JSON.stringify(MT.clip)); } catch (e) {}
+    mtToast('Style copied. Paste it onto another ' + MT_KIND_NAME[kind] + '.');
+    var pb = document.querySelector('[data-mt-sty="paste"]'); if (pb) pb.disabled = false;
+    return;
+  }
+  if (act === 'paste') {
+    if (!MT.clip[kind]) return;
+    var c = JSON.parse(JSON.stringify(MT.clip[kind]));
+    Object.keys(c).forEach(function(k) { it[k] = c[k]; });
+    markDirty(); mtRefresh(kind); mtToast('Style pasted.');
+    return;
+  }
+  if (act === 'del') {
+    if (kind === 'zone') delZone(hit.i);
+    else if (kind === 'line') { P.lines.splice(hit.i, 1); ALN = -1; markDirty(); renderLines(); refreshLines(); renderLineEditor(-1); }
+    else if (kind === 'marker') delMarker(hit.i);
+    else { P.mapLabels.splice(hit.i, 1); ALB = null; markDirty(); refreshLB(); setHTML('rpc', '<div class="es">Select a label to edit</div>'); }
+    return;
+  }
+  if (act === 'dup') {
+    var cp = JSON.parse(JSON.stringify(it)), p0 = mtPos(kind, it);
+    cp.id = { zone: 'z', line: 'l', marker: 'mk', label: 'lb' }[kind] + Date.now();
+    if (cp.name) cp.name += ' (copy)';
+    if (p0 && pMap) {
+      var s = pMap.project(p0), q = pMap.unproject([s.x + 28, s.y + 28]), dx = q.lng - p0[0], dy = q.lat - p0[1];
+      if (kind === 'zone') mtMoveZone(cp, dx, dy); else if (kind === 'line') mtMoveLine(cp, dx, dy); else cp.coords = mtMove(cp.coords, dx, dy);
+    }
+    arr.splice(hit.i + 1, 0, cp);
+    markDirty();
+    if (kind === 'zone') { AZ = hit.i + 1; refreshZN(); switchTab('zn'); }
+    else if (kind === 'line') { ALN = hit.i + 1; refreshLines(); renderLines(); switchTab('ln'); }
+    else if (kind === 'marker') { refreshMK(); selMarker(hit.i + 1); }
+    else { selLabel(hit.i + 1); }
+    return;
+  }
+  // Layer order (zones and lines share the layer numbers).
+  var lv = zLevels(), cur = +it.layer || 0, top = Math.max.apply(null, lv), bot = Math.min.apply(null, lv);
+  var alone = function(v) { return P.zones.concat(P.lines).filter(function(x) { return (+x.layer || 0) === v; }).length === 1; };
+  var nv = act === 'fwd' ? cur + 1 : act === 'back' ? cur - 1 : act === 'front' ? (cur === top && alone(top) ? cur : top + 1) : (cur === bot && alone(bot) ? cur : bot - 1);
+  it.layer = Math.max(-9, Math.min(9, nv));
+  markDirty(); mtRefresh(kind);
+  mtToast('Layer ' + it.layer + (it.layer === cur ? ' (already there)' : ''));
+}
+/** Copy and paste style buttons for the top of an editor panel. */
+function mtStyleBar(kind) {
+  return '<div class="mt-sb"><button type="button" class="btn btn-g btn-ic" data-mt-sty="copy" data-kind="' + kind + '" title="Copy this ' + kind + '’s look (Ctrl+Alt+C)">' + lucideSVG('paintbrush', 12, 'currentColor') + 'Copy style</button>'
+    + '<button type="button" class="btn btn-g btn-ic" data-mt-sty="paste" data-kind="' + kind + '" title="Give this ' + kind + ' the copied look (Ctrl+Alt+V)"' + (MT.clip[kind] ? '' : ' disabled') + '>' + lucideSVG('clipboard-paste', 12, 'currentColor') + 'Paste style</button></div>';
+}
+function mtCurrent() {
+  if (mainTab !== 'editor') return null;
+  if (mtTabOn('zn') && AZ != null && P.zones[AZ]) return { kind: 'zone', i: AZ };
+  if (mtTabOn('ln') && ALN != null && ALN >= 0 && P.lines[ALN]) return { kind: 'line', i: ALN };
+  if (mtTabOn('mk') && ALB != null && (P.mapLabels || [])[ALB]) return { kind: 'label', i: ALB };
+  if (mtTabOn('mk') && AM != null && P.markers[AM]) return { kind: 'marker', i: AM };
+  return null;
+}
+
+// ── Several markers: Shift-click to pick, then align or spread them.
+function mtMid(i) { var m = P.markers[i]; if (m && !m.id) m.id = 'mk' + Date.now() + i; return m ? m.id : null; }
+function mtSelMarkers() { return MT.sel.map(function(id) { return P.markers.filter(function(m) { return m.id === id; })[0]; }).filter(Boolean); }
+function mtToggleSel(i) {
+  var id = mtMid(i); if (!id) return;
+  if (!MT.sel.length && AM != null && P.markers[AM]) MT.sel = [mtMid(AM)];
+  var k = MT.sel.indexOf(id);
+  if (k >= 0) MT.sel.splice(k, 1); else { MT.sel.push(id); AM = i; }
+  if (AM != null && P.markers[AM] && MT.sel.indexOf(P.markers[AM].id) < 0) AM = MT.sel.length ? P.markers.indexOf(mtSelMarkers()[0]) : null;
+  ALB = null; ensureEditorTab(); if (!mtTabOn('mk')) switchTab('mk');
+  renderMarkers(); renderMarkerEditor(AM); updateCtxMarkerSelection(); mtAlignBar();
+}
+function mtAlignBar() {
+  var bar = el('mt-align'), n = mtSelMarkers().length;
+  if (!bar) return;
+  var on = n > 1 && mainTab === 'editor';
+  bar.style.display = on ? 'flex' : 'none';
+  if (!on) return;
+  bar.querySelector('.mt-n').textContent = n + ' markers';
+  bar.querySelectorAll('[data-al^="dist"]').forEach(function(b) { b.disabled = n < 3; });
+}
+function mtAlign(how) {
+  var ms = mtSelMarkers();
+  if (ms.length < 2 || !pMap) return;
+  var pts = ms.map(function(m) { return pMap.project(m.coords); });
+  var xs = pts.map(function(p) { return p.x; }), ys = pts.map(function(p) { return p.y; });
+  var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+  var spread = function(axis, a, b) {
+    var order = pts.map(function(p, k) { return k; }).sort(function(p, q) { return pts[p][axis] - pts[q][axis]; });
+    order.forEach(function(k, r) { pts[k][axis] = a + (b - a) * r / (order.length - 1); });
+  };
+  pts.forEach(function(p) {
+    if (how === 'left') p.x = x0; else if (how === 'hcenter') p.x = (x0 + x1) / 2; else if (how === 'right') p.x = x1;
+    else if (how === 'top') p.y = y0; else if (how === 'vcenter') p.y = (y0 + y1) / 2; else if (how === 'bottom') p.y = y1;
+  });
+  if (how === 'dist-h') spread('x', x0, x1);
+  if (how === 'dist-v') spread('y', y0, y1);
+  ms.forEach(function(m, k) { var ll = pMap.unproject(pts[k]); m.coords = [+ll.lng.toFixed(7), +ll.lat.toFixed(7)]; });
+  markDirty(); refreshMK(); if (mtTabOn('mk') && ALB == null) renderMarkerEditor(AM);
+}
+
+// ── Snap grid.
+function mtGridGJ() {
+  var out = { type: 'FeatureCollection', features: [] };
+  if (!MT.snap || !pMap) return out;
+  var b = pMap.getBounds(), c = P.siteCentre, gx = MT.snap / (111320 * Math.cos(c[1] * Math.PI / 180)), gy = MT.snap / 110574;
+  var x0 = Math.floor((b.getWest() - c[0]) / gx), x1 = Math.ceil((b.getEast() - c[0]) / gx), y0 = Math.floor((b.getSouth() - c[1]) / gy), y1 = Math.ceil((b.getNorth() - c[1]) / gy);
+  if ((x1 - x0) + (y1 - y0) > 260) return out; // too fine to draw at this zoom (it still snaps)
+  for (var i = x0; i <= x1; i++) out.features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[c[0] + i * gx, c[1] + y0 * gy], [c[0] + i * gx, c[1] + y1 * gy]] } });
+  for (var j = y0; j <= y1; j++) out.features.push({ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[c[0] + x0 * gx, c[1] + j * gy], [c[0] + x1 * gx, c[1] + j * gy]] } });
+  return out;
+}
+function mtGrid() {
+  if (!pMap || !pMap.getStyle()) return;
+  if (!pMap.getSource('p-mt-grid')) {
+    pMap.addSource('p-mt-grid', { type: 'geojson', data: mtGridGJ() });
+    pMap.addLayer({ id: 'p-mt-grid', type: 'line', source: 'p-mt-grid', paint: { 'line-color': '#8b93ff', 'line-opacity': 0.35, 'line-width': 0.75, 'line-emissive-strength': 1 } });
+  } else pMap.getSource('p-mt-grid').setData(mtGridGJ());
+}
+function mtSetSnap(v) {
+  MT.snap = +v || 0;
+  try { localStorage.setItem('allto:snap', String(MT.snap)); } catch (e) {}
+  var s = el('mt-snap'); if (s) s.value = String(MT.snap);
+  try { mtGrid(); } catch (e) {}
+}
+
+// ── Text labels: big place names and headings drawn on the map.
+/** CSS for a label's text (also used, precomputed, by the exported site). */
+function mapLabelCSS(lb, fam) {
+  var hc = lb.halo || '#0f0e0d';
+  return 'font-family:' + fam + ';font-size:' + (+lb.size || 32) + 'px;font-weight:' + Math.min(600, +lb.weight || 600) + ';color:' + (lb.color || '#fff') + ';opacity:' + (lb.opacity != null ? lb.opacity : 1)
+    + ';letter-spacing:' + ((+lb.spacing || 0) / 100) + 'em;font-style:' + (lb.italic ? 'italic' : 'normal') + ';white-space:pre;line-height:1.05;text-align:center;transform-origin:50% 50%'
+    + (lb.haloOn !== false ? ';text-shadow:0 0 1px ' + hc + ',0 0 2px ' + hc + ',0 0 5px ' + hc + ',0 1px 10px ' + hc : '')
+    + (lb.bg ? ';background:' + lb.bg + ';padding:.16em .48em;border-radius:.3em' : '');
+}
+function lbFam(lb) { var S = styleEnsure(); return fontStack(lb.font === 'body' ? P.fontFamily : (S.headFont || P.fontFamily)); }
+function lbScale(lb, z) { return lb.scaleWithMap ? Math.min(6, Math.max(0.08, Math.pow(2, z - (+lb.zoom || 15)))) : 1; }
+function mtLbScale() {
+  if (!pMap) return;
+  var z = pMap.getZoom();
+  pLabels.forEach(function(m) { var s = lbScale(m._lb, z); m.getElement().firstChild.style.transform = 'scale(' + s + ')'; m.getElement().style.visibility = s < 0.12 ? 'hidden' : ''; });
+}
+function mtLbVis() {
+  var sc = P.scenes[AS], sid = sc ? sc.id : null;
+  pLabels.forEach(function(m) { var ss = m._lb.scenes || []; m.getElement().style.display = !ss.length || (sid && ss.indexOf(sid) >= 0) ? '' : 'none'; });
+}
+function refreshLB() {
+  renderLabels();
+  pLabels.forEach(function(m) { m.remove(); }); pLabels = [];
+  if (!pMap || !pReady) return;
+  (P.mapLabels || []).forEach(function(lb, i) {
+    if (!lb.coords) return;
+    var w = document.createElement('div'), t = document.createElement('div');
+    w.className = 'map-lb' + (ALB === i ? ' on' : '');
+    t.className = 'map-lb-t'; t.style.cssText = mapLabelCSS(lb, lbFam(lb)); t.textContent = lb.text || ' ';
+    w.appendChild(t);
+    var m = new mapboxgl.Marker({ element: w, draggable: true, anchor: 'center', rotation: +lb.rotate || 0, rotationAlignment: lb.flat ? 'map' : 'viewport', pitchAlignment: lb.flat ? 'map' : 'viewport' }).setLngLat(lb.coords).addTo(pMap);
+    m._lb = lb;
+    var moved = false;
+    m.on('dragstart', function() { moved = true; });
+    m.on('dragend', function() { var ll = m.getLngLat(); lb.coords = mtSnapLL([+ll.lng.toFixed(7), +ll.lat.toFixed(7)]); m.setLngLat(lb.coords); markDirty(); setTimeout(function() { moved = false; }, 50); if (ALB === i) renderLabelEditor(i); });
+    w.addEventListener('click', function(e) { e.stopPropagation(); if (moved || t.isContentEditable) return; if (ALB !== i || !mtTabOn('mk') || mainTab !== 'editor') selLabel(i); });
+    w.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); if (ALB !== i) selLabel(i); mtMenu({ kind: 'label', i: i }, e.clientX, e.clientY); });
+    // Double-click to type straight onto the map.
+    w.addEventListener('dblclick', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      if (ALB !== i) selLabel(i);
+      var tt = pLabels.filter(function(x) { return x._lb === lb; })[0]; if (!tt) return;
+      var te = tt.getElement().firstChild, before = lb.text;
+      tt.setDraggable(false); te.contentEditable = 'true'; te.focus();
+      try { var r = document.createRange(); r.selectNodeContents(te); var s = getSelection(); s.removeAllRanges(); s.addRange(r); } catch (x) {}
+      var done = function(keep) {
+        te.removeEventListener('blur', onBlur); te.contentEditable = 'false'; tt.setDraggable(true);
+        lb.text = keep ? te.innerText.replace(/\n$/, '') : before; markDirty(); refreshLB(); if (ALB === i) renderLabelEditor(i);
+      };
+      var onBlur = function() { done(true); };
+      te.addEventListener('blur', onBlur);
+      te.addEventListener('keydown', function(k) { k.stopPropagation(); if (k.key === 'Enter' && !k.shiftKey) { k.preventDefault(); te.blur(); } else if (k.key === 'Escape') { te.removeEventListener('blur', onBlur); done(false); } });
+    });
+    if (ALB === i) {
+      // Corner handle: drag to resize.
+      var rz = document.createElement('div');
+      rz.className = 'map-lb-rz'; rz.title = 'Drag to resize';
+      t.appendChild(rz);
+      ['mousedown', 'touchstart'].forEach(function(ev) { rz.addEventListener(ev, function(e) { e.stopPropagation(); }, { passive: true }); });
+      rz.addEventListener('pointerdown', function(e) {
+        e.preventDefault(); e.stopPropagation(); rz.setPointerCapture(e.pointerId);
+        var x0 = e.clientX, y0 = e.clientY, s0 = +lb.size || 32, hgt = t.getBoundingClientRect().height || 30;
+        var mv = function(ev) { var d = ((ev.clientX - x0) + (ev.clientY - y0)) / 2; lb.size = Math.round(Math.max(8, Math.min(240, s0 * (1 + d / hgt)))); t.style.fontSize = lb.size + 'px'; };
+        var up = function() { rz.removeEventListener('pointermove', mv); rz.removeEventListener('pointerup', up); markDirty(); if (ALB === i) renderLabelEditor(i); };
+        rz.addEventListener('pointermove', mv); rz.addEventListener('pointerup', up);
+      });
+    }
+    pLabels.push(m);
+  });
+  mtLbScale(); mtLbVis();
+}
+function renderLabels() {
+  var ul = el('label-list'); if (!ul) return;
+  var L = P.mapLabels || [];
+  if (!L.length) { ul.innerHTML = '<div class="es">No labels yet. Add place names or big headings on the map.</div>'; return; }
+  ul.innerHTML = L.map(function(lb, i) {
+    return '<div class="li' + (ALB === i ? ' on' : '') + '" data-lbi="' + i + '"><div class="id" style="background:' + h(lb.color || '#fff') + ';border:1px solid var(--border2)"></div><span class="nm">' + h((lb.text || 'Label').split('\n').join(' ')) + '</span>'
+      + '<div class="ia"><button class="ib" data-lba="dup" title="Duplicate">' + lucideSVG('copy', 12, 'currentColor') + '</button><button class="ib d" data-lba="del" title="Delete">' + lucideSVG('trash-2', 12, 'currentColor') + '</button></div></div>';
+  }).join('');
+  ul.querySelectorAll('[data-lbi]').forEach(function(row) {
+    row.addEventListener('click', function(e) {
+      var i = +row.dataset.lbi, a = e.target.closest('[data-lba]');
+      if (a) { e.stopPropagation(); mtAct({ kind: 'label', i: i }, a.dataset.lba); return; }
+      selLabel(i);
+    });
+  });
+}
+function selLabel(i) {
+  ALB = i; AM = null; MT.sel = [];
+  ensureEditorTab(); switchTab('mk');
+  renderMarkers(); refreshLB(); updateCtxMarkerSelection(); mtAlignBar();
+  var m = pLabels.filter(function(x) { return x._lb === P.mapLabels[i]; })[0];
+  if (m && pMap && m.getElement().style.display !== 'none') { var p = pMap.project(m.getLngLat()), c = pMap.getContainer(); if (p.x < 0 || p.y < 0 || p.x > c.clientWidth || p.y > c.clientHeight) pMap.easeTo({ center: m.getLngLat(), duration: 500 }); }
+}
+function addLabel() {
+  P.mapLabels = P.mapLabels || [];
+  var c = pMap && pReady ? [pMap.getCenter().lng, pMap.getCenter().lat] : P.siteCentre.slice();
+  P.mapLabels.push({ id: 'lb' + Date.now(), text: 'Town centre', coords: [+c[0].toFixed(7), +c[1].toFixed(7)], size: 30, weight: 600, font: 'head', italic: false, spacing: 0,
+    color: '#ffffff', haloOn: true, halo: '#0f0e0d', bg: '', opacity: 1, rotate: 0, flat: false, scaleWithMap: true, zoom: pMap ? +pMap.getZoom().toFixed(2) : 15, scenes: [] });
+  markDirty(); selLabel(P.mapLabels.length - 1);
+}
+function renderLabelEditor(i) {
+  var lb = (P.mapLabels || [])[i];
+  if (!lb) { setHTML('rpc', '<div class="es">Select a label to edit</div>'); return; }
+  var col = function(label, k, def, opt) {
+    var v = lb[k] || def;
+    return '<div class="f"><label class="fl">' + label + '</label><div class="cr"><input type="color" data-lbc="' + k + '" value="' + h(/^#[0-9a-f]{6}$/i.test(v) ? v : def) + '"/><input type="text" data-lbct="' + k + '" value="' + h(v) + '"/></div></div>';
+  };
+  var rng = function(label, k, min, max, step, v, unit) {
+    return '<div class="f"><label class="fl">' + label + ' <span data-lbv="' + k + '" style="font-family:var(--mono);color:var(--ink)">' + v + (unit || '') + '</span></label><input type="range" data-lbk="' + k + '" data-num="1" data-unit="' + (unit || '') + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + v + '"/></div>';
+  };
+  var tog = function(label, k, on) { return '<div class="lr" style="margin-bottom:8px"><span class="ll">' + label + '</span><button class="tg' + (on ? ' on' : '') + '" data-lbt="' + k + '"></button></div>'; };
+  var html = '<div class="rh"><div class="re">Text label</div><div class="rt">' + h((lb.text || 'Label').split('\n')[0]) + '</div></div>' + mtStyleBar('label');
+  html += '<div class="rs"><div class="st">Text</div><div class="f"><textarea data-lbk="text" rows="2" style="min-height:44px">' + h(lb.text || '') + '</textarea></div>'
+    + '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-2px 0 10px">On the map: drag the label to move it, drag its corner to resize, double-click to type. Shift+Enter adds a line.</div>'
+    + rng('Size', 'size', 10, 160, 1, +lb.size || 30, 'px')
+    + '<div class="f2"><div class="f"><label class="fl">Font</label><select data-lbk="font"><option value="head"' + (lb.font !== 'body' ? ' selected' : '') + '>Headings</option><option value="body"' + (lb.font === 'body' ? ' selected' : '') + '>Body text</option></select></div>'
+    + '<div class="f"><label class="fl">Weight</label><select data-lbk="weight" data-num="1">' + [[400, 'Regular'], [500, 'Medium'], [600, 'Demibold']].map(function(o) { return '<option value="' + o[0] + '"' + ((+lb.weight || 600) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div></div>'
+    + tog('Italic', 'italic', !!lb.italic)
+    + rng('Letter spacing', 'spacing', -5, 40, 1, +lb.spacing || 0, '')
+    + col('Colour', 'color', '#ffffff')
+    + tog('Outline glow', 'haloOn', lb.haloOn !== false) + (lb.haloOn !== false ? col('Outline colour', 'halo', '#0f0e0d') : '')
+    + tog('Background', 'bgOn', !!lb.bg) + (lb.bg ? col('Background colour', 'bg', '#0f0e0d') : '')
+    + rng('Opacity', 'opacity', 0.1, 1, 0.05, lb.opacity != null ? lb.opacity : 1, '') + '</div>';
+  html += '<div class="rs"><div class="st">Placement</div>'
+    + rng('Rotation', 'rotate', -180, 180, 1, +lb.rotate || 0, '°')
+    + tog('Lie flat on the map', 'flat', !!lb.flat)
+    + tog('Grow and shrink with the map', 'scaleWithMap', !!lb.scaleWithMap)
+    + (lb.scaleWithMap ? '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-2px 0 8px">Shown at its set size at zoom ' + (+lb.zoom || 15).toFixed(1) + ', bigger closer in and smaller further out, like a place name printed on the map. <button class="btn btn-g" id="lb-zoom-now" style="margin-top:6px;width:100%">Use the current zoom</button></div>' : '')
+    + '<div class="f2"><div class="f"><label class="fl">Longitude</label><input type="number" step="0.00001" data-lbk="lng" data-num="1" value="' + lb.coords[0] + '"/></div><div class="f"><label class="fl">Latitude</label><input type="number" step="0.00001" data-lbk="lat" data-num="1" value="' + lb.coords[1] + '"/></div></div></div>';
+  html += '<div class="rs"><div class="st">Visible on scenes' + infoBtn('Leave every scene unticked to show the label on all of them.') + '</div>'
+    + P.scenes.map(function(sc, si) { return '<div class="lr" style="margin-bottom:5px"><span class="ll">' + h(sc.label || 'Scene ' + (si + 1)) + '</span><button class="tg' + ((lb.scenes || []).indexOf(sc.id) >= 0 ? ' on' : '') + '" data-lbsc="' + h(sc.id) + '"></button></div>'; }).join('') + '</div>';
+  html += '<div class="rs"><button class="btn btn-g btn-ic" id="lb-del" style="width:100%;justify-content:center;color:var(--red)">' + lucideSVG('trash-2', 12, 'currentColor') + 'Delete label</button></div>';
+  setHTML('rpc', html);
+  var rp = el('rpc'), redraw = function() { markDirty(); refreshLB(); };
+  rp.querySelectorAll('[data-lbk]').forEach(function(inp) {
+    inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', function() {
+      var k = inp.dataset.lbk, v = inp.dataset.num ? parseFloat(inp.value) : inp.value;
+      if (inp.dataset.num && isNaN(v)) return;
+      if (k === 'lng') lb.coords[0] = v; else if (k === 'lat') lb.coords[1] = v; else lb[k] = v;
+      var sv = rp.querySelector('[data-lbv="' + k + '"]'); if (sv) sv.textContent = inp.value + (inp.dataset.unit || '');
+      if (k === 'text') { var rt = rp.querySelector('.rt'); if (rt) rt.textContent = (v || 'Label').split('\n')[0]; }
+      redraw();
+    });
+  });
+  rp.querySelectorAll('[data-lbc]').forEach(function(p) {
+    p.addEventListener('input', function() { lb[p.dataset.lbc] = p.value; var t = rp.querySelector('[data-lbct="' + p.dataset.lbc + '"]'); if (t) t.value = p.value; redraw(); });
+  });
+  rp.querySelectorAll('[data-lbct]').forEach(function(t) {
+    t.addEventListener('change', function() { lb[t.dataset.lbct] = t.value.trim(); var p = rp.querySelector('[data-lbc="' + t.dataset.lbct + '"]'); if (p && /^#[0-9a-f]{6}$/i.test(t.value.trim())) p.value = t.value.trim(); redraw(); });
+  });
+  rp.querySelectorAll('[data-lbt]').forEach(function(b) {
+    b.onclick = function() {
+      var k = b.dataset.lbt;
+      if (k === 'bgOn') lb.bg = lb.bg ? '' : '#0f0e0d';
+      else if (k === 'haloOn') lb.haloOn = lb.haloOn === false;
+      else { lb[k] = !lb[k]; if (k === 'scaleWithMap' && lb[k] && pMap) lb.zoom = +pMap.getZoom().toFixed(2); }
+      redraw(); renderLabelEditor(i);
+    };
+  });
+  rp.querySelectorAll('[data-lbsc]').forEach(function(b) {
+    b.onclick = function() { var ss = lb.scenes = lb.scenes || [], k = ss.indexOf(b.dataset.lbsc); if (k >= 0) ss.splice(k, 1); else ss.push(b.dataset.lbsc); b.classList.toggle('on', k < 0); redraw(); };
+  });
+  var zn = el('lb-zoom-now'); if (zn) zn.onclick = function() { if (pMap) { lb.zoom = +pMap.getZoom().toFixed(2); redraw(); renderLabelEditor(i); } };
+  el('lb-del').onclick = function() { mtAct({ kind: 'label', i: i }, 'del'); };
+}
+/** The labels for the exported site, with their CSS worked out here. */
+function exportMapLabels() {
+  return (P.mapLabels || []).filter(function(lb) { return lb.coords && String(lb.text || '').trim(); }).map(function(lb) {
+    return { t: lb.text, c: lb.coords, css: mapLabelCSS(lb, lbFam(lb)), r: +lb.rotate || 0, f: !!lb.flat, s: !!lb.scaleWithMap, z: +lb.zoom || 15,
+      sc: (lb.scenes || []).map(function(id) { return P.scenes.map(function(s) { return s.id; }).indexOf(id); }).filter(function(x) { return x >= 0; }) };
+  });
+}
+
+// ── Wiring, once per map.
+function mtInit() {
+  if (!pMap || _mtMap === pMap) return;
+  _mtMap = pMap;
+  var cv = pMap.getCanvas();
+  pMap.on('mousedown', function() { _mtCross = cv.style.cursor === 'crosshair'; });
+  pMap.on('click', function(e) {
+    if (mtBusy(e)) { _mtCross = false; return; }
+    mtMenuClose();
+    var hit = mtHit(e.point);
+    if (hit) mtOpen(hit);
+  });
+  // The browser's own right-click (Mapbox doesn't always report one when right-drag rotation is on).
+  pMap.getCanvasContainer().addEventListener('contextmenu', function(ev) {
+    if (mainTab !== 'editor' || (pPen && pPen.drawing && pPen.drawing()) || drawTargetType) return;
+    var r = cv.getBoundingClientRect(), hit = mtHit({ x: ev.clientX - r.left, y: ev.clientY - r.top });
+    if (!hit) return;
+    ev.preventDefault();
+    mtOpen(hit);
+    mtMenu(hit, ev.clientX, ev.clientY);
+  });
+  var hov = 0;
+  pMap.on('mousemove', function(e) {
+    if (hov || mainTab !== 'editor') return;
+    hov = requestAnimationFrame(function() {
+      hov = 0;
+      var c = cv.style.cursor;
+      if (c && c !== 'pointer') return;
+      cv.style.cursor = mtHit(e.point) ? 'pointer' : '';
+    });
+  });
+  pMap.on('zoom', mtLbScale);
+  pMap.on('moveend', function() { if (MT.snap) try { mtGrid(); } catch (e) {} });
+  pMap.on('movestart', mtMenuClose);
+  pMap.on('style.load', function() { setTimeout(function() { try { mtGrid(); penSync(); } catch (e) {} }, 0); });
+  mtGrid();
+  refreshLB();
+  mtSync();
+}
+/** Markers drag; picked markers (Shift-click) move together. */
+function mtMarkerDrag(marker, mi) {
+  var st = null;
+  marker.on('dragstart', function() {
+    marker._mtMoved = true;
+    var id = mtMid(mi), group = MT.sel.length > 1 && MT.sel.indexOf(id) >= 0;
+    st = { ll: marker.getLngLat(), others: [] };
+    if (group) pCtxMarkers.forEach(function(o, oi) { if (oi !== mi && P.markers[oi] && MT.sel.indexOf(P.markers[oi].id) >= 0) st.others.push({ m: o, c: P.markers[oi].coords.slice(), i: oi }); });
+  });
+  marker.on('drag', function() {
+    var ll = marker.getLngLat(), dx = ll.lng - st.ll.lng, dy = ll.lat - st.ll.lat;
+    st.others.forEach(function(o) { o.m.setLngLat([o.c[0] + dx, o.c[1] + dy]); });
+  });
+  marker.on('dragend', function() {
+    var ll = marker.getLngLat(), q = mtSnapLL([+ll.lng.toFixed(7), +ll.lat.toFixed(7)]), dx = q[0] - st.ll.lng, dy = q[1] - st.ll.lat;
+    if (!P.markers[mi]) return;
+    P.markers[mi].coords = q;
+    st.others.forEach(function(o) { P.markers[o.i].coords = [+(o.c[0] + dx).toFixed(7), +(o.c[1] + dy).toFixed(7)]; });
+    markDirty();
+    setTimeout(function() { marker._mtMoved = false; refreshMK(); if (mtTabOn('mk') && ALB == null && AM != null) renderMarkerEditor(AM); }, 30);
+  });
+}
+/** The map's tool bar (undo, redo, snap), the align bar and the style buttons. */
+function mtBindUI() {
+  var mp = el('mp');
+  if (mp && !el('mt-bar')) {
+    var bar = document.createElement('div');
+    bar.id = 'mt-bar';
+    bar.innerHTML = '<button type="button" class="btn btn-g btn-ic mt-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>' + lucideSVG('undo-2', 13, 'currentColor') + '</button>'
+      + '<button type="button" class="btn btn-g btn-ic mt-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>' + lucideSVG('redo-2', 13, 'currentColor') + '</button><span class="mt-sep"></span>'
+      + '<label title="Snap what you drag to a grid, lined up on the site centre">' + lucideSVG('magnet', 13, 'currentColor') + '<select id="mt-snap" aria-label="Snap to grid">'
+      + [[0, 'No snap'], [1, '1 m grid'], [5, '5 m grid'], [10, '10 m grid'], [25, '25 m grid'], [50, '50 m grid'], [100, '100 m grid'], [250, '250 m grid']].map(function(o) { return '<option value="' + o[0] + '"' + (MT.snap === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>';
+    mp.appendChild(bar);
+    var al = document.createElement('div');
+    al.id = 'mt-align';
+    al.innerHTML = '<span class="mt-n"></span>' + [['left', 'al-left', 'Align left edges'], ['hcenter', 'al-hcenter', 'Centre in a column'], ['right', 'al-right', 'Align right edges'], '-',
+      ['top', 'al-top', 'Align tops'], ['vcenter', 'al-vcenter', 'Centre in a row'], ['bottom', 'al-bottom', 'Align bottoms'], '-',
+      ['dist-h', 'dist-h', 'Spread evenly across'], ['dist-v', 'dist-v', 'Spread evenly up and down'], '-', ['clear', 'x', 'Done']].map(function(b) {
+      return b === '-' ? '<span class="mt-sep"></span>' : '<button type="button" data-al="' + b[0] + '" title="' + b[2] + '" aria-label="' + b[2] + '">' + lucideSVG(b[1], 15, 'currentColor') + '</button>';
+    }).join('');
+    mp.appendChild(al);
+    al.addEventListener('click', function(e) {
+      var b = e.target.closest('[data-al]'); if (!b || b.disabled) return;
+      if (b.dataset.al === 'clear') { MT.sel = AM != null && P.markers[AM] ? [mtMid(AM)] : []; renderMarkers(); updateCtxMarkerSelection(); mtAlignBar(); return; }
+      mtAlign(b.dataset.al);
+    });
+    el('mt-snap').onchange = function() { mtSetSnap(this.value); mtToast(MT.snap ? 'Snapping to a ' + MT.snap + ' m grid' : 'Snapping off'); };
+  }
+  // The landing page and style previews get the same two buttons beside Desktop / Phone.
+  var dev = document.querySelector('#ld-stage .ld-dev');
+  if (dev && !dev.querySelector('.mt-undo')) dev.insertAdjacentHTML('afterbegin', '<button type="button" class="btn btn-g btn-ic mt-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>' + lucideSVG('undo-2', 13, 'currentColor') + '</button>'
+    + '<button type="button" class="btn btn-g btn-ic mt-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled style="margin-right:10px">' + lucideSVG('redo-2', 13, 'currentColor') + '</button>');
+  document.querySelectorAll('.mt-undo').forEach(function(b) { b.onclick = function() { histStep(-1); }; });
+  document.querySelectorAll('.mt-redo').forEach(function(b) { b.onclick = function() { histStep(1); }; });
+  var ab = el('btn-add-lb'); if (ab) ab.onclick = addLabel;
+  el('rpc').addEventListener('click', function(e) {
+    var b = e.target.closest('[data-mt-sty]'); if (!b || b.disabled) return;
+    var cur = mtCurrent(); if (cur) mtAct(cur, b.dataset.mtSty);
+  });
+  setTimeout(histCommit, 0);
+  histButtons();
+}
+/** Keyboard: Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo; Ctrl+Alt+C / V copy and paste style. */
+function mtKeys(e) {
+  var mod = e.ctrlKey || e.metaKey, k = (e.key || '').toLowerCase();
+  if (!mod) return false;
+  var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+  if ((k === 'z' || k === 'y') && !e.altKey) {
+    if (typing) return false;
+    e.preventDefault(); histStep(k === 'y' || e.shiftKey ? 1 : -1); return true;
+  }
+  if (e.altKey && (k === 'c' || k === 'v' || e.code === 'KeyC' || e.code === 'KeyV')) {
+    var cur = mtCurrent(); if (!cur) return false;
+    e.preventDefault(); mtAct(cur, (k === 'c' || e.code === 'KeyC') ? 'copy' : 'paste'); return true;
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════
+//  UNDO / REDO across the whole editor
+// ═══════════════════════════════════════════════════
+// Every change goes through markDirty(); half a second after the last one the project is snapshotted, so
+// a burst of edits (typing, dragging) undoes as one step. Restoring writes the snapshot back into P in place
+// and redraws everything. Text boxes keep the browser's own undo while you're typing in them.
+var HIST = { list: [], i: -1, t: null, mute: false };
+function histCommit() {
+  clearTimeout(HIST.t); HIST.t = null;
+  if (HIST.mute) return;
+  var s; try { s = JSON.stringify(P); } catch (e) { return; }
+  if (HIST.i >= 0 && HIST.list[HIST.i] === s) return;
+  HIST.list = HIST.list.slice(0, HIST.i + 1);
+  HIST.list.push(s);
+  var tot = 0; HIST.list.forEach(function(x) { tot += x.length; });
+  while (HIST.list.length > 2 && (HIST.list.length > 100 || tot > 60e6)) tot -= HIST.list.shift().length;
+  HIST.i = HIST.list.length - 1;
+  histButtons();
+}
+function histTouch() { if (HIST.mute) return; clearTimeout(HIST.t); HIST.t = setTimeout(histCommit, 500); histButtons(true); }
+function histButtons(pending) {
+  var u = !(HIST.i > 0 || (pending && HIST.i >= 0)), r = !!pending || HIST.i >= HIST.list.length - 1;
+  document.querySelectorAll('.mt-undo').forEach(function(b) { b.disabled = u; });
+  document.querySelectorAll('.mt-redo').forEach(function(b) { b.disabled = r; });
+}
+function histStep(d) {
+  if (HIST.t) histCommit();
+  var j = HIST.i + d;
+  if (j < 0 || j >= HIST.list.length) return;
+  HIST.i = j;
+  histRestore(HIST.list[j]);
+  mtToast(d < 0 ? 'Undone' : 'Redone');
+}
+function histRestore(s) {
+  HIST.mute = true;
+  var o = JSON.parse(s);
+  Object.keys(P).forEach(function(k) { delete P[k]; });
+  Object.keys(o).forEach(function(k) { P[k] = o[k]; });
+  if (AS >= P.scenes.length) AS = Math.max(0, P.scenes.length - 1);
+  if (AM != null && !P.markers[AM]) AM = null;
+  if (AZ != null && !P.zones[AZ]) AZ = null;
+  if (ALN != null && ALN >= 0 && !(P.lines || [])[ALN]) ALN = -1;
+  if (ALB != null && !(P.mapLabels || [])[ALB]) ALB = null;
+  if (typeof AP !== 'undefined' && AP != null && !(P.props || [])[AP]) AP = null;
+  if (P.landing && LDSEL !== 'hero' && LDSEL !== 'head' && LDSEL !== 'foot' && !ldBlock()) LDSEL = 'hero';
+  MT.sel = MT.sel.filter(function(id) { return P.markers.some(function(m) { return m.id === id; }); });
+  try {
+    renderAll();
+    if (pMap && pReady) { refreshMK(); refreshZN(); refreshLines(); refreshRL(); refreshOV(); refreshLB(); window._pNoFly = true; updatePreview(); window._pNoFly = false; }
+    else renderLabels();
+    if (mainTab === 'editor') { var t = ['sc', 'mk', 'zn', 'ln', 'pr', 'ov'].filter(mtTabOn)[0] || 'sc'; switchTab(t); }
+    else switchMain(mainTab);
+  } catch (e) { console.warn('Undo redraw:', e); }
+  markDirty();
+  setTimeout(function() { HIST.mute = false; try { HIST.list[HIST.i] = JSON.stringify(P); } catch (e) {} histButtons(); }, 60);
+}
+
 // ── CIRCLE ZONES: a zone can be a circle (centre + radius in metres) with optional rings inside it.
 // Its coordinates are kept as the circle's polygon, so everything else treats it as any other zone; the
 // rings are extra, non-interactive shapes of the same colour, stacked so the centre reads strongest.
@@ -7097,7 +7858,7 @@ function zonesForMap(list) {
     var c = z.circle, n = c ? Math.max(1, Math.min(8, +c.rings || 1)) : 1;
     for (var k = 1; k < n; k++) out.push(Object.assign({}, z, {
       id: (z.id || z.name) + '-ring' + k, coordinates: circleRing(c.center, c.radius * (n - k) / n), smoothRadius: 0, interactive: false, showInDrawer: false,
-      lightbox: { enabled: false }, codesignGroupId: null, render3d: false, extrude: false, clipMap: false, popup: '', circle: null, _ring: true
+      lightbox: { enabled: false }, codesignGroupId: null, render3d: false, extrude: false, clipMap: false, popup: '', circle: null, _ring: true, _src: z
     }));
   });
   return out;
@@ -7107,7 +7868,7 @@ function zoneCentroid(co) {
   for (var i = 0; i < n; i++) { x += co[i][0]; y += co[i][1]; }
   return [x / n, y / n];
 }
-function znGJ() { return {type:'FeatureCollection',features:zonesForMap().map(function(z){var co=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;return{type:'Feature',geometry:{type:'Polygon',coordinates:[co]},properties:{z:+z.layer||0,color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};})};  }
+function znGJ() { return {type:'FeatureCollection',features:zonesForMap().map(function(z){var co=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;return{type:'Feature',geometry:{type:'Polygon',coordinates:[co]},properties:{z:+z.layer||0,zi:P.zones.indexOf(z._src||z),color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};})};  }
 
 function ps(id,v) { if(pMap&&pMap.getLayer(id))pMap.setLayoutProperty(id,'visibility',v?'visible':'none'); }
 
@@ -7171,7 +7932,7 @@ function updatePreview() {
     });
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:zonesForMap(visibleZones).map(function(z){
       var zco = z.smoothRadius > 0.01 ? smoothPolygon(z.coordinates, z.smoothRadius) : z.coordinates;
-      return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,interactive:z.interactive!==false}};
+      return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,zi:P.zones.indexOf(z._src||z),color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,interactive:z.interactive!==false}};
     })});
   } else if(pMap && pMap.getSource('p-zn') && !L.constraints) {
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:[]});
@@ -7190,6 +7951,7 @@ function updatePreview() {
     pMap.setLayoutProperty(lid,'visibility', show?'visible':'none');
   });
   el('pl').textContent = 'Scene '+(AS+1)+' \u00b7 '+(sc.label||'');
+  try { mtLbVis(); } catch (e) {}
 
   // Only fly when switching scenes, not on data refreshes
   if(!window._pNoFly) pMap.flyTo({center:sc.camera.center||P.siteCentre,zoom:sc.camera.zoom,pitch:sc.camera.pitch,bearing:sc.camera.bearing,duration:700});
@@ -7206,9 +7968,12 @@ function refreshMK() {
   // Add fresh HTML markers
   P.markers.forEach(function(mk, mi) {
     var el = mk.style === 'label' ? makeCtxLabelEl(mk) : makeCtxMarkerEl(mk.color, mk.icon);
-    var marker = new mapboxgl.Marker({element:el, anchor: mk.style === 'label' ? 'center' : 'bottom'})
+    if (!mk.id) mk.id = 'mk' + Date.now() + mi;
+    var marker = new mapboxgl.Marker({element:el, anchor: mk.style === 'label' ? 'center' : 'bottom', draggable: true})
       .setLngLat(mk.coords)
       .addTo(pMap);
+    mtMarkerDrag(marker, mi);
+    el.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); if (AM !== mi) selMarker(mi); mtMenu({ kind: 'marker', i: mi }, e.clientX, e.clientY); });
     // Check current scene visibility
     var sc = P.scenes[AS];
     el.style.display = (sc && sc.layers.context) ? '' : 'none';
@@ -7219,9 +7984,12 @@ function refreshMK() {
     // but matches the same defensive convention used for the exported site's feedback pins.
     el.querySelector('.ctx-marker').addEventListener('click', function(e){
       e.stopPropagation();
+      if (marker._mtMoved) return;
+      if (e.shiftKey) { mtToggleSel(mi); return; }
       selMarker(mi);
     });
     el.querySelector('.ctx-marker').classList.toggle('ctx-marker-selected', AM === mi);
+    el.querySelector('.ctx-marker').classList.toggle('mt-multi', MT.sel.length > 1 && MT.sel.indexOf(mk.id) >= 0);
     pCtxMarkers.push(marker);
   });
   // Reapply per-marker scene-visibility now that pCtxMarkers is rebuilt in the current P.markers order
@@ -7235,6 +8003,7 @@ function updateCtxMarkerSelection() {
   pCtxMarkers.forEach(function(mk, mi) {
     var dot = mk.getElement().querySelector('.ctx-marker');
     if(dot) dot.classList.toggle('ctx-marker-selected', AM === mi);
+    if(dot) dot.classList.toggle('mt-multi', MT.sel.length > 1 && !!P.markers[mi] && MT.sel.indexOf(P.markers[mi].id) >= 0);
   });
 }
 
@@ -7508,7 +8277,7 @@ function buildLanding(preview) {
     + '.ld-in{max-width:1180px;margin:0 auto}.ld-narrow{max-width:760px}'
     + '.ld-block h2{font-size:clamp(28px,3.2vw,46px);font-weight:600;line-height:1.08;letter-spacing:-.015em;margin:0 0 22px}'
     + '.ld-body{font-size:17px;line-height:1.75;color:inherit;opacity:.88}.ld-body p+p{margin-top:16px}.ld-body a{color:inherit;text-underline-offset:3px}.ld-body strong{font-weight:600}'
-    + '.ld-it{display:grid;grid-template-columns:1fr 1fr;gap:72px;align-items:center}.ld-it.left .ld-it-img{order:-1}.ld-it-img img{display:block;width:100%;height:auto;border-radius:4px}'
+    + '.ld-block.ld-sp{padding-top:var(--pt,112px);padding-bottom:var(--pb,112px)}.ld-it{display:grid;grid-template-columns:var(--itc,1fr 1fr);gap:72px;align-items:center}.ld-it.left .ld-it-img{order:-1}.ld-it-img img{display:block;width:100%;height:auto;border-radius:4px}'
     + '.ld-it-ph{aspect-ratio:4/3;border-radius:4px;background:var(--mid);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ghost)}'
     + '.ld-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:2px;margin-top:40px}.ld-fact{padding:28px 24px 26px;background:rgba(15,14,13,.035);border-top:2px solid var(--accent)}'
     + '.t-dark .ld-fact,.t-accent .ld-fact{background:rgba(255,255,255,.06)}.t-accent .ld-fact{border-top-color:#fff}'
@@ -7554,7 +8323,7 @@ function buildLanding(preview) {
     + '@media(max-width:900px){.ld-head{padding:0 20px;height:64px}.ld-burger{display:flex}'
     + '.ld-nav{position:fixed;top:64px;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--paper);color:var(--ink);padding:8px 20px 20px;box-shadow:0 12px 30px rgba(0,0,0,.15);display:none}'
     + '.ld-nav.open{display:flex}.ld-nav a{padding:16px 0;border-bottom:1px solid var(--mid);font-size:13px}.ld-nav a.ld-nav-cta{margin-top:14px;text-align:center;border:0}'
-    + '.ld-hero{padding:110px 20px 80px}.ld-block{padding:72px 20px;scroll-margin-top:64px}.ld-it{grid-template-columns:1fr;gap:32px}.ld-it.left .ld-it-img{order:0}.ld-foot{padding:24px 20px}'
+    + '.ld-hero{padding:110px 20px 80px}.ld-block{padding:72px 20px;scroll-margin-top:64px}.ld-block.ld-sp{padding-top:calc(var(--pt,112px) * .64);padding-bottom:calc(var(--pb,112px) * .64)}.ld-it{grid-template-columns:1fr;gap:32px}.ld-it.left .ld-it-img{order:0}.ld-foot{padding:24px 20px}'
     + '.ld-tl{grid-template-columns:1fr;border-left:1.5px solid currentColor;margin-left:6px}.ld-tl li{border-top:0;padding:0 0 28px 26px}.ld-tl li::before{top:2px;left:-7px}'
     + '#nav-home{margin:0 0 0 4px}}';
   // Runtime: header state, mobile menu, story hand-off. Runs after the narrative's script in the export.
@@ -7706,6 +8475,12 @@ var _LD_PREVIEW = false;
 /** In the editor's preview, text can be edited in place: data-ed names what it edits (data-ml: paragraphs). */
 function ldEd(ref, ml) { return _LD_PREVIEW ? ' data-ed="' + h(ref) + '"' + (ml ? ' data-ml="1"' : '') : ''; }
 function ldTag(text, ref) { return '<div class="ld-tag"><i></i><span' + ldEd(ref) + '>' + h(text) + '</span></div>'; }
+/** The image-and-text columns: imgW is the image's share of the row (per cent). */
+function ldItCols(b) {
+  var w = +b.imgW;
+  if (!w || w === 50) return '';
+  return ' style="--itc:' + (b.side === 'left' ? w + 'fr ' + (100 - w) + 'fr' : (100 - w) + 'fr ' + w + 'fr') + '"';
+}
 function ldBlockHTML(b) {
   var tone = b.tone && b.tone !== 'paper' ? ' t-' + b.tone : '', B = 'block|' + b.id + '|';
   var tag = b.showTag !== false && b.eyebrow ? ldTag(b.eyebrow, B + 'eyebrow') : '';
@@ -7715,7 +8490,7 @@ function ldBlockHTML(b) {
   var inner = '';
   var items = (b.items || []).map(function(it, i) { return { it: it, i: i }; }).filter(function(x) { return Object.keys(x.it).some(function(k) { return String(x.it[k] || '').trim(); }); });
   if (b.type === 'text') inner = '<div class="ld-in"><div class="ld-narrow">' + head + body() + '</div></div>';
-  else if (b.type === 'imageText') inner = '<div class="ld-in ld-it ' + (b.side === 'left' ? 'left' : 'right') + '"><div>' + head + body() + '</div>'
+  else if (b.type === 'imageText') inner = '<div class="ld-in ld-it ' + (b.side === 'left' ? 'left' : 'right') + '"' + ldItCols(b) + '><div>' + head + body() + '</div>'
     + '<div class="ld-it-img">' + (b.image ? '<img src="' + h(b.image) + '" alt="' + h(b.alt || '') + '" loading="lazy"/>' : '<div class="ld-it-ph">Add an image</div>') + '</div></div>';
   else if (b.type === 'facts') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
     + '<div class="ld-facts">' + items.map(function(x) { return '<div class="ld-fact"><b' + I(x.i, 'value') + '>' + h(x.it.value) + '</b><span' + I(x.i, 'label') + '>' + h(x.it.label) + '</span></div>'; }).join('') + '</div></div>';
@@ -7728,7 +8503,9 @@ function ldBlockHTML(b) {
     inner = '<div class="ld-in ld-cta"><div class="ld-narrow">' + head + body() + '</div>'
       + (b.button ? '<a class="ld-btn" href="' + href + '"' + go + (b.target === 'url' ? ' target="_blank" rel="noopener"' : '') + ldEd(B + 'button') + '>' + h(b.button) + '</a>' : '') + '</div>';
   }
-  return '<section class="ld-block ld-b-' + b.type + tone + '" id="ld-' + h(b.id) + '">' + inner + '</section>';
+  var sp = b.spaceTop != null || b.spaceBottom != null;
+  return '<section class="ld-block ld-b-' + b.type + tone + (sp ? ' ld-sp' : '') + '" id="ld-' + h(b.id) + '"'
+    + (sp ? ' style="' + (b.spaceTop != null ? '--pt:' + (+b.spaceTop) + 'px;' : '') + (b.spaceBottom != null ? '--pb:' + (+b.spaceBottom) + 'px' : '') + '"' : '') + '>' + inner + '</section>';
 }
 /** The editor's preview of the landing page: a standalone page with a stand-in for the narrative. */
 function buildLandingPreviewHTML() {
@@ -7739,7 +8516,107 @@ function buildLandingPreviewHTML() {
     + 'body{font-family:var(--f-body);background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}'
     + '#shell{height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#252524;color:#9a9590;font-size:12px;letter-spacing:.16em;text-transform:uppercase}#shell b{color:#f8f6f1;font-size:15px;letter-spacing:0;text-transform:none;font-weight:600}'
     + L.css + styleCSS(L.css) + '</style></head><body>' + L.html + '<div id="shell"><span>The narrative continues here</span><b>' + h((P.scenes || []).length + ' scenes') + '</b></div>' + L.foot
-    + '<script>' + L.js + '<' + '/script></body></html>';
+    + '<script>' + L.js + '<' + '/script><script>(' + ldPreviewTools.toString() + ')();<' + '/script></body></html>';
+}
+/** Runs inside the landing preview: a tool bar on each block (drag to reorder, move, duplicate, delete),
+ *  handles on its top and bottom edges for spacing, and one on the image of an image-and-text block for
+ *  its width. Changes go back to the editor through parent.__ld* functions. */
+function ldPreviewTools() {
+  var E = parent;
+  if (!E || !E.__ldBlockAct) return;
+  var ico = function(d) { return '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'; };
+  var I = {
+    grip: '<circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/>',
+    up: '<path d="m18 15-6-6-6 6"/>', dn: '<path d="m6 9 6 6 6-6"/>',
+    dup: '<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    del: '<path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+  };
+  var st = document.createElement('style');
+  st.textContent = '.ld-block{position:relative}'
+    + '.ld-tb{position:absolute;top:12px;right:12px;z-index:30;display:none;gap:1px;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:9px;padding:3px;box-shadow:0 6px 18px rgba(0,0,0,.16);font-family:system-ui,sans-serif}'
+    + '.ld-block:hover>.ld-tb,.ld-block.ld-on>.ld-tb{display:flex}'
+    + '.ld-tb button{width:30px;height:30px;border:0;background:none;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#26251f;padding:0}'
+    + '.ld-tb button:hover{background:#efede8}.ld-tb button.d:hover{color:#c0392b}.ld-tb .grip{cursor:grab;touch-action:none}'
+    + '.ld-block.ld-on{box-shadow:inset 0 0 0 2px #8b93ff}'
+    + '.ld-sph{position:absolute;left:0;right:0;height:14px;z-index:25;cursor:ns-resize;display:none;touch-action:none}'
+    + '.ld-sph::after{content:"";position:absolute;left:50%;top:50%;width:48px;height:5px;margin:-2.5px 0 0 -24px;border-radius:3px;background:#8b93ff;box-shadow:0 0 0 2px #fff}'
+    + '.ld-block:hover>.ld-sph,.ld-sph.on{display:block}.ld-sph.t{top:0}.ld-sph.b{bottom:0}'
+    + '.ld-sph i{position:absolute;left:50%;transform:translateX(-50%);top:18px;background:#111;color:#fff;font:500 11px/1 system-ui,sans-serif;padding:5px 7px;border-radius:5px;display:none;font-style:normal;white-space:nowrap}'
+    + '.ld-sph.b i{top:auto;bottom:18px}.ld-sph.on i{display:block}'
+    + '.ld-drop{height:4px;background:#8b93ff;position:relative;z-index:40;margin:-2px 0;pointer-events:none}'
+    + '.ld-block.ld-dragging{opacity:.35}'
+    + '.ld-it-img{position:relative}'
+    + '.ld-iw{position:absolute;top:50%;width:14px;height:60px;margin-top:-30px;border-radius:7px;background:#fff;border:2px solid #8b93ff;cursor:ew-resize;z-index:20;display:none;box-shadow:0 2px 8px rgba(0,0,0,.2);touch-action:none}'
+    + '.ld-it.right .ld-iw{left:-7px}.ld-it.left .ld-iw{right:-7px}.ld-block:hover .ld-iw,.ld-iw.on{display:block}'
+    + '.ld-iw i{position:absolute;top:-28px;left:50%;transform:translateX(-50%);background:#111;color:#fff;font:500 11px/1 system-ui,sans-serif;padding:5px 7px;border-radius:5px;display:none;font-style:normal;white-space:nowrap}.ld-iw.on i{display:block}';
+  document.head.appendChild(st);
+  var secs = function() { return Array.prototype.slice.call(document.querySelectorAll('section.ld-block')); };
+  var idOf = function(sec) { return sec.id.replace(/^ld-/, ''); };
+  var mobile = function() { return innerWidth <= 900; };
+  var drag = function(handle, onMove, onUp) {
+    handle.addEventListener('pointerdown', function(e) {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      var x0 = e.clientX, y0 = e.clientY;
+      var mv = function(ev) { onMove(ev.clientX - x0, ev.clientY - y0, ev); };
+      var up = function(ev) { handle.removeEventListener('pointermove', mv); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up); onUp(ev); };
+      handle.addEventListener('pointermove', mv); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+      if (handle._start) handle._start(e);
+    });
+  };
+  var sel = E.__ldSel ? E.__ldSel() : '';
+  secs().forEach(function(sec) {
+    var id = idOf(sec);
+    if (id === sel) sec.classList.add('ld-on');
+    var tb = document.createElement('div');
+    tb.className = 'ld-tb';
+    tb.innerHTML = '<button type="button" class="grip" title="Drag to move this block">' + ico(I.grip) + '</button><button type="button" data-a="up" title="Move up">' + ico(I.up) + '</button>'
+      + '<button type="button" data-a="dn" title="Move down">' + ico(I.dn) + '</button><button type="button" data-a="dup" title="Duplicate">' + ico(I.dup) + '</button>'
+      + '<button type="button" data-a="del" class="d" title="Delete">' + ico(I.del) + '</button>';
+    sec.appendChild(tb);
+    tb.addEventListener('click', function(e) { var b = e.target.closest('[data-a]'); e.stopPropagation(); if (b) E.__ldBlockAct(id, b.dataset.a); });
+    sec.addEventListener('click', function(e) { secs().forEach(function(x) { x.classList.toggle('ld-on', x === sec); }); if (!e.target.closest('[data-ed],a,button')) E.__ldInlineFocus('block|' + id + '|x'); });
+    // Drag the grip to reorder; a line shows where the block will land.
+    var grip = tb.querySelector('.grip'), drop = null, to = -1;
+    grip._start = function() { sec.classList.add('ld-dragging'); drop = document.createElement('div'); drop.className = 'ld-drop'; };
+    drag(grip, function(dx, dy, ev) {
+      var all = secs(), y = ev.clientY;
+      to = all.length;
+      for (var k = 0; k < all.length; k++) { var r = all[k].getBoundingClientRect(); if (y < r.top + r.height / 2) { to = k; break; } }
+      var ref = all[to] || all[all.length - 1];
+      if (to < all.length) ref.parentNode.insertBefore(drop, ref); else ref.parentNode.insertBefore(drop, ref.nextSibling);
+      if (y < 60) scrollBy(0, -18); else if (y > innerHeight - 60) scrollBy(0, 18);
+    }, function() {
+      sec.classList.remove('ld-dragging'); if (drop) drop.remove();
+      if (to >= 0) E.__ldMoveBlock(id, to);
+      to = -1;
+    });
+    // Spacing handles on the top and bottom edges.
+    ['t', 'b'].forEach(function(side) {
+      var hd = document.createElement('div'), lab = document.createElement('i'), v0 = 0, v = null, f = 1;
+      hd.className = 'ld-sph ' + side; hd.title = 'Drag to change the space ' + (side === 't' ? 'above' : 'below');
+      hd.appendChild(lab); sec.appendChild(hd);
+      hd._start = function() { f = mobile() ? .64 : 1; v0 = parseFloat(getComputedStyle(sec)[side === 't' ? 'paddingTop' : 'paddingBottom']) / f; hd.classList.add('on'); };
+      drag(hd, function(dx, dy) {
+        v = Math.max(0, Math.min(320, Math.round((v0 + (side === 't' ? dy : dy) / f) / 4) * 4));
+        sec.classList.add('ld-sp'); sec.style.setProperty(side === 't' ? '--pt' : '--pb', v + 'px');
+        lab.textContent = (side === 't' ? 'Space above ' : 'Space below ') + v + 'px';
+      }, function() { hd.classList.remove('on'); if (v != null) E.__ldBlockSet(id, side === 't' ? 'spaceTop' : 'spaceBottom', v); v = null; });
+    });
+    // Image width for image-and-text blocks.
+    var it = sec.querySelector('.ld-it'), im = it && it.querySelector('.ld-it-img');
+    if (it && im && getComputedStyle(it).gridTemplateColumns.split(' ').length > 1) {
+      var iw = document.createElement('div'), il = document.createElement('i'), w = null;
+      iw.className = 'ld-iw'; iw.title = 'Drag to change the image width'; iw.appendChild(il); im.appendChild(iw);
+      iw._start = function() { iw.classList.add('on'); };
+      drag(iw, function(dx, dy, ev) {
+        var r = it.getBoundingClientRect(), right = it.classList.contains('right');
+        w = Math.round(Math.max(25, Math.min(75, (right ? r.right - ev.clientX : ev.clientX - r.left) / r.width * 100)));
+        it.style.setProperty('--itc', right ? (100 - w) + 'fr ' + w + 'fr' : w + 'fr ' + (100 - w) + 'fr');
+        il.textContent = 'Image ' + w + '%';
+      }, function() { iw.classList.remove('on'); if (w != null) E.__ldBlockSet(id, 'imgW', w); w = null; });
+    }
+  });
 }
 
 // ── LANDING PAGE EDITOR: the Landing page top tab. Left: the page's parts and blocks; centre: a live
@@ -7754,6 +8631,9 @@ function ldField(label, s, k, v, ph, info) {
 function ldArea(label, s, k, v, ph, rows, hint) {
   return '<div class="f"><label class="fl">' + label + '</label><textarea data-s="' + s + '" data-k="' + k + '" rows="' + (rows || 5) + '" placeholder="' + ldEsc(ph || '') + '" style="min-height:' + ((rows || 5) * 18) + 'px">' + ldEsc(v) + '</textarea>'
     + (hint ? '<div style="font-size:10.5px;color:var(--ghost);margin-top:5px;line-height:1.5">' + hint + '</div>' : '') + '</div>';
+}
+function ldRange(label, k, v, min, max, step, unit) {
+  return '<div class="f"><label class="fl">' + label + ' <span data-ldv="' + k + '" data-unit="' + unit + '" style="font-family:var(--mono);color:var(--ink)">' + v + unit + '</span></label><input type="range" data-s="block" data-k="' + k + '" data-num="1" min="' + min + '" max="' + max + '" step="' + step + '" value="' + v + '"/></div>';
 }
 function ldSelect(label, s, k, v, opts, rerender) {
   return '<div class="f"><label class="fl">' + label + '</label><select data-s="' + s + '" data-k="' + k + '"' + (rerender ? ' data-re="1"' : '') + '>'
@@ -7828,12 +8708,7 @@ function renderLandingList() {
       var a = e.target.closest('[data-ld-a]');
       if (a) {
         e.stopPropagation();
-        var i = +a.dataset.i, arr = L.blocks;
-        if (a.dataset.ldA === 'up' && i > 0) arr.splice(i - 1, 0, arr.splice(i, 1)[0]);
-        else if (a.dataset.ldA === 'dn' && i < arr.length - 1) arr.splice(i + 1, 0, arr.splice(i, 1)[0]);
-        else if (a.dataset.ldA === 'dup') { var c = JSON.parse(JSON.stringify(arr[i])); c.id = 'lb' + Date.now(); c.nav = ''; arr.splice(i + 1, 0, c); LDSEL = c.id; }
-        else if (a.dataset.ldA === 'del') { if (!confirm('Delete this block?')) return; arr.splice(i, 1); if (!ldBlock()) LDSEL = 'hero'; }
-        markDirty(); renderLandingList(); renderLandingEditor(); ldRefresh();
+        ldBlockAct(+a.dataset.i, a.dataset.ldA);
         return;
       }
       LDSEL = d.dataset.ldSel; renderLandingList(); renderLandingEditor(); ldScrollPreview();
@@ -7876,7 +8751,10 @@ function renderLandingEditor() {
     var t = LD_TYPES[b.type] || { label: b.type };
     html = '<div class="rh"><div class="re">Landing block</div><div class="rt">' + h(t.label) + '</div></div><div class="rs">'
       + ldField('Menu label', 'block', 'nav', b.nav, 'Not in the menu', 'Give the block a label to list it in the menu at the top right.')
-      + ldSelect('Background', 'block', 'tone', b.tone || 'paper', [['paper', 'Paper'], ['white', 'White'], ['dark', 'Dark'], ['accent', 'Accent colour']]);
+      + ldSelect('Background', 'block', 'tone', b.tone || 'paper', [['paper', 'Paper'], ['white', 'White'], ['dark', 'Dark'], ['accent', 'Accent colour']])
+      + ldRange('Space above', 'spaceTop', b.spaceTop != null ? b.spaceTop : 112, 0, 320, 4, 'px') + ldRange('Space below', 'spaceBottom', b.spaceBottom != null ? b.spaceBottom : 112, 0, 320, 4, 'px')
+      + (b.type === 'imageText' ? ldRange('Image width', 'imgW', +b.imgW || 50, 25, 75, 1, '%') : '')
+      + '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-4px 0 10px">You can also drag these in the preview: the bars on the block’s top and bottom edges, and the handle beside the image. Drag the ' + lucideSVG('grip-vertical', 11, 'currentColor').replace('display:block', 'display:inline-block;vertical-align:-1px') + ' handle to move the block.</div>';
     html += '<div class="lr" style="margin-bottom:8px"><span class="ll">Small label</span><button class="tg' + (b.showTag !== false ? ' on' : '') + '" data-tag-s="block"></button></div>'
       + (b.showTag !== false ? ldField('Label', 'block', 'eyebrow', b.eyebrow, 'e.g. Introduction') : '');
     if (b.type !== 'quote') html += ldField('Heading', 'block', 'heading', b.heading, '');
@@ -7934,6 +8812,7 @@ function renderLandingEditor() {
       if (s === 'item') { var bb = ldBlock(); if (bb && bb.items[+inp.dataset.i]) bb.items[+inp.dataset.i][k] = v; }
       else { var o = ldScope(s); if (o) o[k] = v; }
       if (k === 'overlay') { var ov = el('ld-ov-v'); if (ov) ov.textContent = Math.round(v * 100) + '%'; }
+      var lv = rp.querySelector('[data-ldv="' + k + '"]'); if (lv) lv.textContent = inp.value + lv.dataset.unit;
       markDirty();
       if (inp.dataset.re) renderLandingEditor();
       if (s === 'block' && (k === 'heading' || k === 'body') || k === 'storyLabel') renderLandingList();
@@ -7983,6 +8862,33 @@ window.__ldInline = function(ref, v) {
   clearTimeout(_ldSync);
   _ldSync = setTimeout(function() { if (mainTab === 'landing') { renderLandingList(); renderLandingEditor(); } }, 350);
 };
+/** Move, duplicate or delete a landing block (from the list or the preview's tool bar). */
+function ldBlockAct(i, act) {
+  var arr = ldEnsure().blocks;
+  if (!arr[i]) return;
+  if (act === 'up' && i > 0) arr.splice(i - 1, 0, arr.splice(i, 1)[0]);
+  else if (act === 'dn' && i < arr.length - 1) arr.splice(i + 1, 0, arr.splice(i, 1)[0]);
+  else if (act === 'dup') { var c = JSON.parse(JSON.stringify(arr[i])); c.id = 'lb' + Date.now(); c.nav = ''; arr.splice(i + 1, 0, c); LDSEL = c.id; }
+  else if (act === 'del') { if (!confirm('Delete this block?')) return; arr.splice(i, 1); if (!ldBlock()) LDSEL = 'hero'; }
+  else return;
+  markDirty(); renderLandingList(); renderLandingEditor(); ldRefresh();
+}
+function ldIndex(id) { var a = ldEnsure().blocks; for (var i = 0; i < a.length; i++) if (a[i].id === id) return i; return -1; }
+window.__ldSel = function() { return LDSEL; };
+window.__ldBlockAct = function(id, act) { var i = ldIndex(id); if (i < 0) return; if (act !== 'del') LDSEL = id; ldBlockAct(i, act); };
+window.__ldMoveBlock = function(id, to) {
+  var arr = ldEnsure().blocks, i = ldIndex(id);
+  if (i < 0) return;
+  if (to > i) to--;
+  if (to === i) return;
+  arr.splice(to, 0, arr.splice(i, 1)[0]);
+  LDSEL = id; markDirty(); renderLandingList(); renderLandingEditor(); ldRefresh();
+};
+window.__ldBlockSet = function(id, k, v) {
+  var b = ldEnsure().blocks[ldIndex(id)];
+  if (!b) return;
+  b[k] = v; LDSEL = id; markDirty(); renderLandingList(); renderLandingEditor(); ldRefresh();
+};
 window.__ldInlineFocus = function(ref) {
   if (mainTab !== 'landing') return;
   var p = ref.split('|'), sel = p[0] === 'hero' ? 'hero' : p[1];
@@ -8003,7 +8909,9 @@ function ldRefresh(jump) {
 function ldScrollPreview() {
   var f = el('ld-frame');
   try {
-    var d = f.contentDocument, t = LDSEL === 'hero' || LDSEL === 'head' ? d.body : LDSEL === 'foot' ? d.querySelector('.ld-foot') : d.getElementById('ld-' + LDSEL);
+    var d = f.contentDocument;
+    d.querySelectorAll('section.ld-block').forEach(function(s) { s.classList.toggle('ld-on', s.id === 'ld-' + LDSEL); });
+    var t = LDSEL === 'hero' || LDSEL === 'head' ? d.body : LDSEL === 'foot' ? d.querySelector('.ld-foot') : d.getElementById('ld-' + LDSEL);
     if (t === d.body) f.contentWindow.scrollTo({ top: 0, behavior: 'smooth' }); else if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {}
 }
@@ -8644,6 +9552,7 @@ function buildCfg() {
     'var SITE_PIN_LABEL = ' + JSON.stringify(P.sitePinLabel||'The Site') + ';',
     'var SITE_PIN_SHOW = ' + (P.sitePinShow !== false) + ';',
     'var Z_LEVELS = ' + JSON.stringify(zLevels()) + ';',
+    'var MAP_LABELS = ' + JSON.stringify(exportMapLabels()).replace(/</g, '\\u003c') + ';',
     'var SHEETDB_URL  = ' + JSON.stringify(P.sheetdbUrl||'') + ';',
     'var SHEETDB_READ_URL = ' + JSON.stringify(P.sheetdbReadUrl||P.sheetdbUrl||'') + ';',
     'var QUESTIONS_SHEETDB_URL = ' + JSON.stringify(P.questionsSheetdbUrl||'') + ';',
@@ -8888,7 +9797,7 @@ function buildJS() {
 // Feedback pins render as HTML markers (mkFbEl), not a GL circle+symbol layer pair — same
 // reasoning as ctx-c/ctx-l above: real Lucide icons need real DOM (img tags), not the map
 // style\'s SDF glyph set, so there\'s no GL layer here to add. See addFBPin()/mkFbEl().
-'  addCtxMarkers();',
+'  addCtxMarkers();addMapLabels();',
 '  buildZoneMap();',
 '  setupOverlays();',
 '  setupPopups();',
@@ -8996,6 +9905,19 @@ function buildJS() {
 '  var visClip=visible.filter(function(f){return f.properties&&f.properties.clipMap===true;});',
 '  if(map.getSource("con-clip")) map.getSource("con-clip").setData({type:"FeatureCollection",features:visClip});',
 '}',
+'var mapLabels=[];',
+'function addMapLabels(){',
+'  mapLabels.forEach(function(m){m.remove();});mapLabels=[];',
+'  MAP_LABELS.forEach(function(lb){',
+'    var w=document.createElement("div");w.className="map-lb";w.setAttribute("aria-hidden","true");w.style.pointerEvents="none";',
+'    var t=document.createElement("div");t.style.cssText=lb.css;t.textContent=lb.t;w.appendChild(t);',
+'    var m=new mapboxgl.Marker({element:w,anchor:"center",rotation:lb.r||0,rotationAlignment:lb.f?"map":"viewport",pitchAlignment:lb.f?"map":"viewport"}).setLngLat(lb.c).addTo(map);',
+'    m._lb=lb;w.style.display="none";mapLabels.push(m);',
+'  });',
+'  if(MAP_LABELS.length){map.on("zoom",scaleMapLabels);scaleMapLabels();applyMapLabels(typeof cS!=="undefined"?cS:0);}',
+'}',
+'function scaleMapLabels(){var z=map.getZoom();mapLabels.forEach(function(m){var lb=m._lb,s=lb.s?Math.min(6,Math.max(.08,Math.pow(2,z-lb.z))):1;m.getElement().firstChild.style.transform="scale("+s+")";m.getElement().style.visibility=s<.12?"hidden":"";});}',
+'function applyMapLabels(idx){mapLabels.forEach(function(m){var sc=m._lb.sc||[];m.getElement().style.display=(!sc.length||sc.indexOf(idx)>=0)?"":"none";});}',
 'function addCtxMarkers(){',
 '  ctxMarkers.forEach(function(m){m.remove();});ctxMarkers=[];',
 '  CONTEXT_MARKERS.features.forEach(function(f,fi){',
@@ -9974,6 +10896,7 @@ function buildJS() {
 '  document.getElementById("orbit-btn").style.display="none";',
 '  if(anim)map.flyTo({center:sc.camera.center,zoom:sc.camera.zoom,pitch:sc.camera.pitch,bearing:sc.camera.bearing,duration:sc.camera.duration,essential:true});',
 '  sv("rl-f",L.redline);sv("rl-s",L.redline);',
+'  applyMapLabels(idx);',
 '  ctxMarkers.forEach(function(mk){',
 '    var idxs = mk._sceneIds || [];',
 '    var vis = L.context && (idxs.length===0 || idxs.indexOf(idx) >= 0);',
@@ -11285,7 +12208,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, buildLandingPreviewHTML: buildLandingPreviewHTML, ldNewBlock: ldNewBlock, switchMain: switchMain, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, refreshAll: function() { refreshMK(); refreshZN(); refreshLines(); refreshLB(); }, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, buildLandingPreviewHTML: buildLandingPreviewHTML, ldNewBlock: ldNewBlock, switchMain: switchMain, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
