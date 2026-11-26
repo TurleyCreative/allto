@@ -223,6 +223,13 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .ctx-marker-wrap{display:flex;flex-direction:column;align-items:center;transform:translateY(-100%)}
 </style>
 <link rel="stylesheet" href="../shared/allto-editor.css"/>
+<style>
+#lp-landing{display:none}#ld-stage{display:none;position:absolute;inset:0;z-index:40;background:#1b1b1a;justify-content:center;align-items:stretch}
+#app.ld-mode #lp>.tabs,#app.ld-mode #lp>.tc{display:none!important}#app.ld-mode #lp-landing{display:block}#app.ld-mode #ld-stage{display:flex}
+#ld-frame{width:100%;height:100%;border:0;background:#fff;transition:width .25s}
+#ld-stage.phone #ld-frame{width:390px;height:calc(100% - 76px);margin-top:56px;border-radius:18px;box-shadow:0 0 0 8px #0f0e0d,0 20px 60px rgba(0,0,0,.5)}
+.ld-dev{position:absolute;top:10px;right:12px;z-index:2;display:flex;gap:4px}.ld-dev .btn{font-size:11px;padding:5px 10px;background:var(--bg)}.ld-dev .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+</style>
 </head>
 <body>
 <div id="app">
@@ -233,6 +240,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
     </div>
     <div class="tb-tabs">
       <div class="tb-tab on" id="tt-editor" onclick="switchMain('editor')">Editor</div>
+      <div class="tb-tab" id="tt-landing" onclick="switchMain('landing')">Landing page</div>
       <div class="tb-tab" id="tt-settings" onclick="switchMain('settings')">Settings</div>
       <div class="tb-tab" id="tt-seo" onclick="switchMain('seo')">SEO</div>
       <div class="tb-tab" id="tt-about" onclick="openAboutModal()">About</div>
@@ -287,8 +295,10 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
       <div id="overlay-list"></div>
     </div>
   </div>
+  <div id="lp-landing"><div id="ld-list"></div></div>
 </div>
 <div id="mp"><div id="pm"></div>
+  <div id="ld-stage"><div class="ld-dev"><button type="button" class="btn btn-g btn-ic on" data-ld-dev="desktop"><span class="ico-h" data-icon="monitor" data-icon-size="13"></span>Desktop</button><button type="button" class="btn btn-g btn-ic" data-ld-dev="phone"><span class="ico-h" data-icon="smartphone" data-icon-size="13"></span>Phone</button></div><iframe id="ld-frame" title="Landing page preview"></iframe></div>
   <div id="draw-toolbar" style="display:none;position:absolute;top:10px;left:50%;transform:translateX(-50%);background:var(--bg);border:1px solid var(--border2);border-radius:8px;padding:6px 8px;gap:6px;align-items:center;z-index:10;box-shadow:0 2px 12px rgba(0,0,0,.2)">
     <span style="font-size:11px;color:var(--ghost)">Draw mode</span>
     <button class="btn btn-g btn-ic" id="draw-poly-btn" style="font-size:11px;padding:4px 10px"><span class="ico-h" data-icon="pentagon" data-icon-size="12"></span>Polygon</button>
@@ -492,6 +502,10 @@ var LUCIDE_PATHS = {
   'list': '<path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>',
   'eraser': '<path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/>',
   'eye': '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  'panel-top': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/>',
+  'panel-bottom': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>',
+  'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+  'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
   'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'type': '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
   'text': '<path d="M21 5H3"/><path d="M15 12H3"/><path d="M17 19H3"/>',
@@ -2463,6 +2477,9 @@ function switchMain(tab) {
   el('tt-editor').classList.toggle('on', tab==='editor');
   el('tt-settings').classList.toggle('on', tab==='settings');
   el('tt-seo').classList.toggle('on', tab==='seo');
+  el('tt-landing').classList.toggle('on', tab==='landing');
+  if (tab === 'landing') { enterLandingMode(); return; }
+  leaveLandingMode();
   if (tab === 'settings') renderSettings();
   else if (tab === 'seo') renderSEO();
   else renderRightPanel();
@@ -2475,6 +2492,8 @@ function ensureEditorTab() {
   el('tt-editor').classList.add('on');
   el('tt-settings').classList.remove('on');
   el('tt-seo').classList.remove('on');
+  el('tt-landing').classList.remove('on');
+  leaveLandingMode();
 }
 
 var aboutOpener = null;
@@ -3280,6 +3299,7 @@ function renderOnboarding() {
 function renderRightPanel() {
   if (mainTab === 'settings') { renderSettings(); return; }
   if (mainTab === 'seo') { renderSEO(); return; }
+  if (mainTab === 'landing') { renderLandingEditor(); return; }
   // Show onboarding if no token set yet
   if(!P.mapboxToken) {
     renderOnboarding(); return;
@@ -7157,7 +7177,7 @@ function buildLanding(preview) {
     + '.ld-hero{position:relative;min-height:100vh;min-height:100dvh;display:flex;align-items:flex-end;padding:140px 48px 96px;overflow:hidden;scroll-snap-align:start}'
     + '.ld-hero.has-bg{color:#fff;background:#252524}.ld-hero-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}'
     + '.ld-hero.has-bg::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,13,calc(var(--ld-ov) * .6)) 0%,rgba(15,14,13,var(--ld-ov)) 55%,rgba(15,14,13,calc(var(--ld-ov) + .25)) 100%)}'
-    + '.ld-hero-in{position:relative;z-index:1;max-width:820px}'
+    + '.ld-hero-in{position:relative;z-index:1;width:100%;max-width:1180px;margin:0 auto}.ld-hero-in>*{max-width:860px}'
     + '.ld-tag{display:inline-flex;align-items:center;gap:10px;font-size:10px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:20px}.ld-tag i{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}.ld-tag span{opacity:.8}'
     + '.ld-hero h1{font-size:clamp(40px,6.2vw,88px);font-weight:600;line-height:1.02;letter-spacing:-.02em;margin:0 0 22px}'
     + '.ld-hero-text{font-size:clamp(16px,1.5vw,20px);line-height:1.6;max-width:620px;opacity:.9}.ld-hero-text p+p{margin-top:12px}'
@@ -7244,7 +7264,7 @@ function ldBlockHTML(b) {
   var head = (b.eyebrow ? '<div class="ld-tag"><i></i><span>' + h(b.eyebrow) + '</span></div>' : '') + (b.heading ? '<h2>' + h(b.heading) + '</h2>' : '');
   var inner = '';
   var items = (b.items || []).filter(function(it) { return Object.keys(it).some(function(k) { return String(it[k] || '').trim(); }); });
-  if (b.type === 'text') inner = '<div class="ld-in ld-narrow">' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div>';
+  if (b.type === 'text') inner = '<div class="ld-in"><div class="ld-narrow">' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div></div>';
   else if (b.type === 'imageText') inner = '<div class="ld-in ld-it ' + (b.side === 'left' ? 'left' : 'right') + '"><div>' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div>'
     + '<div class="ld-it-img">' + (b.image ? '<img src="' + h(b.image) + '" alt="' + h(b.alt || '') + '" loading="lazy"/>' : '<div class="ld-it-ph">Add an image</div>') + '</div></div>';
   else if (b.type === 'facts') inner = '<div class="ld-in">' + head + (b.body ? '<div class="ld-body ld-narrow">' + ldFmt(b.body) + '</div>' : '')
@@ -7253,13 +7273,13 @@ function ldBlockHTML(b) {
     + '<div class="ld-cards">' + items.map(function(it) { return '<div class="ld-card"><h3>' + h(it.title) + '</h3>' + ldFmt(it.body) + '</div>'; }).join('') + '</div></div>';
   else if (b.type === 'timeline') inner = '<div class="ld-in">' + head + (b.body ? '<div class="ld-body ld-narrow">' + ldFmt(b.body) + '</div>' : '')
     + '<ol class="ld-tl">' + items.map(function(it) { return '<li><small>' + h(it.date) + '</small><h3>' + h(it.title) + '</h3>' + ldFmt(it.body) + '</li>'; }).join('') + '</ol></div>';
-  else if (b.type === 'quote') inner = '<div class="ld-in ld-narrow ld-quote">' + (b.eyebrow ? '<div class="ld-tag"><i></i><span>' + h(b.eyebrow) + '</span></div>' : '') + '<blockquote>' + h(b.body) + '</blockquote>' + (b.by ? '<cite>' + h(b.by) + '</cite>' : '') + '</div>';
+  else if (b.type === 'quote') inner = '<div class="ld-in"><div class="ld-narrow ld-quote">' + (b.eyebrow ? '<div class="ld-tag"><i></i><span>' + h(b.eyebrow) + '</span></div>' : '') + '<blockquote>' + h(b.body) + '</blockquote>' + (b.by ? '<cite>' + h(b.by) + '</cite>' : '') + '</div></div>';
   else if (b.type === 'cta') {
     var href = b.target === 'url' ? h(b.url || '#') : '#shell', go = b.target === 'url' ? '' : ' data-go="' + (b.target === 'feedback' ? 'feedback' : 'story') + '"';
     inner = '<div class="ld-in ld-cta"><div class="ld-narrow">' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div>'
       + (b.button ? '<a class="ld-btn" href="' + href + '"' + go + (b.target === 'url' ? ' target="_blank" rel="noopener"' : '') + '>' + h(b.button) + '</a>' : '') + '</div>';
   }
-  return '<section class="ld-block ld-' + b.type + tone + '" id="ld-' + h(b.id) + '">' + inner + '</section>';
+  return '<section class="ld-block ld-b-' + b.type + tone + '" id="ld-' + h(b.id) + '">' + inner + '</section>';
 }
 /** The editor's preview of the landing page: a standalone page with a stand-in for the narrative. */
 function buildLandingPreviewHTML() {
@@ -7272,6 +7292,229 @@ function buildLandingPreviewHTML() {
     + L.css + '</style></head><body>' + L.html + '<div id="shell"><span>The narrative continues here</span><b>' + h((P.scenes || []).length + ' scenes') + '</b></div>' + L.foot
     + '<script>' + L.js + '<' + '/script></body></html>';
 }
+
+// ── LANDING PAGE EDITOR: the Landing page top tab. Left: the page's parts and blocks; centre: a live
+// preview; right: the selected part's fields. Fields carry data-s (scope: land, hero, block, item) and
+// data-k (key); one delegated listener writes them back and refreshes the preview.
+var LDSEL = 'hero', LD_DEVICE = 'desktop', _ldTimer = null;
+function ldBlock() { return ldEnsure().blocks.filter(function(b) { return b.id === LDSEL; })[0] || null; }
+function ldEsc(v) { return h(v == null ? '' : v); }
+function ldField(label, s, k, v, ph, info) {
+  return '<div class="f"><label class="fl">' + label + (info ? infoBtn(info) : '') + '</label><input type="text" data-s="' + s + '" data-k="' + k + '" value="' + ldEsc(v) + '" placeholder="' + ldEsc(ph || '') + '"/></div>';
+}
+function ldArea(label, s, k, v, ph, rows, hint) {
+  return '<div class="f"><label class="fl">' + label + '</label><textarea data-s="' + s + '" data-k="' + k + '" rows="' + (rows || 5) + '" placeholder="' + ldEsc(ph || '') + '" style="min-height:' + ((rows || 5) * 18) + 'px">' + ldEsc(v) + '</textarea>'
+    + (hint ? '<div style="font-size:10.5px;color:var(--ghost);margin-top:5px;line-height:1.5">' + hint + '</div>' : '') + '</div>';
+}
+function ldSelect(label, s, k, v, opts, rerender) {
+  return '<div class="f"><label class="fl">' + label + '</label><select data-s="' + s + '" data-k="' + k + '"' + (rerender ? ' data-re="1"' : '') + '>'
+    + opts.map(function(o) { return '<option value="' + o[0] + '"' + (String(v) === String(o[0]) ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>';
+}
+function ldImage(label, s, k, v, hint) {
+  return '<div class="f"><label class="fl">' + label + '</label>'
+    + (v ? '<div style="border:1px solid var(--border);border-radius:6px;padding:6px;margin-bottom:6px;background:repeating-conic-gradient(rgba(127,127,127,.12) 0 25%,transparent 0 50%) 0 0/14px 14px"><img src="' + ldEsc(v) + '" alt="" style="display:block;max-width:100%;max-height:140px;margin:0 auto"/></div>' : '')
+    + '<div style="display:flex;gap:6px"><button class="btn btn-g" data-img-s="' + s + '" data-img-k="' + k + '" style="flex:1">' + (v ? 'Replace image' : 'Upload image') + '</button>'
+    + (v ? '<button class="btn btn-g" data-img-clear-s="' + s + '" data-img-clear-k="' + k + '">Remove</button>' : '') + '</div>'
+    + (hint ? '<div style="font-size:10.5px;color:var(--ghost);margin-top:5px;line-height:1.5">' + hint + '</div>' : '') + '</div>';
+}
+var LD_BODY_HINT = 'A blank line starts a new paragraph. <b>**bold**</b> for bold, <b>[text](https://…)</b> for a link.';
+/** Read an image file, scaled down so the exported page stays light (logos keep transparency). */
+function ldPickImage(keepAlpha, cb) {
+  var inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = function() {
+    var f = inp.files && inp.files[0];
+    if (!f) return;
+    var rd = new FileReader();
+    rd.onload = function() {
+      if (/svg/.test(f.type)) return cb(rd.result);
+      var img = new Image();
+      img.onload = function() {
+        var max = keepAlpha ? 800 : 2200, sc = Math.min(1, max / Math.max(img.width, img.height));
+        if (sc === 1 && f.size < 400000) return cb(rd.result);
+        var c = document.createElement('canvas');
+        c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        cb(keepAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.84));
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  };
+  inp.click();
+}
+function ldScope(s) { var L = ldEnsure(); return s === 'hero' ? L.hero : s === 'land' ? L : ldBlock(); }
+
+function renderLandingList() {
+  var L = ldEnsure(), box = el('ld-list');
+  if (!box) return;
+  var on = P.layout === 'landing';
+  var item = function(id, num, name, actions) {
+    return '<div class="si' + (LDSEL === id ? ' on' : '') + '" data-ld-sel="' + id + '"><span class="in">' + num + '</span><span class="nm">' + name + '</span>' + (actions || '') + '</div>';
+  };
+  var html = '<div class="ps"><div class="st">Landing page</div>'
+    + '<div class="lr"><span class="ll">Use a landing page</span><button class="tg' + (on ? ' on' : '') + '" id="ld-on"></button></div>'
+    + '<p style="font-size:11px;line-height:1.55;color:var(--ghost);margin:8px 0 0">' + (on ? 'The site opens on this page; the narrative follows as you scroll down.' : 'Off: the site opens straight on the narrative. Turn on for a traditional page above it.') + '</p></div>';
+  html += '<div class="ps"><div class="st">Page</div>'
+    + item('head', lucideSVG('panel-top', 12, 'currentColor'), 'Header and logo')
+    + item('hero', lucideSVG('image', 12, 'currentColor'), 'Hero')
+    + item('foot', lucideSVG('panel-bottom', 12, 'currentColor'), 'Footer') + '</div>';
+  html += '<div class="ps"><div class="st">Blocks</div>';
+  L.blocks.forEach(function(b, i) {
+    var t = LD_TYPES[b.type] || { label: b.type };
+    html += item(b.id, String(i + 1).padStart(2, '0'), '<span style="color:var(--ghost)">' + h(t.label) + '</span> ' + h(b.heading || (b.body || '').slice(0, 40) || ''),
+      '<div class="ia"><button class="ib" data-ld-a="up" data-i="' + i + '" title="Move up">' + lucideSVG('arrow-up', 12, 'currentColor') + '</button>'
+      + '<button class="ib" data-ld-a="dn" data-i="' + i + '" title="Move down">' + lucideSVG('arrow-down', 12, 'currentColor') + '</button>'
+      + '<button class="ib" data-ld-a="dup" data-i="' + i + '" title="Duplicate">' + lucideSVG('copy', 12, 'currentColor') + '</button>'
+      + '<button class="ib d" data-ld-a="del" data-i="' + i + '" title="Delete">' + lucideSVG('trash-2', 12, 'currentColor') + '</button></div>');
+  });
+  html += '<div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:5px">' + Object.keys(LD_TYPES).map(function(k) {
+    return '<button class="btn btn-g btn-ic" data-ld-add="' + k + '" style="font-size:11px;justify-content:flex-start;padding:7px 9px">' + lucideSVG('plus', 11, 'currentColor') + LD_TYPES[k].label + '</button>';
+  }).join('') + '</div>';
+  html += '<div class="si" style="margin-top:10px;cursor:default;opacity:.75"><span class="in">' + lucideSVG('map', 12, 'currentColor') + '</span><span class="nm">' + h(L.storyLabel || 'The proposals') + ' <span style="color:var(--ghost)">· the narrative (' + P.scenes.length + ' scenes)</span></span></div></div>';
+  box.innerHTML = html;
+  var tgl = el('ld-on');
+  if (tgl) tgl.onclick = function() { P.layout = P.layout === 'landing' ? 'narrative' : 'landing'; markDirty(); renderLandingList(); ldRefresh(); };
+  box.querySelectorAll('[data-ld-sel]').forEach(function(d) {
+    d.addEventListener('click', function(e) {
+      var a = e.target.closest('[data-ld-a]');
+      if (a) {
+        e.stopPropagation();
+        var i = +a.dataset.i, arr = L.blocks;
+        if (a.dataset.ldA === 'up' && i > 0) arr.splice(i - 1, 0, arr.splice(i, 1)[0]);
+        else if (a.dataset.ldA === 'dn' && i < arr.length - 1) arr.splice(i + 1, 0, arr.splice(i, 1)[0]);
+        else if (a.dataset.ldA === 'dup') { var c = JSON.parse(JSON.stringify(arr[i])); c.id = 'lb' + Date.now(); c.nav = ''; arr.splice(i + 1, 0, c); LDSEL = c.id; }
+        else if (a.dataset.ldA === 'del') { if (!confirm('Delete this block?')) return; arr.splice(i, 1); if (!ldBlock()) LDSEL = 'hero'; }
+        markDirty(); renderLandingList(); renderLandingEditor(); ldRefresh();
+        return;
+      }
+      LDSEL = d.dataset.ldSel; renderLandingList(); renderLandingEditor(); ldScrollPreview();
+    });
+  });
+  box.querySelectorAll('[data-ld-add]').forEach(function(b) {
+    b.onclick = function() { var nb = ldNewBlock(b.dataset.ldAdd); L.blocks.push(nb); LDSEL = nb.id; markDirty(); renderLandingList(); renderLandingEditor(); ldRefresh(true); };
+  });
+}
+
+function renderLandingEditor() {
+  var L = ldEnsure(), H = L.hero, html = '';
+  if (LDSEL === 'head') {
+    html = '<div class="rh"><div class="re">Landing page</div><div class="rt">Header and logo</div></div><div class="rs">'
+      + ldImage('Logo', 'land', 'logo', L.logo, 'PNG or SVG with a transparent background works best. On a dark hero it’s shown in white. Without a logo, the site title is used.')
+      + '<div class="f"><label class="fl">Logo height (px)</label><input type="number" min="16" max="80" data-s="land" data-k="logoHeight" value="' + (+L.logoHeight || 34) + '"/></div>'
+      + ldField('Menu label for the narrative', 'land', 'storyLabel', L.storyLabel, 'The proposals')
+      + '<p style="font-size:11px;line-height:1.55;color:var(--ghost)">The menu (top right) lists blocks you’ve given a menu label, then the narrative, then <b>Have your say</b> if a scene collects feedback.</p></div>';
+  } else if (LDSEL === 'hero') {
+    html = '<div class="rh"><div class="re">Landing page</div><div class="rt">Hero</div></div><div class="rs">'
+      + ldField('Small label above the title', 'hero', 'eyebrow', H.eyebrow, 'Public consultation')
+      + ldField('Title', 'hero', 'title', H.title, P.siteTitle || '')
+      + ldArea('Text', 'hero', 'text', H.text, P.siteSubtitle || '', 3, LD_BODY_HINT)
+      + ldField('Button', 'hero', 'cta', H.cta, 'Explore the proposals')
+      + ldSelect('Background', 'hero', 'bg', H.bg || 'map', [['map', 'Map of the site'], ['image', 'Image'], ['plain', 'Plain']], true)
+      + (H.bg === 'image' ? ldImage('Background image', 'hero', 'image', H.image, 'A wide photo or render, at least 1600px across.') : '')
+      + (H.bg === 'map' && !P.mapboxToken ? '<p style="font-size:11px;color:var(--amber)">Add your Mapbox token in Settings for the map background.</p>' : '')
+      + (H.bg !== 'plain' ? '<div class="f"><label class="fl">Darken the background <span id="ld-ov-v">' + Math.round((H.overlay != null ? H.overlay : 0.45) * 100) + '%</span></label><input type="range" min="0" max="0.85" step="0.05" data-s="hero" data-k="overlay" data-num="1" value="' + (H.overlay != null ? H.overlay : 0.45) + '"/></div>' : '')
+      + '</div>';
+  } else if (LDSEL === 'foot') {
+    html = '<div class="rh"><div class="re">Landing page</div><div class="rt">Footer</div></div><div class="rs">'
+      + ldArea('Footer text', 'land', 'footer', L.footer, (P.companyName || '') + (P.companyTagline ? ' · ' + P.companyTagline : ''), 4, LD_BODY_HINT + ' Leave blank to show your company name.') + '</div>';
+  } else {
+    var b = ldBlock();
+    if (!b) { setHTML('rpc', '<div class="es">Pick a part of the page to edit</div>'); return; }
+    var t = LD_TYPES[b.type] || { label: b.type };
+    html = '<div class="rh"><div class="re">Landing block</div><div class="rt">' + h(t.label) + '</div></div><div class="rs">'
+      + ldField('Menu label', 'block', 'nav', b.nav, 'Not in the menu', 'Give the block a label to list it in the menu at the top right.')
+      + ldSelect('Background', 'block', 'tone', b.tone || 'paper', [['paper', 'Paper'], ['white', 'White'], ['dark', 'Dark'], ['accent', 'Accent colour']]);
+    if (b.type !== 'quote') html += ldField('Small label', 'block', 'eyebrow', b.eyebrow, 'Optional') + ldField('Heading', 'block', 'heading', b.heading, '');
+    if (b.type === 'quote') html += ldField('Small label', 'block', 'eyebrow', b.eyebrow, 'Optional') + ldArea('Quote', 'block', 'body', b.body, '', 4) + ldField('Who said it', 'block', 'by', b.by, 'Name, role');
+    else html += ldArea(b.type === 'text' || b.type === 'imageText' ? 'Text' : 'Intro text', 'block', 'body', b.body, b.type === 'text' || b.type === 'imageText' ? '' : 'Optional', b.type === 'text' ? 8 : 4, LD_BODY_HINT);
+    if (b.type === 'imageText') html += ldImage('Image', 'block', 'image', b.image) + ldField('Image description (for screen readers)', 'block', 'alt', b.alt, '') + ldSelect('Image on the', 'block', 'side', b.side || 'right', [['right', 'Right'], ['left', 'Left']]);
+    if (b.type === 'cta') {
+      html += ldField('Button', 'block', 'button', b.button, 'Explore the proposals')
+        + ldSelect('Button goes to', 'block', 'target', b.target || 'story', [['story', 'The narrative'], ['feedback', 'Have your say (feedback scene)'], ['url', 'A web address']], true)
+        + (b.target === 'url' ? ldField('Web address', 'block', 'url', b.url, 'https://') : '');
+    }
+    if (LD_ITEM_FIELDS[b.type]) {
+      var F = LD_ITEM_FIELDS[b.type], nm = { facts: 'Figure', cards: 'Card', timeline: 'Stage' }[b.type];
+      html += '</div><div class="rs"><div class="st">' + nm + 's</div>';
+      (b.items || []).forEach(function(it, i) {
+        html += '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 10px 2px;margin-bottom:8px;position:relative">'
+          + '<button class="ib d" data-ld-item-del="' + i + '" title="Remove" style="position:absolute;top:6px;right:6px">' + lucideSVG('x', 12, 'currentColor') + '</button>'
+          + F.map(function(f) {
+            return f[0] === 'body'
+              ? '<div class="f"><label class="fl">' + f[1] + '</label><textarea data-s="item" data-i="' + i + '" data-k="' + f[0] + '" rows="2" style="min-height:44px">' + ldEsc(it[f[0]]) + '</textarea></div>'
+              : '<div class="f"><label class="fl">' + f[1] + '</label><input type="text" data-s="item" data-i="' + i + '" data-k="' + f[0] + '" value="' + ldEsc(it[f[0]]) + '" placeholder="' + ldEsc(f[2]) + '"/></div>';
+          }).join('') + '</div>';
+      });
+      html += '<button class="btn btn-g btn-ic" id="ld-item-add" style="width:100%">' + lucideSVG('plus', 12, 'currentColor') + 'Add ' + nm.toLowerCase() + '</button>';
+    }
+    html += '</div>';
+  }
+  setHTML('rpc', html);
+  var rp = el('rpc');
+  rp.querySelectorAll('[data-s]').forEach(function(inp) {
+    var ev = inp.tagName === 'SELECT' ? 'change' : 'input';
+    inp.addEventListener(ev, function() {
+      var s = inp.dataset.s, k = inp.dataset.k, v = inp.type === 'number' || inp.dataset.num ? parseFloat(inp.value) : inp.value;
+      if (s === 'item') { var bb = ldBlock(); if (bb && bb.items[+inp.dataset.i]) bb.items[+inp.dataset.i][k] = v; }
+      else { var o = ldScope(s); if (o) o[k] = v; }
+      if (k === 'overlay') { var ov = el('ld-ov-v'); if (ov) ov.textContent = Math.round(v * 100) + '%'; }
+      markDirty();
+      if (inp.dataset.re) renderLandingEditor();
+      if (s === 'block' && (k === 'heading' || k === 'body') || k === 'storyLabel') renderLandingList();
+      ldRefresh();
+    });
+  });
+  rp.querySelectorAll('[data-img-s]').forEach(function(b) {
+    b.onclick = function() {
+      var s = b.dataset.imgS, k = b.dataset.imgK;
+      ldPickImage(k === 'logo', function(url) { var o = ldScope(s); if (o) o[k] = url; markDirty(); renderLandingEditor(); ldRefresh(); });
+    };
+  });
+  rp.querySelectorAll('[data-img-clear-s]').forEach(function(b) {
+    b.onclick = function() { var o = ldScope(b.dataset.imgClearS); if (o) o[b.dataset.imgClearK] = ''; markDirty(); renderLandingEditor(); ldRefresh(); };
+  });
+  rp.querySelectorAll('[data-ld-item-del]').forEach(function(b) {
+    b.onclick = function() { var bb = ldBlock(); bb.items.splice(+b.dataset.ldItemDel, 1); markDirty(); renderLandingEditor(); ldRefresh(); };
+  });
+  var add = el('ld-item-add');
+  if (add) add.onclick = function() { var bb = ldBlock(), it = {}; LD_ITEM_FIELDS[bb.type].forEach(function(f) { it[f[0]] = ''; }); (bb.items = bb.items || []).push(it); markDirty(); renderLandingEditor(); ldRefresh(); };
+}
+
+/** Redraw the preview (debounced), keeping its scroll position; jump: scroll to the selected block after. */
+function ldRefresh(jump) {
+  clearTimeout(_ldTimer);
+  _ldTimer = setTimeout(function() {
+    var f = el('ld-frame');
+    if (!f || mainTab !== 'landing') return;
+    var y = 0;
+    try { y = f.contentWindow.scrollY || 0; } catch (e) {}
+    f.onload = function() { try { f.contentWindow.scrollTo(0, y); } catch (e) {} if (jump) ldScrollPreview(); };
+    f.srcdoc = buildLandingPreviewHTML();
+  }, 220);
+}
+function ldScrollPreview() {
+  var f = el('ld-frame');
+  try {
+    var d = f.contentDocument, t = LDSEL === 'hero' || LDSEL === 'head' ? d.body : LDSEL === 'foot' ? d.querySelector('.ld-foot') : d.getElementById('ld-' + LDSEL);
+    if (t === d.body) f.contentWindow.scrollTo({ top: 0, behavior: 'smooth' }); else if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {}
+}
+function ldSetDevice(d) {
+  LD_DEVICE = d;
+  var st = el('ld-stage');
+  if (st) st.classList.toggle('phone', d === 'phone');
+  document.querySelectorAll('[data-ld-dev]').forEach(function(b) { b.classList.toggle('on', b.dataset.ldDev === d); });
+}
+function enterLandingMode() {
+  el('app').classList.add('ld-mode');
+  ldEnsure();
+  renderLandingList(); renderLandingEditor();
+  document.querySelectorAll('[data-ld-dev]').forEach(function(b) { b.onclick = function() { ldSetDevice(b.dataset.ldDev); }; });
+  ldSetDevice(LD_DEVICE);
+  ldRefresh();
+}
+function leaveLandingMode() { var a = el('app'); if (a) a.classList.remove('ld-mode'); }
 
 function buildOutputHTML() {
   var LAND = P.layout === 'landing' ? buildLanding(false) : null;
@@ -10313,7 +10556,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, buildLandingPreviewHTML: buildLandingPreviewHTML, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, buildLandingPreviewHTML: buildLandingPreviewHTML, ldNewBlock: ldNewBlock, switchMain: switchMain, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
