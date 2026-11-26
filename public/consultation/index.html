@@ -4744,6 +4744,8 @@ function pollRuntime(C) {
           cost: Math.round(f.cost), value: ERV ? null : Math.round(f.value), net: ERV ? null : Math.round(f.net), annualRent: ERV ? Math.round(f.rent) : null, paybackYears: f.rent ? Math.round((f.cost / f.rent) * 10) / 10 : null,
           scenarioCost: Math.round(t.cost), scenarioValue: ERV ? null : Math.round(t.value), scenarioNet: ERV ? null : Math.round(t.net), scenarioAnnualRent: ERV ? Math.round(t.rent) : null, scenarioShortfall: shortfall(t) != null ? Math.round(shortfall(t)) : null, scenarioPaybackYears: t.rent ? Math.round((t.cost / t.rent) * 10) / 10 : null, source: 'poll', timestamp: ts };
       });
+      // Leave out empty figures rather than sending null: flows whose schema types them as numbers reject null.
+      rows.forEach(function(r) { Object.keys(r).forEach(function(k) { if (r[k] == null) delete r[k]; }); });
       var btn = document.getElementById('send');
       btn.disabled = true; btn.textContent = 'Sending…';
       var post = G.submitUrl ? fetch(G.submitUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: rows }) }) : Promise.resolve();
