@@ -1221,6 +1221,7 @@ function renderLineEditor(i) {
   html += '<div class="f"><label class="fl">Group</label><select id="ln-group">'+groupSelectOptions('lineGroups', ln.groupId)+'</select></div>';
   html += '<div class="f"><label class="fl">Colour</label><div class="cr"><input type="color" id="ln-col-p" value="'+h(ln.color||'#ffffff')+'"/><input type="text" id="ln-col-t" value="'+h(ln.color||'#ffffff')+'"/></div></div>';
   html += '<div class="f"><label class="fl">Width (px)</label><input type="number" id="ln-width" value="'+ln.width+'" min="1" max="20" step="0.5"/></div>';
+  html += '<div class="f"><label class="fl">Layer'+infoBtn('Higher numbers draw on top, across zones and lines: a line on layer 0 sits under a zone on layer 1. Items on the same layer keep the usual order (lines over zones; later in the list on top). Markers always sit on top.')+'</label><div style="display:flex;gap:6px;align-items:center"><button class="btn btn-g" id="ln-z-dn" title="Send back">−</button><input type="number" id="ln-z" value="'+(+ln.layer||0)+'" step="1" min="-9" max="9" style="width:70px;text-align:center"/><button class="btn btn-g" id="ln-z-up" title="Bring forward">+</button><span style="font-size:10.5px;color:var(--ghost)">higher is on top</span></div></div>';
   html += '<div class="f"><label class="fl">Opacity <span id="ln-op-v" style="font-family:var(--mono);color:var(--ink)">'+(ln.opacity||1)+'</span></label>';
   html += '<input type="range" id="ln-opacity" min="0" max="1" step="0.05" value="'+(ln.opacity||1)+'"/></div>';
   html += '<div class="f"><label class="fl">Dash style</label><select id="ln-dash">';
@@ -1283,6 +1284,9 @@ function renderLineEditor(i) {
   if(cp) cp.addEventListener('input',function(){ ct.value=this.value; P.lines[i].color=this.value; markDirty(); refreshLines(); });
   if(ct) ct.addEventListener('input',function(){ if(/^#[0-9a-f]{6}$/i.test(this.value)){cp.value=this.value; P.lines[i].color=this.value; markDirty(); refreshLines();} });
   bindInput('ln-width', function(v){ P.lines[i].width=parseFloat(v)||3; markDirty(); refreshLines(); });
+  (function(){ var o = P.lines[i], inp = el('ln-z'), set = function(v){ o.layer = Math.max(-9, Math.min(9, Math.round(v) || 0)); if (inp) inp.value = o.layer; markDirty(); refreshLines(); };
+    if (inp) inp.addEventListener('input', function(){ set(parseFloat(this.value)); });
+    var dn = el('ln-z-dn'), up = el('ln-z-up'); if (dn) dn.onclick = function(){ set((+o.layer||0) - 1); }; if (up) up.onclick = function(){ set((+o.layer||0) + 1); }; })();
   var opEl=el('ln-opacity');
   if(opEl) opEl.addEventListener('input',function(){ P.lines[i].opacity=parseFloat(this.value); el('ln-op-v').textContent=this.value; markDirty(); refreshLines(); });
   var dashEl=el('ln-dash');
@@ -4034,6 +4038,7 @@ function renderZoneEditor(i) {
   html += '<div class="f"><label class="fl">Colour</label><div class="cr"><input type="color" id="zn-col-p" value="'+h(z.color)+'"/><input type="text" id="zn-col-t" value="'+h(z.color)+'"/></div></div>';
   html += '<div class="f"><label class="fl">Fill opacity <span id="zn-op-v" style="font-family:var(--mono);color:var(--ink)">'+z.opacity+'</span></label>';
   html += '<input type="range" id="zn-op" min="0.05" max="0.5" step="0.05" value="'+z.opacity+'"/></div>';
+  html += '<div class="f"><label class="fl">Layer'+infoBtn('Higher numbers draw on top, across zones and lines: a line on layer 0 sits under a zone on layer 1. Items on the same layer keep the usual order (lines over zones; later in the list on top). Markers always sit on top.')+'</label><div style="display:flex;gap:6px;align-items:center"><button class="btn btn-g" id="zn-z-dn" title="Send back">−</button><input type="number" id="zn-z" value="'+(+z.layer||0)+'" step="1" min="-9" max="9" style="width:70px;text-align:center"/><button class="btn btn-g" id="zn-z-up" title="Bring forward">+</button><span style="font-size:10.5px;color:var(--ghost)">higher is on top</span></div></div>';
   html += '<div class="f"><label class="fl">Corner rounding <span id="zn-sm-v" style="font-family:var(--mono);color:var(--ink)">'+(z.smoothRadius||0)+'</span></label>';
   if (!z.circle) html += '<input type="range" id="zn-sm" min="0" max="1" step="0.05" value="'+(z.smoothRadius||0)+'"/></div>';
   else html += '<div style="font-size:10.5px;color:var(--ghost)">Not used for circles.</div></div>';
@@ -4171,6 +4176,9 @@ function renderZoneEditor(i) {
   });
 
   bindInput('zn-name', function(v) { P.zones[i].name=v; renderZones(); refreshZN(); });
+  (function(){ var o = P.zones[i], inp = el('zn-z'), set = function(v){ o.layer = Math.max(-9, Math.min(9, Math.round(v) || 0)); if (inp) inp.value = o.layer; markDirty(); refreshZN(); };
+    if (inp) inp.addEventListener('input', function(){ set(parseFloat(this.value)); });
+    var dn = el('zn-z-dn'), up = el('zn-z-up'); if (dn) dn.onclick = function(){ set((+o.layer||0) - 1); }; if (up) up.onclick = function(){ set((+o.layer||0) + 1); }; })();
   bindGroupSelect('zn-group', 'zoneGroups', P.zones[i], function(){ renderZones(); renderZoneEditor(i); });
   bindTA('zn-popup', function(v) { P.zones[i].popup=v; });
   var interactiveTog = el('zn-interactive-tog');
@@ -6864,7 +6872,7 @@ function lnGJ() {
       var dash = ln.dash==='dashed'?[6,4]:ln.dash==='dotted'?[1,3]:[1,0];
       geoms.forEach(function(g){
         features.push({type:'Feature',geometry:g,properties:{
-          color:ln.color||'#fff', width:ln.width||3, opacity:ln.opacity||1,
+          z:+ln.layer||0, color:ln.color||'#fff', width:ln.width||3, opacity:ln.opacity||1,
           dash:ln.dash||'solid',
           label:ln.showLabel?(ln.labelText||ln.name||''):'',
           labelSize:ln.labelSize||12, labelColor:ln.labelColor||'#fff', labelBg:ln.labelBg||'rgba(0,0,0,0.85)'
@@ -6898,10 +6906,43 @@ function lnPtsGJ() {
   });
   return {type:'FeatureCollection', features:features};
 }
+// ── LAYERS: zones and lines carry a layer number (z); higher draws on top, across both kinds. One
+// level uses the plain layers; with more, each level gets its own copy of the zone fill, zone outline and
+// line layers, filtered to that level and stacked in order. Within a level, later items draw on top.
+function zLevels() {
+  var seen = {};
+  (P.zones || []).forEach(function(z) { seen[+z.layer || 0] = 1; });
+  (P.lines || []).forEach(function(l) { seen[+l.layer || 0] = 1; });
+  var out = Object.keys(seen).map(Number).sort(function(a, b) { return a - b; });
+  return out.length ? out : [0];
+}
+var _edZKey = '';
+function edZOrder() {
+  if (!pMap || !pMap.getLayer('p-zn-f') || !pMap.getLayer('p-ln-l') || !pMap.getLayer('p-ln-pt')) return;
+  var lv = zLevels(), base = ['p-zn-f', 'p-zn-s', 'p-ln-l'], key = lv.join(',') + '|' + (pMap.getStyle().layers || []).length;
+  var copies = function(id) { var o = [id]; for (var i = 1; i < lv.length; i++) o.push(id + '-z' + i); return o; };
+  if (key !== _edZKey) {
+    (pMap.getStyle().layers || []).forEach(function(l) { if (/^p-(zn-f|zn-s|ln-l)-z\d+$/.test(l.id)) pMap.removeLayer(l.id); });
+    base.forEach(function(id) { pMap.setFilter(id, lv.length > 1 ? ['==', ['get', 'z'], lv[0]] : null); });
+    if (lv.length > 1) {
+      for (var i = 1; i < lv.length; i++) base.forEach(function(id) {
+        var sp = JSON.parse(JSON.stringify((pMap.getStyle().layers || []).filter(function(l) { return l.id === id; })[0]));
+        sp.id = id + '-z' + i; sp.filter = ['==', ['get', 'z'], lv[i]];
+        pMap.addLayer(sp);
+      });
+    }
+    // Same stacking as the exported site: zone fill, zone outline, then lines, level by level.
+    for (var j = 0; j < lv.length; j++) base.forEach(function(id) { pMap.moveLayer(j ? id + '-z' + j : id, 'p-ln-pt'); });
+    _edZKey = lv.join(',') + '|' + (pMap.getStyle().layers || []).length;
+  }
+  // Copies follow their base layer's visibility (scenes switch the base ones).
+  base.forEach(function(id) { var v = pMap.getLayoutProperty(id, 'visibility') || 'visible'; copies(id).slice(1).forEach(function(c) { if (pMap.getLayer(c)) pMap.setLayoutProperty(c, 'visibility', v); }); });
+}
 function refreshLines() {
   if(!pMap||!pReady) return;
   if(pMap.getSource('p-ln')) pMap.getSource('p-ln').setData(lnGJ());
   if(pMap.getSource('p-ln-pts')) pMap.getSource('p-ln-pts').setData(lnPtsGJ());
+  try { edZOrder(); } catch (e) {}
 }
 // ── CIRCLE ZONES: a zone can be a circle (centre + radius in metres) with optional rings inside it.
 // Its coordinates are kept as the circle's polygon, so everything else treats it as any other zone; the
@@ -7066,7 +7107,7 @@ function zoneCentroid(co) {
   for (var i = 0; i < n; i++) { x += co[i][0]; y += co[i][1]; }
   return [x / n, y / n];
 }
-function znGJ() { return {type:'FeatureCollection',features:zonesForMap().map(function(z){var co=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;return{type:'Feature',geometry:{type:'Polygon',coordinates:[co]},properties:{color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};})};  }
+function znGJ() { return {type:'FeatureCollection',features:zonesForMap().map(function(z){var co=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;return{type:'Feature',geometry:{type:'Polygon',coordinates:[co]},properties:{z:+z.layer||0,color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};})};  }
 
 function ps(id,v) { if(pMap&&pMap.getLayer(id))pMap.setLayoutProperty(id,'visibility',v?'visible':'none'); }
 
@@ -7130,7 +7171,7 @@ function updatePreview() {
     });
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:zonesForMap(visibleZones).map(function(z){
       var zco = z.smoothRadius > 0.01 ? smoothPolygon(z.coordinates, z.smoothRadius) : z.coordinates;
-      return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20}};
+      return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,interactive:z.interactive!==false}};
     })});
   } else if(pMap && pMap.getSource('p-zn') && !L.constraints) {
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:[]});
@@ -7485,29 +7526,31 @@ function buildLanding(preview) {
     + '.ld-foot{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;padding:28px 48px;background:#0f0e0d;color:#bdb8b0;font-size:13px;line-height:1.6;font-family:var(--f-body)}'
     + '.ld-foot a{color:inherit}.ld-foot .ld-top{text-decoration:none;font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;color:#f8f6f1}'
     + '#nav-home{width:38px;height:38px;margin-top:10px;background:none;border:0;border-radius:4px;color:#f8f6f1;cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:.75}#nav-home:hover{opacity:1;background:rgba(255,255,255,.08)}'
-    + 'a.ld-card,a.ld-ic-card,a.ld-fan-card,a.ld-pn-card,a.ld-ph-card{text-decoration:none;color:inherit}'
-    + '.ld-card .ld-cb p{font-size:15px;line-height:1.65;opacity:.85}.ld-card-ic{color:var(--accent);margin-bottom:16px}'
+    + 'a.ld-cw{text-decoration:none;color:inherit}.ld-cw{display:block;position:relative}.ld-cw>div{height:100%;will-change:transform;backface-visibility:hidden}'
+    + '.ld-card .ld-cb p{font-size:15px;line-height:1.65;opacity:.85}.ld-card-ic{color:var(--accent);margin-bottom:16px}.ld-card{transition:transform .5s cubic-bezier(.22,.8,.24,1),box-shadow .5s cubic-bezier(.22,.8,.24,1)}.ld-cw:hover .ld-card{transform:translate3d(0,-4px,0);box-shadow:0 16px 36px rgba(0,0,0,.08)}'
+    + '@media(prefers-reduced-motion:reduce){.ld-cw>div,.ld-cw img,.ld-ph-btn{transition:none!important}}'
     + '.ld-cards.s-icon{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:22px}'
-    + '.ld-ic-card{display:flex;flex-direction:column;min-height:340px;padding:30px 30px 28px;border-radius:var(--radius,8px);background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.08);transition:transform .25s,box-shadow .25s}'
-    + '.ld-ic-card.outline{background:transparent;border:1.5px solid currentColor;box-shadow:none}.ld-ic-card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(0,0,0,.12)}'
+    + '.ld-ic-card{display:flex;flex-direction:column;min-height:340px;padding:30px 30px 28px;border-radius:var(--radius,8px);background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.08);transition:transform .5s cubic-bezier(.22,.8,.24,1),box-shadow .5s cubic-bezier(.22,.8,.24,1)}'
+    + '.ld-ic-card.outline{background:transparent;border:1.5px solid currentColor;box-shadow:none}.ld-cw:hover .ld-ic-card{transform:translate3d(0,-6px,0);box-shadow:0 22px 44px rgba(0,0,0,.13)}.ld-cw:hover .ld-ic-card.outline{box-shadow:none}'
     + '.ld-ic{margin-bottom:auto;padding-bottom:40px}.ld-ic-card h3{font-size:24px;line-height:1.2;font-weight:600;margin:0}.ld-cm{margin-top:18px;font-size:12px;letter-spacing:.04em;opacity:.8}'
     + '.ld-cards.s-fan{display:flex;justify-content:center;align-items:flex-end;gap:0;padding:30px 0 40px;margin-top:30px}'
-    + '.ld-fan-card{position:relative;flex:none;width:230px;height:310px;margin:0 -28px;border-radius:calc(var(--radius,8px) + 8px);padding:18px;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,.16);transform:translateY(var(--y)) rotate(var(--r));transform-origin:50% 120%;transition:transform .35s var(--ease),box-shadow .35s}'
-    + '.ld-fan-card:hover{transform:translateY(calc(var(--y) - 26px)) rotate(0deg);z-index:50!important;box-shadow:0 22px 50px rgba(0,0,0,.25)}'
+    + '.ld-cw-fan{flex:none;width:230px;height:310px;margin:0 -28px;transform:translate3d(0,var(--y),0) rotate(var(--r));transform-origin:50% 120%}.ld-cw-fan:hover{z-index:50!important}'
+    + '.ld-fan-card{border-radius:calc(var(--radius,8px) + 8px);padding:18px;display:flex;flex-direction:column;box-shadow:0 12px 30px rgba(0,0,0,.16);transform-origin:50% 120%;transition:transform .6s cubic-bezier(.22,.8,.24,1),box-shadow .6s cubic-bezier(.22,.8,.24,1)}'
+    + '.ld-cw-fan:hover .ld-fan-card{transform:translate3d(0,-28px,0) rotate(calc(var(--r) * -1));box-shadow:0 26px 56px rgba(0,0,0,.24)}'
     + '.ld-fan-img,.ld-fan-art{flex:1;border-radius:calc(var(--radius,8px) + 2px);overflow:hidden;display:flex;align-items:center;justify-content:center;opacity:.95}.ld-fan-img img{width:100%;height:100%;object-fit:cover;display:block}'
     + '.ld-fan-card h3{font-family:var(--f-head);font-size:22px;line-height:1.08;font-weight:500;margin:16px 4px 4px}'
     + '.ld-cards.s-panel{grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:24px}'
-    + '.ld-pn-card{display:flex;flex-direction:column;clip-path:polygon(64px 0,100% 0,100% calc(100% - 64px),calc(100% - 96px) 100%,0 100%,0 64px);border-radius:var(--radius,8px);overflow:hidden;transition:transform .25s}.ld-pn-card:hover{transform:translateY(-4px)}'
+    + '.ld-pn-card{display:flex;flex-direction:column;clip-path:polygon(64px 0,100% 0,100% calc(100% - 64px),calc(100% - 96px) 100%,0 100%,0 64px);border-radius:var(--radius,8px);overflow:hidden;transition:transform .5s cubic-bezier(.22,.8,.24,1)}.ld-cw:hover .ld-pn-card{transform:translate3d(0,-6px,0)}.ld-pn-img img{transition:transform .8s cubic-bezier(.22,.8,.24,1)}.ld-cw:hover .ld-pn-img img{transform:scale(1.04)}'
     + '.ld-pn-img{aspect-ratio:1/1}.ld-pn-img img{width:100%;height:100%;object-fit:cover;display:block}'
     + '.ld-pn-body{padding:28px 30px 70px;min-height:170px}.ld-pn-body h3{font-size:22px;line-height:1.25;font-weight:400;margin:0 0 18px}.ld-pn-btn{display:inline-block;border:1.5px solid currentColor;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600}'
     + '.ld-cards.s-photo{grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:26px}'
-    + '.ld-ph-media{position:relative;margin-bottom:18px}.ld-ph-img{aspect-ratio:5/4;border-radius:calc(var(--radius,8px) + 8px);overflow:hidden}.ld-ph-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s}'
-    + '.ld-ph-card:hover .ld-ph-img img{transform:scale(1.04)}'
-    + '.ld-ph-btn{position:absolute;right:-2px;bottom:-2px;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px var(--paper);transition:transform .25s}.ld-ph-card:hover .ld-ph-btn{transform:rotate(45deg)}'
+    + '.ld-ph-media{position:relative;margin-bottom:18px}.ld-ph-img{aspect-ratio:5/4;border-radius:calc(var(--radius,8px) + 8px);overflow:hidden;transform:translateZ(0)}.ld-ph-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .8s cubic-bezier(.22,.8,.24,1)}'
+    + '.ld-cw:hover .ld-ph-img img{transform:scale(1.05)}'
+    + '.ld-ph-btn{position:absolute;right:-2px;bottom:-2px;width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px var(--paper);transition:transform .5s cubic-bezier(.22,.8,.24,1)}.ld-cw:hover .ld-ph-btn{transform:rotate(45deg)}'
     + '.t-white .ld-ph-btn{box-shadow:0 0 0 10px #fff}.t-dark .ld-ph-btn{box-shadow:0 0 0 10px var(--dark,#0f0e0d)}.t-accent .ld-ph-btn{box-shadow:0 0 0 10px var(--accent)}'
     + '.ld-ph-card h3{font-size:24px;font-weight:500;margin:0 0 8px}.ld-ph-card .ld-cb p{font-size:14.5px;line-height:1.6;opacity:.75}.ld-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}.ld-tags span{font-size:11px;font-weight:600;padding:4px 8px;border-radius:4px}'
     + '.ld-ph{background:linear-gradient(135deg,rgba(127,127,127,.18),rgba(127,127,127,.08))}'
-    + '@media(max-width:900px){.ld-cards.s-fan{flex-wrap:wrap;gap:14px;padding:0}.ld-fan-card{margin:0;width:calc(50% - 7px);height:240px;transform:none}.ld-fan-card:hover{transform:translateY(-6px)}.ld-pn-card{clip-path:polygon(40px 0,100% 0,100% calc(100% - 40px),calc(100% - 60px) 100%,0 100%,0 40px)}}'
+    + '@media(max-width:900px){.ld-cards.s-fan{flex-wrap:wrap;gap:14px;padding:0}.ld-cw-fan{margin:0;width:calc(50% - 7px);height:240px;transform:none}.ld-cw-fan:hover .ld-fan-card{transform:translate3d(0,-6px,0)}.ld-pn-card{clip-path:polygon(40px 0,100% 0,100% calc(100% - 40px),calc(100% - 60px) 100%,0 100%,0 40px)}}'
     + '@media(max-width:900px){.ld-head{padding:0 20px;height:64px}.ld-burger{display:flex}'
     + '.ld-nav{position:fixed;top:64px;left:0;right:0;flex-direction:column;align-items:stretch;gap:0;background:var(--paper);color:var(--ink);padding:8px 20px 20px;box-shadow:0 12px 30px rgba(0,0,0,.15);display:none}'
     + '.ld-nav.open{display:flex}.ld-nav a{padding:16px 0;border-bottom:1px solid var(--mid);font-size:13px}.ld-nav a.ld-nav-cta{margin-top:14px;text-align:center;border:0}'
@@ -7619,9 +7662,12 @@ function ldCardIcon(icon, size, colour) {
 function ldCardsHTML(b, items, I) {
   var st = b.cardStyle || 'simple', pal = LD_CARD_PALETTES[st] || [];
   var colourOf = function(x) { var c = x.it.color || pal[x.i % (pal.length || 1)] || ''; return c === 'accent' ? (P.accentColor || '#c0392b') : c; };
-  var wrap = function(x, cls, style, inner) {
+  // The outer element is the still hit area; only the card inside it moves on hover, so the card
+  // never slides out from under the pointer (which is what made hover effects flicker).
+  var wrap = function(x, cls, style, inner, outerStyle) {
     var tag = x.it.link && !_LD_PREVIEW ? 'a' : 'div';
-    return '<' + tag + ' class="' + cls + '"' + (style ? ' style="' + style + '"' : '') + (tag === 'a' ? ' href="' + h(x.it.link) + '" target="_blank" rel="noopener"' : '') + '>' + inner + '</' + tag + '>';
+    return '<' + tag + ' class="ld-cw ld-cw-' + st + '"' + (outerStyle ? ' style="' + outerStyle + '"' : '') + (tag === 'a' ? ' href="' + h(x.it.link) + '" target="_blank" rel="noopener"' : '') + '>'
+      + '<div class="' + cls + '"' + (style ? ' style="' + style + '"' : '') + '>' + inner + '</div></' + tag + '>';
   };
   var title = function(x, tagName) { return '<' + (tagName || 'h3') + I(x.i, 'title') + '>' + h(x.it.title) + '</' + (tagName || 'h3') + '>'; };
   var text = function(x) { return x.it.body ? '<div class="ld-cb"' + I(x.i, 'body', 1) + '>' + ldFmt(x.it.body) + '</div>' : ''; };
@@ -7636,8 +7682,9 @@ function ldCardsHTML(b, items, I) {
     var n = items.length, mid = (n - 1) / 2;
     html = items.map(function(x, k) {
       var c = colourOf(x), ink = ldInkFor(c) || '#141414', off = k - mid;
-      return wrap(x, 'ld-fan-card', 'background:' + (c || '#fff') + ';color:' + ink + ';--r:' + (off * 6).toFixed(1) + 'deg;--y:' + (Math.abs(off) * 14).toFixed(0) + 'px;z-index:' + (10 + k),
-        (x.it.image ? img(x, 'ld-fan-img') : '<div class="ld-fan-art">' + ldCardIcon(x.it.icon || 'sparkles', 72) + '</div>') + title(x));
+      return wrap(x, 'ld-fan-card', 'background:' + (c || '#fff') + ';color:' + ink,
+        (x.it.image ? img(x, 'ld-fan-img') : '<div class="ld-fan-art">' + ldCardIcon(x.it.icon || 'sparkles', 72) + '</div>') + title(x),
+        '--r:' + (off * 6).toFixed(1) + 'deg;--y:' + (Math.abs(off) * 14).toFixed(0) + 'px;z-index:' + (10 + k));
     }).join('');
   }
   else if (st === 'panel') html = items.map(function(x) {
@@ -8518,7 +8565,7 @@ function buildCfg() {
       showLabel:!!ln.showLabel, labelText:ln.labelText||ln.name||'',
       labelSize:ln.labelSize||12, labelColor:ln.labelColor||'#fff',
       scenes:sceneIdxs,
-      geojson:ln.geojson||'',
+      geojson:ln.geojson||'', z:+ln.layer||0,
       animOverride:!!ln.animOverride, animDuration:ln.animDuration||800, animEasing:ln.animEasing||'easeOut', animDelay:ln.animDelay||0, animEasingCurve:ln.animEasingCurve||[0.42,0,0.58,1]
     });
   });
@@ -8548,7 +8595,7 @@ function buildCfg() {
 
   var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false}};})};
 
-  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
+  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
   var ciLines = P.zones.map(function(z){return '  '+JSON.stringify(z.id||z.name)+': { title:'+JSON.stringify(z.name)+', body:'+JSON.stringify(z.popup||'')+' }';}).join(',\n');
 
@@ -8596,6 +8643,7 @@ function buildCfg() {
     'var SITE_CENTRE  = [' + P.siteCentre[0] + ', ' + P.siteCentre[1] + '];',
     'var SITE_PIN_LABEL = ' + JSON.stringify(P.sitePinLabel||'The Site') + ';',
     'var SITE_PIN_SHOW = ' + (P.sitePinShow !== false) + ';',
+    'var Z_LEVELS = ' + JSON.stringify(zLevels()) + ';',
     'var SHEETDB_URL  = ' + JSON.stringify(P.sheetdbUrl||'') + ';',
     'var SHEETDB_READ_URL = ' + JSON.stringify(P.sheetdbReadUrl||P.sheetdbUrl||'') + ';',
     'var QUESTIONS_SHEETDB_URL = ' + JSON.stringify(P.questionsSheetdbUrl||'') + ';',
@@ -8783,6 +8831,15 @@ function buildJS() {
 '  map.addSource("ln-pts",{type:"geojson",data:lnPtsAllGJ()});',
 '  map.addSource("wo",{type:"geojson",data:{type:"Feature",geometry:{type:"Polygon",coordinates:[[[-180,-90],[180,-90],[180,90],[-180,90],[-180,-90]]]}}} );',
 '}',
+'function zIds(b){var o=[b];for(var i=1;i<Z_LEVELS.length;i++)o.push(b+"-z"+i);return o;}',
+// Layers set in the editor: each level gets its own copy of the zone and line layers, stacked in order.
+'function zOrder(){',
+'  if(Z_LEVELS.length<2)return;',
+'  var base=["con-f","con-s","ln-l"];',
+'  base.forEach(function(id){map.setFilter(id,["==",["get","z"],Z_LEVELS[0]]);});',
+'  for(var i=1;i<Z_LEVELS.length;i++)base.forEach(function(id){var sp=JSON.parse(JSON.stringify(map.getStyle().layers.filter(function(l){return l.id===id;})[0]));sp.id=id+"-z"+i;sp.filter=["==",["get","z"],Z_LEVELS[i]];map.addLayer(sp);});',
+'  for(var j=0;j<Z_LEVELS.length;j++)base.forEach(function(id){map.moveLayer(j?id+"-z"+j:id,"ln-pt");});',
+'}',
 'function addLayers(){',
 '  map.addLayer({id:"wo",type:"fill",source:"wo",paint:{"fill-color":"#f8f6f1","fill-opacity":0},layout:{visibility:"none"}});',
 '  map.addLayer({id:"rl-f",type:"fill",source:"rl",paint:{"fill-color":"#c0392b","fill-opacity":0.1},layout:{visibility:"none"}});',
@@ -8813,6 +8870,7 @@ function buildJS() {
     +'"line-dasharray":["match",["get","dash"],"dashed",["literal",[6,4]],"dotted",["literal",[1.5,3]],["literal",[1,0]]]},'
     +'layout:{"line-cap":"round","line-join":"round",visibility:"visible"}});',
 '  map.addLayer({id:"ln-pt",type:"circle",source:"ln-pts",paint:{"circle-radius":["get","radius"],"circle-color":["get","color"],"circle-opacity":["get","opacity"]},layout:{visibility:"visible"}});',
+'  zOrder();',
 '  map.addLayer({id:"ln-lb",type:"symbol",source:"ln-all",layout:{"text-field":["get","label"],"text-size":["get","labelSize"],"text-font":["DIN Pro Medium","Arial Unicode MS Regular"],"symbol-placement":"line-center","symbol-spacing":500,"text-background":true,"text-allow-overlap":true,"text-ignore-placement":true,visibility:"visible"},paint:{"text-color":["get","labelColor"],"text-background-color":["get","labelBg"],"text-background-opacity":1,"text-background-padding":[8,14,8,14]}});',
 '  map.addLayer({id:"bld-custom-ex",type:"fill-extrusion",source:"bld-custom",'
     +'paint:{"fill-extrusion-color":["get","color"],"fill-extrusion-height":["get","height"],"fill-extrusion-base":0,"fill-extrusion-opacity":0.85},'
@@ -9002,7 +9060,7 @@ function buildJS() {
 '      else if(gj.type==="LineString"||gj.type==="MultiLineString") geoms.push(gj);',
 '      geoms.forEach(function(g){',
 '        features.push({type:"Feature",geometry:g,properties:{',
-'          color:ln.color||"#fff",width:ln.width||3,opacity:ln.opacity||1,dash:ln.dash||"solid",',
+'          z:ln.z||0,color:ln.color||"#fff",width:ln.width||3,opacity:ln.opacity||1,dash:ln.dash||"solid",',
 '          label:ln.showLabel?(ln.labelText||""):"",labelSize:ln.labelSize||12,labelColor:ln.labelColor||"#fff",labelBg:ln.labelBg||"rgba(0,0,0,0.85)"',
 '        }});',
 '      });',
@@ -9353,13 +9411,13 @@ function buildJS() {
 '    if(!e.features.length) return;',
 '    var p=e.features[0].properties;',
 '    if(!p.interactive){',
-'      if(_zoneHoverId!==null){ map.getCanvas().style.cursor=""; map.setPaintProperty("con-f","fill-opacity",["get","opacity"]); _zonePopup.remove(); _zoneHoverId=null; }',
+'      if(_zoneHoverId!==null){ map.getCanvas().style.cursor=""; zIds("con-f").forEach(function(id){map.setPaintProperty(id,"fill-opacity",["get","opacity"]);}); _zonePopup.remove(); _zoneHoverId=null; }',
 '      return;',
 '    }',
 '    if(p.id!==_zoneHoverId){',
 '      _zoneHoverId=p.id;',
 '      map.getCanvas().style.cursor="pointer";',
-'      map.setPaintProperty("con-f","fill-opacity",["case",["==",["get","id"],p.id],Math.min((p.opacity||0.2)+0.15,0.55),["get","opacity"]]);',
+'      zIds("con-f").forEach(function(id){map.setPaintProperty(id,"fill-opacity",["case",["==",["get","id"],p.id],Math.min((p.opacity||0.2)+0.15,0.55),["get","opacity"]]);});',
 '      var info=CONSTRAINT_INFO[p.id]||CONSTRAINT_INFO[p.name];',
 '      var ptitle=info?info.title:p.name, pbody=info?info.body:"";',
 '      if(!ptitle){ _zonePopup.remove(); }',
@@ -9373,15 +9431,14 @@ function buildJS() {
 '      _zonePopup.setLngLat(e.lngLat);',
 '    }',
 '  }',
-'  map.on("mouseenter","con-f",updateZoneHover);',
-'  map.on("mousemove","con-f",updateZoneHover);',
-'  map.on("mouseleave","con-f",function(){',
+'  zIds("con-f").forEach(function(zid){map.on("mouseenter",zid,updateZoneHover);map.on("mousemove",zid,updateZoneHover);});',
+'  zIds("con-f").forEach(function(zid){map.on("mouseleave",zid,function(){',
 '    map.getCanvas().style.cursor="";',
-'    map.setPaintProperty("con-f","fill-opacity",["get","opacity"]);',
+'    zIds("con-f").forEach(function(id){map.setPaintProperty(id,"fill-opacity",["get","opacity"]);});',
 '    _zonePopup.remove();',
 '    _zoneHoverId=null;',
-'  });',
-'  map.on("click","con-f",function(e){',
+'  });});',
+'  zIds("con-f").forEach(function(zid){map.on("click",zid,function(e){',
 '    if(!e.features.length) return;',
 '    var p=e.features[0].properties;',
 '    if(!p.interactive) return;',
@@ -9390,7 +9447,7 @@ function buildJS() {
 '    if(!p.lightboxEnabled) return;',
 '    _zonePopup.remove();',
 '    openLB({name:p.name,color:p.color||"#d4820a",coords:[e.lngLat.lng,e.lngLat.lat],lightboxLayout:p.lightboxLayout,lightboxHeading:p.lightboxHeading,lightboxSubheading:p.lightboxSubheading,lightboxBody:p.lightboxBody,lightboxImg:p.lightboxImg,lightboxImgCaption:p.lightboxImgCaption,lightboxEmbedUrl:p.lightboxEmbedUrl,lightboxEmbedRatio:p.lightboxEmbedRatio,lightboxEmbedBg:p.lightboxEmbedBg,lightboxBlocks:p.lightboxBlocks});',
-'  });','}',
+'  });});','}',
 ,
 'function focusLbClose(){setTimeout(function(){var b=document.getElementById("lb-close-badge");if(b)b.focus();},50);}',
 'function positionCloseBadge(){',
@@ -9937,7 +9994,7 @@ function buildJS() {
 '    mkEl.style.display=zoneVisibleOnScene(zid,idx)?"flex":"none";',
 '  });',
 '  // con-clip-ex controlled by filterZones source data',
-'  sv("con-3d",L.constraints);sv("con-ex",L.constraints);sv("con-f",L.constraints);sv("con-s",L.constraints);',
+'  sv("con-3d",L.constraints);sv("con-ex",L.constraints);zIds("con-f").forEach(function(id){sv(id,L.constraints);});zIds("con-s").forEach(function(id){sv(id,L.constraints);});',
 '  // Always restore con-ex opacity to data-driven (in case hideStyleExtrusions zeroed it)',
 '  // opacity is constant 0.85 - Standard style does not support data expressions for fill-extrusion-opacity',
 '  sv("bld",L.buildings3d||L.orbit);',
