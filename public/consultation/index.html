@@ -6974,14 +6974,24 @@ function penOnEdit(changed) {
     var lg = el('ln-geojson'); if (lg && ALN != null && P.lines[ALN]) lg.value = P.lines[ALN].geojson;
   }, 250);
 }
-function penInit() {
-  if (pPen || !pMap || !window.AlltoPen) return;
-  pPen = AlltoPen.createPen(pMap, { sources: penSources, onEdit: penOnEdit });
-  // The selected item's outline, so it can be edited on scenes that hide zones or lines.
+var pPenMap = null;
+/** The pen's map layers (and the selected outline). A new map style drops every layer, so this runs again
+ *  after each style load. */
+function penLayers() {
+  if (!pPen || !pMap || !pMap.isStyleLoaded || !pMap.getStyle()) return;
   if (!pMap.getSource('p-pen-sel')) pMap.addSource('p-pen-sel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
   if (!pMap.getLayer('p-pen-sel')) pMap.addLayer({ id: 'p-pen-sel', type: 'line', source: 'p-pen-sel', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#2433e0', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-emissive-strength': 1 } });
-  pPen.addLayers();
+  if (!pMap.getLayer('pen-path')) pPen.addLayers();
   penSync();
+}
+function penInit() {
+  if (!pMap || !window.AlltoPen) return;
+  if (pPen && pPenMap === pMap) return penLayers();
+  // A new map (e.g. after the token changed) needs a new pen.
+  pPen = AlltoPen.createPen(pMap, { sources: penSources, onEdit: penOnEdit });
+  pPenMap = pMap;
+  pMap.on('style.load', function() { setTimeout(penLayers, 0); });
+  penLayers();
 }
 /** Show the anchors of whatever zone or line is open in the editor. */
 function penSync() {
@@ -6995,6 +7005,7 @@ function penSync() {
   }
   pPen.setEditables(list);
   // Outline of what's being edited, and the pen's own layers kept above everything added since.
+  if (!pMap.getLayer('pen-path') && pMap.getStyle()) { try { pPen.addLayers(); } catch (e) {} }
   var sel = pMap.getSource('p-pen-sel');
   if (sel) sel.setData({ type: 'FeatureCollection', features: list.map(function(e) { return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: AlltoPen.bezierPath(e.nodes, e.closed).concat(e.closed ? [e.nodes[0].p] : []) } }; }) });
   ['p-pen-sel', 'pen-preview', 'pen-path', 'pen-hline', 'pen-handle', 'pen-anchor', 'pen-guide', 'pen-guide-on', 'pen-snap'].forEach(function(id) { if (pMap.getLayer(id)) pMap.moveLayer(id); });
