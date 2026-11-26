@@ -225,7 +225,14 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 <link rel="stylesheet" href="../shared/allto-editor.css"/>
 <style>
 #lp-landing{display:none}#ld-stage{display:none;position:absolute;inset:0;z-index:40;background:#1b1b1a;justify-content:center;align-items:stretch}
-#app.ld-mode #lp>.tabs,#app.ld-mode #lp>.tc{display:none!important}#app.ld-mode #lp-landing{display:block}#app.ld-mode #ld-stage{display:flex}
+#lp-style{display:none}#app.ld-mode #lp>.tabs,#app.ld-mode #lp>.tc,#app.st-mode #lp>.tabs,#app.st-mode #lp>.tc{display:none!important}#app.ld-mode #lp-landing,#app.st-mode #lp-style{display:block}#app.ld-mode #ld-stage,#app.st-mode #ld-stage{display:flex}
+.st-preset{display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:12px;align-items:center;width:100%;text-align:left;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:6px;cursor:pointer;color:inherit;font:inherit}
+.st-preset:hover{border-color:var(--border2)}.st-preset .sw{grid-row:span 2;display:grid;grid-template-columns:1fr 1fr;width:30px;height:30px;border-radius:5px;overflow:hidden;border:1px solid var(--border)}.st-preset .sw i{display:block}
+.st-preset .nm{font-size:15px}.st-preset .fs{font-size:10.5px;color:var(--ghost)}
+.st-fp summary{cursor:pointer;padding:9px 12px;border:1px solid var(--border);border-radius:5px;font-size:16px;list-style:none}.st-fp summary::after{content:"Change";float:right;font:11px/22px var(--f-ui,system-ui);color:var(--ghost)}
+.st-fp-list{max-height:330px;overflow:auto;border:1px solid var(--border);border-top:0;border-radius:0 0 5px 5px;padding:4px}.st-fp-g{font-size:10px;color:var(--ghost);padding:8px 6px 4px}
+.st-fp-list button{display:flex;justify-content:space-between;align-items:baseline;width:100%;background:none;border:0;border-radius:4px;padding:7px 8px;font-size:16px;color:inherit;cursor:pointer;text-align:left}.st-fp-list button small{font-size:12px;color:var(--ghost)}
+.st-fp-list button:hover{background:rgba(127,127,127,.12)}.st-fp-list button.on{background:var(--accent);color:#fff}.st-fp-list button.on small{color:rgba(255,255,255,.75)}
 #ld-frame{width:100%;height:100%;border:0;background:#fff;transition:width .25s}
 #ld-stage.phone #ld-frame{width:390px;height:calc(100% - 76px);margin-top:56px;border-radius:18px;box-shadow:0 0 0 8px #0f0e0d,0 20px 60px rgba(0,0,0,.5)}
 .ld-dev{position:absolute;top:10px;right:12px;z-index:2;display:flex;gap:4px}.ld-dev .btn{font-size:11px;padding:5px 10px;background:var(--bg)}.ld-dev .btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
@@ -241,6 +248,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
     <div class="tb-tabs">
       <div class="tb-tab on" id="tt-editor" onclick="switchMain('editor')">Editor</div>
       <div class="tb-tab" id="tt-landing" onclick="switchMain('landing')">Landing page</div>
+      <div class="tb-tab" id="tt-style" onclick="switchMain('style')">Style</div>
       <div class="tb-tab" id="tt-settings" onclick="switchMain('settings')">Settings</div>
       <div class="tb-tab" id="tt-seo" onclick="switchMain('seo')">SEO</div>
       <div class="tb-tab" id="tt-about" onclick="openAboutModal()">About</div>
@@ -296,6 +304,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
     </div>
   </div>
   <div id="lp-landing"><div id="ld-list"></div></div>
+  <div id="lp-style"><div id="st-list"></div></div>
 </div>
 <div id="mp"><div id="pm"></div>
   <div id="ld-stage"><div class="ld-dev"><button type="button" class="btn btn-g btn-ic on" data-ld-dev="desktop"><span class="ico-h" data-icon="monitor" data-icon-size="13"></span>Desktop</button><button type="button" class="btn btn-g btn-ic" data-ld-dev="phone"><span class="ico-h" data-icon="smartphone" data-icon-size="13"></span>Phone</button></div><iframe id="ld-frame" title="Landing page preview"></iframe></div>
@@ -2478,8 +2487,10 @@ function switchMain(tab) {
   el('tt-settings').classList.toggle('on', tab==='settings');
   el('tt-seo').classList.toggle('on', tab==='seo');
   el('tt-landing').classList.toggle('on', tab==='landing');
+  el('tt-style').classList.toggle('on', tab==='style');
+  leaveLandingMode(); leaveStyleMode();
   if (tab === 'landing') { enterLandingMode(); return; }
-  leaveLandingMode();
+  if (tab === 'style') { enterStyleMode(); return; }
   if (tab === 'settings') renderSettings();
   else if (tab === 'seo') renderSEO();
   else renderRightPanel();
@@ -2493,7 +2504,8 @@ function ensureEditorTab() {
   el('tt-settings').classList.remove('on');
   el('tt-seo').classList.remove('on');
   el('tt-landing').classList.remove('on');
-  leaveLandingMode();
+  el('tt-style').classList.remove('on');
+  leaveLandingMode(); leaveStyleMode();
 }
 
 var aboutOpener = null;
@@ -3300,6 +3312,7 @@ function renderRightPanel() {
   if (mainTab === 'settings') { renderSettings(); return; }
   if (mainTab === 'seo') { renderSEO(); return; }
   if (mainTab === 'landing') { renderLandingEditor(); return; }
+  if (mainTab === 'style') { renderStyleEditor(); return; }
   // Show onboarding if no token set yet
   if(!P.mapboxToken) {
     renderOnboarding(); return;
@@ -4508,7 +4521,7 @@ function buildPollHTML(gi, mode) {
     + '<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"><' + '/script>'
     + '<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"><' + '/script>'
     + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>'
-    + '<style>' + POLL_CSS + '\n' + pollThemeCSS() + '</style></head><body>'
+    + fontLinks() + '<style>' + POLL_CSS + '\n' + pollThemeCSS() + '\n' + styleCSS(POLL_CSS) + '\n' + pollThemeCSS().replace(/:root\{[^}]*\}/, '') + '</style></head><body>'
     + '<div id="app"></div>'
     + '<script>' + (mode ? 'window.__POLL_MODE=' + JSON.stringify(mode) + ';' : '') + '(' + pollRuntime.toString() + ')(' + JSON.stringify(cfg).replace(/</g, '\\u003c') + ');<' + '/script>'
     + '</body></html>';
@@ -7045,13 +7058,13 @@ function lockPageHTML(salt, iv, data, title) {
   };
   return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>'
     + '<title>' + h(title || P.name || 'Protected page') + '</title><meta name="robots" content="noindex"/>'
-    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>'
-    + '<style>*{box-sizing:border-box}html,body{margin:0;height:100%}body{font-family:"tt-commons-pro",system-ui,sans-serif;background:' + h(paper) + ';color:#0f0e0d;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased}'
+    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>' + fontLinks()
+    + '<style>*{box-sizing:border-box}html,body{margin:0;height:100%}body{font-family:var(--f-body,"tt-commons-pro",system-ui,sans-serif);background:' + h(paper) + ';color:#0f0e0d;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased}'
     + '.pw{width:100%;max-width:380px}.tag{display:flex;align-items:center;gap:10px;font-size:9px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:16px}.tag i{width:8px;height:8px;border-radius:50%;background:' + h(acc) + '}.tag span{opacity:.7}'
     + 'h1{font-size:30px;font-weight:600;line-height:1.1;margin:0 0 10px}p{font-size:14px;line-height:1.6;color:#3a3733;margin:0 0 22px}'
     + 'input{width:100%;font:inherit;font-size:16px;padding:13px 14px;border:1.5px solid rgba(15,14,13,.18);border-radius:4px;background:#fff;color:inherit}input:focus{outline:none;border-color:#0f0e0d}'
     + 'button{width:100%;margin-top:10px;border:0;border-radius:4px;background:' + h(acc) + ';color:#fff;font:inherit;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:15px;cursor:pointer}button:disabled{opacity:.5}'
-    + '#pw-m{min-height:20px;font-size:13px;color:' + h(acc) + ';margin-top:12px}</style></head><body>'
+    + '#pw-m{min-height:20px;font-size:13px;color:' + h(acc) + ';margin-top:12px}' + styleCSS('.tag{text-transform:uppercase;font-size:9px}button{text-transform:uppercase;font-size:12px}') + '</style></head><body>'
     + '<form class="pw" id="pw-f" autocomplete="off"><div class="tag"><i></i><span>' + h(P.name || 'Consultation') + '</span></div><h1>Password needed</h1><p>Enter the password you were given to open this page.</p>'
     + '<label for="pw-i" style="position:absolute;left:-9999px">Password</label><input id="pw-i" type="password" autocomplete="current-password"/><button id="pw-b" type="submit">Open</button><div id="pw-m" role="status"></div></form>'
     + '<script type="application/octet-stream" id="pw-d">' + data + '<' + '/script>'
@@ -7137,6 +7150,7 @@ function ldHeroMapURL() {
 }
 /** The landing page as {css, html, js}. preview: a stand-in replaces the narrative and links stay inert. */
 function buildLanding(preview) {
+  _LD_PREVIEW = !!preview;
   var L = ldEnsure(), H = L.hero || {};
   var bgImg = H.bg === 'image' ? H.image : H.bg === 'map' ? ldHeroMapURL() : '';
   var dark = !!bgImg;
@@ -7151,21 +7165,23 @@ function buildLanding(preview) {
     + '<nav class="ld-nav" id="ld-nav" aria-label="Main">' + nav.join('') + '</nav></header>'
     + '<section class="ld-hero' + (dark ? ' has-bg' : '') + '"' + (bgImg ? ' style="--ld-ov:' + (H.overlay != null ? +H.overlay : 0.45) + '"' : '') + '>'
     + (bgImg ? '<img class="ld-hero-bg" src="' + h(bgImg) + '" alt=""/>' : '')
-    + '<div class="ld-hero-in">' + (H.eyebrow ? '<div class="ld-tag"><i></i><span>' + h(H.eyebrow) + '</span></div>' : '')
-    + '<h1>' + h(H.title || P.siteTitle || P.name || '') + '</h1>'
-    + ((H.text || P.siteSubtitle) ? '<div class="ld-hero-text">' + ldFmt(H.text || P.siteSubtitle) + '</div>' : '')
-    + '<div class="ld-actions"><a class="ld-btn" href="#shell" data-go="story">' + h(H.cta || 'Explore the proposals') + '</a>'
+    + '<div class="ld-hero-in">' + (H.showTag !== false && H.eyebrow ? ldTag(H.eyebrow, 'hero|eyebrow') : '')
+    + '<h1' + ldEd('hero|title') + '>' + h(H.title || P.siteTitle || P.name || '') + '</h1>'
+    + ((H.text || P.siteSubtitle) ? '<div class="ld-hero-text"' + ldEd('hero|text', 1) + '>' + ldFmt(H.text || P.siteSubtitle) + '</div>' : '')
+    + '<div class="ld-actions"><a class="ld-btn" href="#shell" data-go="story"' + ldEd('hero|cta') + '>' + h(H.cta || 'Explore the proposals') + '</a>'
     + (hasFb ? '<a class="ld-btn ld-btn-ghost" href="#shell" data-go="feedback">Have your say</a>' : '') + '</div></div>'
     + '<a class="ld-scroll" href="#ld-main" aria-label="Scroll down"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="6 9 12 15 18 9"/></svg></a>'
     + (H.bg === 'map' && bgImg ? '<div class="ld-attr">© Mapbox © OpenStreetMap</div>' : '') + '</section>'
     + '<main id="ld-main">' + L.blocks.map(ldBlockHTML).join('') + '</main></div>';
-  var foot = '<footer class="ld-foot"><div>' + (L.footer ? ldFmt(L.footer) : '<p>' + h(P.companyName || '') + (P.companyTagline ? ' · ' + h(P.companyTagline) : '') + '</p>') + '</div>'
-    + '<a href="#landing" class="ld-top">Back to top ↑</a></footer>';
+  var foot = '';
   var css = ''
     + 'html.has-landing{overflow-x:hidden;overflow-y:auto;height:auto;scroll-snap-type:y proximity}html.has-landing body{overflow:visible;height:auto}'
     + 'html.has-landing{scrollbar-width:none}html.has-landing::-webkit-scrollbar{display:none}'
     + 'html.has-landing #shell{position:relative;width:100%;transform:translateZ(0);scroll-snap-align:start}'
     + 'html.has-landing body:not(.in-story) #shell{pointer-events:none}'
+    + 'html.has-landing #navbar{transition:transform .55s var(--ease)}html.has-landing body:not(.in-story) #navbar{transform:translateX(-100%)}'
+    + '@media(max-width:768px){html.has-landing body:not(.in-story) #navbar{transform:translateY(-100%)}}'
+    + '[data-ed]{cursor:text;border-radius:2px;outline:1px dashed transparent;outline-offset:4px;transition:outline-color .15s}[data-ed]:hover{outline-color:rgba(127,127,127,.6)}[data-ed]:focus{outline:2px solid var(--accent);outline-offset:4px}'
     + '#landing{position:relative;background:var(--paper);color:var(--ink);font-family:var(--f-body)}'
     + '.ld-head{position:fixed;top:0;left:0;right:0;z-index:60;display:flex;align-items:center;justify-content:space-between;gap:24px;height:76px;padding:0 48px;transition:background .3s,box-shadow .3s,color .3s,transform .35s var(--ease);color:var(--ink)}.ld-head.gone{transform:translateY(-100%);pointer-events:none}'
     + '.ld-dark-hero .ld-head{color:#fff}.ld-head.solid{background:var(--paper);color:var(--ink);box-shadow:0 1px 0 var(--mid)}'
@@ -7245,6 +7261,33 @@ function buildLanding(preview) {
         if (id === 'landing' || !t) se.scrollTo({ top: 0, behavior: 'smooth' }); else t.scrollIntoView({ behavior: 'smooth' });
       });
     });
+    if (PREVIEW) {
+      // Click-to-edit: send each change to the editor (same origin), never navigate.
+      var toText = function(el) {
+        var inl = function(n) {
+          return Array.prototype.map.call(n.childNodes, function(c) {
+            if (c.nodeType === 3) return c.nodeValue;
+            if (c.nodeType !== 1) return '';
+            var t = c.tagName;
+            if (t === 'BR') return '\n';
+            if (t === 'STRONG' || t === 'B') return '**' + inl(c) + '**';
+            if (t === 'A') return '[' + inl(c) + '](' + c.getAttribute('href') + ')';
+            return inl(c);
+          }).join('');
+        };
+        var blocks = Array.prototype.filter.call(el.children, function(c) { return /^(P|DIV)$/.test(c.tagName); });
+        return (blocks.length ? blocks.map(inl) : [inl(el)]).map(function(t) { return t.replace(/\u00a0/g, ' ').trim(); }).filter(Boolean).join('\n\n');
+      };
+      document.querySelectorAll('[data-ed]').forEach(function(el) {
+        var ml = el.hasAttribute('data-ml');
+        el.setAttribute('contenteditable', 'true'); el.setAttribute('spellcheck', 'true');
+        el.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); }, true);
+        el.addEventListener('keydown', function(e) { if (!ml && e.key === 'Enter') { e.preventDefault(); el.blur(); } });
+        el.addEventListener('focus', function() { try { parent.__ldInlineFocus(el.getAttribute('data-ed')); } catch (e) {} });
+        el.addEventListener('input', function() { try { parent.__ldInline(el.getAttribute('data-ed'), ml ? toText(el) : el.innerText.replace(/\s+/g, ' ').trim()); } catch (e) {} });
+        el.addEventListener('paste', function(e) { e.preventDefault(); var t = (e.clipboardData || window.clipboardData).getData('text/plain'); document.execCommand('insertText', false, ml ? t : t.replace(/\s+/g, ' ')); });
+      });
+    }
     var home = document.getElementById('nav-home');
     if (home) home.onclick = function() { se.scrollTo({ top: Math.max(0, se.scrollTop + shell.getBoundingClientRect().top - window.innerHeight * 0.85), behavior: 'smooth' }); };
     if (PREVIEW || !shell) return;
@@ -7259,25 +7302,32 @@ function buildLanding(preview) {
   };
   return { css: css, html: html, foot: foot, js: '(' + js.toString() + ')(' + (preview ? 'true' : 'false') + ',' + JSON.stringify(feedbackSceneIndexes()) + ');' };
 }
+var _LD_PREVIEW = false;
+/** In the editor's preview, text can be edited in place: data-ed names what it edits (data-ml: paragraphs). */
+function ldEd(ref, ml) { return _LD_PREVIEW ? ' data-ed="' + h(ref) + '"' + (ml ? ' data-ml="1"' : '') : ''; }
+function ldTag(text, ref) { return '<div class="ld-tag"><i></i><span' + ldEd(ref) + '>' + h(text) + '</span></div>'; }
 function ldBlockHTML(b) {
-  var tone = b.tone && b.tone !== 'paper' ? ' t-' + b.tone : '';
-  var head = (b.eyebrow ? '<div class="ld-tag"><i></i><span>' + h(b.eyebrow) + '</span></div>' : '') + (b.heading ? '<h2>' + h(b.heading) + '</h2>' : '');
+  var tone = b.tone && b.tone !== 'paper' ? ' t-' + b.tone : '', B = 'block|' + b.id + '|';
+  var tag = b.showTag !== false && b.eyebrow ? ldTag(b.eyebrow, B + 'eyebrow') : '';
+  var head = tag + (b.heading ? '<h2' + ldEd(B + 'heading') + '>' + h(b.heading) + '</h2>' : '');
+  var body = function(cls) { return '<div class="ld-body' + (cls ? ' ' + cls : '') + '"' + ldEd(B + 'body', 1) + '>' + ldFmt(b.body) + '</div>'; };
+  var I = function(i, k, ml) { return ldEd('item|' + b.id + '|' + i + '|' + k, ml); };
   var inner = '';
-  var items = (b.items || []).filter(function(it) { return Object.keys(it).some(function(k) { return String(it[k] || '').trim(); }); });
-  if (b.type === 'text') inner = '<div class="ld-in"><div class="ld-narrow">' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div></div>';
-  else if (b.type === 'imageText') inner = '<div class="ld-in ld-it ' + (b.side === 'left' ? 'left' : 'right') + '"><div>' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div>'
+  var items = (b.items || []).map(function(it, i) { return { it: it, i: i }; }).filter(function(x) { return Object.keys(x.it).some(function(k) { return String(x.it[k] || '').trim(); }); });
+  if (b.type === 'text') inner = '<div class="ld-in"><div class="ld-narrow">' + head + body() + '</div></div>';
+  else if (b.type === 'imageText') inner = '<div class="ld-in ld-it ' + (b.side === 'left' ? 'left' : 'right') + '"><div>' + head + body() + '</div>'
     + '<div class="ld-it-img">' + (b.image ? '<img src="' + h(b.image) + '" alt="' + h(b.alt || '') + '" loading="lazy"/>' : '<div class="ld-it-ph">Add an image</div>') + '</div></div>';
-  else if (b.type === 'facts') inner = '<div class="ld-in">' + head + (b.body ? '<div class="ld-body ld-narrow">' + ldFmt(b.body) + '</div>' : '')
-    + '<div class="ld-facts">' + items.map(function(it) { return '<div class="ld-fact"><b>' + h(it.value) + '</b><span>' + h(it.label) + '</span></div>'; }).join('') + '</div></div>';
-  else if (b.type === 'cards') inner = '<div class="ld-in">' + head + (b.body ? '<div class="ld-body ld-narrow">' + ldFmt(b.body) + '</div>' : '')
-    + '<div class="ld-cards">' + items.map(function(it) { return '<div class="ld-card"><h3>' + h(it.title) + '</h3>' + ldFmt(it.body) + '</div>'; }).join('') + '</div></div>';
-  else if (b.type === 'timeline') inner = '<div class="ld-in">' + head + (b.body ? '<div class="ld-body ld-narrow">' + ldFmt(b.body) + '</div>' : '')
-    + '<ol class="ld-tl">' + items.map(function(it) { return '<li><small>' + h(it.date) + '</small><h3>' + h(it.title) + '</h3>' + ldFmt(it.body) + '</li>'; }).join('') + '</ol></div>';
-  else if (b.type === 'quote') inner = '<div class="ld-in"><div class="ld-narrow ld-quote">' + (b.eyebrow ? '<div class="ld-tag"><i></i><span>' + h(b.eyebrow) + '</span></div>' : '') + '<blockquote>' + h(b.body) + '</blockquote>' + (b.by ? '<cite>' + h(b.by) + '</cite>' : '') + '</div></div>';
+  else if (b.type === 'facts') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
+    + '<div class="ld-facts">' + items.map(function(x) { return '<div class="ld-fact"><b' + I(x.i, 'value') + '>' + h(x.it.value) + '</b><span' + I(x.i, 'label') + '>' + h(x.it.label) + '</span></div>'; }).join('') + '</div></div>';
+  else if (b.type === 'cards') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
+    + '<div class="ld-cards">' + items.map(function(x) { return '<div class="ld-card"><h3' + I(x.i, 'title') + '>' + h(x.it.title) + '</h3><div' + I(x.i, 'body', 1) + '>' + ldFmt(x.it.body) + '</div></div>'; }).join('') + '</div></div>';
+  else if (b.type === 'timeline') inner = '<div class="ld-in">' + head + (b.body ? body('ld-narrow') : '')
+    + '<ol class="ld-tl">' + items.map(function(x) { return '<li><small' + I(x.i, 'date') + '>' + h(x.it.date) + '</small><h3' + I(x.i, 'title') + '>' + h(x.it.title) + '</h3><div' + I(x.i, 'body', 1) + '>' + ldFmt(x.it.body) + '</div></li>'; }).join('') + '</ol></div>';
+  else if (b.type === 'quote') inner = '<div class="ld-in"><div class="ld-narrow ld-quote">' + tag + '<blockquote' + ldEd(B + 'body') + '>' + h(b.body) + '</blockquote>' + (b.by ? '<cite' + ldEd(B + 'by') + '>' + h(b.by) + '</cite>' : '') + '</div></div>';
   else if (b.type === 'cta') {
     var href = b.target === 'url' ? h(b.url || '#') : '#shell', go = b.target === 'url' ? '' : ' data-go="' + (b.target === 'feedback' ? 'feedback' : 'story') + '"';
-    inner = '<div class="ld-in ld-cta"><div class="ld-narrow">' + head + '<div class="ld-body">' + ldFmt(b.body) + '</div></div>'
-      + (b.button ? '<a class="ld-btn" href="' + href + '"' + go + (b.target === 'url' ? ' target="_blank" rel="noopener"' : '') + '>' + h(b.button) + '</a>' : '') + '</div>';
+    inner = '<div class="ld-in ld-cta"><div class="ld-narrow">' + head + body() + '</div>'
+      + (b.button ? '<a class="ld-btn" href="' + href + '"' + go + (b.target === 'url' ? ' target="_blank" rel="noopener"' : '') + ldEd(B + 'button') + '>' + h(b.button) + '</a>' : '') + '</div>';
   }
   return '<section class="ld-block ld-b-' + b.type + tone + '" id="ld-' + h(b.id) + '">' + inner + '</section>';
 }
@@ -7285,11 +7335,11 @@ function ldBlockHTML(b) {
 function buildLandingPreviewHTML() {
   var L = buildLanding(true);
   return '<!DOCTYPE html><html lang="en" class="has-landing"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>'
-    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>'
+    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>' + fontLinks()
     + '<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--ink:#0f0e0d;--paper:' + (P.paperColor || '#f8f6f1') + ';--mid:#e9e5dc;--ghost:#9a9590;--accent:' + (P.accentColor || '#c0392b') + ';--f-body:"' + (P.fontFamily || 'tt-commons-pro') + '",system-ui,sans-serif}'
     + 'body{font-family:var(--f-body);background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}'
     + '#shell{height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:#252524;color:#9a9590;font-size:12px;letter-spacing:.16em;text-transform:uppercase}#shell b{color:#f8f6f1;font-size:15px;letter-spacing:0;text-transform:none;font-weight:600}'
-    + L.css + '</style></head><body>' + L.html + '<div id="shell"><span>The narrative continues here</span><b>' + h((P.scenes || []).length + ' scenes') + '</b></div>' + L.foot
+    + L.css + styleCSS(L.css) + '</style></head><body>' + L.html + '<div id="shell"><span>The narrative continues here</span><b>' + h((P.scenes || []).length + ' scenes') + '</b></div>' + L.foot
     + '<script>' + L.js + '<' + '/script></body></html>';
 }
 
@@ -7357,8 +7407,7 @@ function renderLandingList() {
     + '<p style="font-size:11px;line-height:1.55;color:var(--ghost);margin:8px 0 0">' + (on ? 'The site opens on this page; the narrative follows as you scroll down.' : 'Off: the site opens straight on the narrative. Turn on for a traditional page above it.') + '</p></div>';
   html += '<div class="ps"><div class="st">Page</div>'
     + item('head', lucideSVG('panel-top', 12, 'currentColor'), 'Header and logo')
-    + item('hero', lucideSVG('image', 12, 'currentColor'), 'Hero')
-    + item('foot', lucideSVG('panel-bottom', 12, 'currentColor'), 'Footer') + '</div>';
+    + item('hero', lucideSVG('image', 12, 'currentColor'), 'Hero') + '</div>';
   html += '<div class="ps"><div class="st">Blocks</div>';
   L.blocks.forEach(function(b, i) {
     var t = LD_TYPES[b.type] || { label: b.type };
@@ -7406,7 +7455,8 @@ function renderLandingEditor() {
       + '<p style="font-size:11px;line-height:1.55;color:var(--ghost)">The menu (top right) lists blocks you’ve given a menu label, then the narrative, then <b>Have your say</b> if a scene collects feedback.</p></div>';
   } else if (LDSEL === 'hero') {
     html = '<div class="rh"><div class="re">Landing page</div><div class="rt">Hero</div></div><div class="rs">'
-      + ldField('Small label above the title', 'hero', 'eyebrow', H.eyebrow, 'Public consultation')
+      + '<div class="lr" style="margin-bottom:8px"><span class="ll">Small label above the title</span><button class="tg' + (H.showTag !== false ? ' on' : '') + '" data-tag-s="hero"></button></div>'
+      + (H.showTag !== false ? ldField('Label', 'hero', 'eyebrow', H.eyebrow, 'Public consultation') : '')
       + ldField('Title', 'hero', 'title', H.title, P.siteTitle || '')
       + ldArea('Text', 'hero', 'text', H.text, P.siteSubtitle || '', 3, LD_BODY_HINT)
       + ldField('Button', 'hero', 'cta', H.cta, 'Explore the proposals')
@@ -7425,8 +7475,10 @@ function renderLandingEditor() {
     html = '<div class="rh"><div class="re">Landing block</div><div class="rt">' + h(t.label) + '</div></div><div class="rs">'
       + ldField('Menu label', 'block', 'nav', b.nav, 'Not in the menu', 'Give the block a label to list it in the menu at the top right.')
       + ldSelect('Background', 'block', 'tone', b.tone || 'paper', [['paper', 'Paper'], ['white', 'White'], ['dark', 'Dark'], ['accent', 'Accent colour']]);
-    if (b.type !== 'quote') html += ldField('Small label', 'block', 'eyebrow', b.eyebrow, 'Optional') + ldField('Heading', 'block', 'heading', b.heading, '');
-    if (b.type === 'quote') html += ldField('Small label', 'block', 'eyebrow', b.eyebrow, 'Optional') + ldArea('Quote', 'block', 'body', b.body, '', 4) + ldField('Who said it', 'block', 'by', b.by, 'Name, role');
+    html += '<div class="lr" style="margin-bottom:8px"><span class="ll">Small label</span><button class="tg' + (b.showTag !== false ? ' on' : '') + '" data-tag-s="block"></button></div>'
+      + (b.showTag !== false ? ldField('Label', 'block', 'eyebrow', b.eyebrow, 'e.g. Introduction') : '');
+    if (b.type !== 'quote') html += ldField('Heading', 'block', 'heading', b.heading, '');
+    if (b.type === 'quote') html += ldArea('Quote', 'block', 'body', b.body, '', 4) + ldField('Who said it', 'block', 'by', b.by, 'Name, role');
     else html += ldArea(b.type === 'text' || b.type === 'imageText' ? 'Text' : 'Intro text', 'block', 'body', b.body, b.type === 'text' || b.type === 'imageText' ? '' : 'Optional', b.type === 'text' ? 8 : 4, LD_BODY_HINT);
     if (b.type === 'imageText') html += ldImage('Image', 'block', 'image', b.image) + ldField('Image description (for screen readers)', 'block', 'alt', b.alt, '') + ldSelect('Image on the', 'block', 'side', b.side || 'right', [['right', 'Right'], ['left', 'Left']]);
     if (b.type === 'cta') {
@@ -7465,6 +7517,9 @@ function renderLandingEditor() {
       ldRefresh();
     });
   });
+  rp.querySelectorAll('[data-tag-s]').forEach(function(t) {
+    t.onclick = function() { var o = ldScope(t.dataset.tagS); if (!o) return; o.showTag = o.showTag === false; if (o.showTag && !o.eyebrow) o.eyebrow = t.dataset.tagS === 'hero' ? 'Public consultation' : 'Label'; markDirty(); renderLandingEditor(); ldRefresh(); };
+  });
   rp.querySelectorAll('[data-img-s]').forEach(function(b) {
     b.onclick = function() {
       var s = b.dataset.imgS, k = b.dataset.imgK;
@@ -7481,16 +7536,33 @@ function renderLandingEditor() {
   if (add) add.onclick = function() { var bb = ldBlock(), it = {}; LD_ITEM_FIELDS[bb.type].forEach(function(f) { it[f[0]] = ''; }); (bb.items = bb.items || []).push(it); markDirty(); renderLandingEditor(); ldRefresh(); };
 }
 
+// Click-to-edit in the preview writes straight into the project; the preview itself isn't redrawn
+// (that would drop the cursor), only the list and the fields on the right.
+var _ldSync = null;
+window.__ldInline = function(ref, v) {
+  var p = ref.split('|'), L = ldEnsure(), b;
+  if (p[0] === 'hero') L.hero[p[1]] = v;
+  else if (p[0] === 'block') { b = L.blocks.filter(function(x) { return x.id === p[1]; })[0]; if (b) b[p[2]] = v; }
+  else if (p[0] === 'item') { b = L.blocks.filter(function(x) { return x.id === p[1]; })[0]; if (b && b.items && b.items[+p[2]]) b.items[+p[2]][p[3]] = v; }
+  markDirty();
+  clearTimeout(_ldSync);
+  _ldSync = setTimeout(function() { if (mainTab === 'landing') { renderLandingList(); renderLandingEditor(); } }, 350);
+};
+window.__ldInlineFocus = function(ref) {
+  if (mainTab !== 'landing') return;
+  var p = ref.split('|'), sel = p[0] === 'hero' ? 'hero' : p[1];
+  if (sel !== LDSEL) { LDSEL = sel; renderLandingList(); renderLandingEditor(); }
+};
 /** Redraw the preview (debounced), keeping its scroll position; jump: scroll to the selected block after. */
 function ldRefresh(jump) {
   clearTimeout(_ldTimer);
   _ldTimer = setTimeout(function() {
     var f = el('ld-frame');
-    if (!f || mainTab !== 'landing') return;
+    if (!f || (mainTab !== 'landing' && mainTab !== 'style')) return;
     var y = 0;
     try { y = f.contentWindow.scrollY || 0; } catch (e) {}
     f.onload = function() { try { f.contentWindow.scrollTo(0, y); } catch (e) {} if (jump) ldScrollPreview(); };
-    f.srcdoc = buildLandingPreviewHTML();
+    f.srcdoc = mainTab === 'style' ? buildStylePreviewHTML() : buildLandingPreviewHTML();
   }, 220);
 }
 function ldScrollPreview() {
@@ -7516,6 +7588,199 @@ function enterLandingMode() {
 }
 function leaveLandingMode() { var a = el('app'); if (a) a.classList.remove('ld-mode'); }
 
+// ═══════════════════════════════════════════════════
+//  SITE STYLE: fonts, colours, shape and label case, shared by every exported page
+// ═══════════════════════════════════════════════════
+// Colours and the body font keep their original homes (P.accentColor, P.paperColor, P.progressColor,
+// P.fontFamily); the rest lives in P.style. styleCSS() is appended after each page's own CSS.
+var FONT_CHOICES = [
+  { f: 'tt-commons-pro', g: 'Your Adobe fonts', w: '' },
+  { f: 'Inter', g: 'Sans serif', w: '400;500;600' }, { f: 'DM Sans', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Manrope', g: 'Sans serif', w: '400;500;600' }, { f: 'Work Sans', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Public Sans', g: 'Sans serif', w: '400;500;600' }, { f: 'IBM Plex Sans', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Source Sans 3', g: 'Sans serif', w: '400;500;600' }, { f: 'Figtree', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Plus Jakarta Sans', g: 'Sans serif', w: '400;500;600' }, { f: 'Outfit', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Space Grotesk', g: 'Sans serif', w: '400;500;600' }, { f: 'Lexend', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Karla', g: 'Sans serif', w: '400;500;600' }, { f: 'Archivo', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Barlow', g: 'Sans serif', w: '400;500;600' },
+  { f: 'Fraunces', g: 'Serif', w: '400;500;600' }, { f: 'Playfair Display', g: 'Serif', w: '400;500;600' },
+  { f: 'Lora', g: 'Serif', w: '400;500;600' }, { f: 'Newsreader', g: 'Serif', w: '400;500;600' },
+  { f: 'Source Serif 4', g: 'Serif', w: '400;500;600' }, { f: 'EB Garamond', g: 'Serif', w: '400;500;600' },
+  { f: 'Cormorant Garamond', g: 'Serif', w: '400;500;600' }, { f: 'DM Serif Display', g: 'Serif', w: '400' },
+  { f: 'Instrument Serif', g: 'Serif', w: '400' }
+];
+var STYLE_PRESETS = [
+  { n: 'Allto', accent: '#c0392b', paper: '#f8f6f1', ink: '#0f0e0d', dark: '#0f0e0d', teal: '#2a7c6b', body: 'tt-commons-pro', head: '', radius: 4 },
+  { n: 'Civic', accent: '#1f4fd1', paper: '#f6f7f9', ink: '#101828', dark: '#0b1b3a', teal: '#12805c', body: 'Public Sans', head: '', radius: 6 },
+  { n: 'Garden', accent: '#2f6b3a', paper: '#f4f1e8', ink: '#1c2118', dark: '#1f2a1c', teal: '#2f6b3a', body: 'Work Sans', head: 'Fraunces', radius: 10 },
+  { n: 'Terracotta', accent: '#c2562b', paper: '#faf5ef', ink: '#2b1d16', dark: '#2b1d16', teal: '#3c7a63', body: 'DM Sans', head: 'Playfair Display', radius: 2 },
+  { n: 'Coastal', accent: '#0f766e', paper: '#f3f7f7', ink: '#0b2525', dark: '#0b2525', teal: '#0f766e', body: 'Figtree', head: 'Newsreader', radius: 12 },
+  { n: 'Mono', accent: '#111111', paper: '#ffffff', ink: '#111111', dark: '#111111', teal: '#444444', body: 'Inter', head: 'Space Grotesk', radius: 0 }
+];
+function styleEnsure() {
+  if (!P.style) P.style = {};
+  var S = P.style;
+  if (S.caps == null) S.caps = false;
+  if (S.radius == null) S.radius = 4;
+  if (S.headWeight == null) S.headWeight = 600;
+  if (S.headFont == null) S.headFont = '';
+  if (!S.ink) S.ink = '#0f0e0d';
+  if (!S.dark) S.dark = '#0f0e0d';
+  return S;
+}
+function fontInfo(f) { return FONT_CHOICES.filter(function(x) { return x.f === f; })[0] || null; }
+function fontStack(f) { return '"' + String(f || 'tt-commons-pro').replace(/"/g, '') + '",system-ui,sans-serif'; }
+/** Google Fonts stylesheet for the fonts in use (Adobe/Typekit fonts come from the kit link). */
+function fontLinks() {
+  var S = styleEnsure(), fams = [P.fontFamily || 'tt-commons-pro', S.headFont].filter(function(f, i, a) { return f && a.indexOf(f) === i; });
+  var g = fams.map(fontInfo).filter(function(x) { return x && x.w; });
+  if (!g.length) return '';
+  return '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/><link rel="stylesheet" href="https://fonts.googleapis.com/css2?'
+    + g.map(function(x) { return 'family=' + x.f.replace(/ /g, '+') + (x.w.indexOf(';') > 0 ? ':wght@' + x.w : ''); }).join('&') + '&display=swap"/>';
+}
+/** Sentence-case labels: every uppercase rule in the page's CSS loses its capitals and wide tracking,
+ *  and small labels grow a little so they stay readable. */
+function noCapsCSS(css) {
+  var out = '', re = /([^{}]+)\{([^{}]*text-transform:\s*uppercase[^{}]*)\}/g, m;
+  while ((m = re.exec(css))) {
+    var sel = m[1].trim(), fs = /font-size:\s*([\d.]+)px/.exec(m[2]);
+    if (!sel || sel.charAt(0) === '@') continue;
+    out += sel + '{letter-spacing:.01em!important' + (fs && +fs[1] < 12.5 ? ';font-size:' + Math.min(13, +fs[1] + 2.5) + 'px!important' : '') + '}';
+  }
+  return out + '*,*::before,*::after{text-transform:none!important}';
+}
+/** The site style as CSS, given the CSS it should override (for the label-case rules). */
+function styleCSS(baseCss) {
+  var S = styleEnsure(), head = S.headFont || P.fontFamily || 'tt-commons-pro', hi = fontInfo(head);
+  var hw = hi && hi.w && hi.w.indexOf('600') < 0 ? 400 : Math.min(600, +S.headWeight || 600);
+  var css = ':root{--f-body:' + fontStack(P.fontFamily) + ';--f-head:' + fontStack(head) + ';--ink:' + S.ink + ';--dark:' + S.dark + ';--radius:' + (+S.radius || 0) + 'px;--head-w:' + hw
+    + (P.accentColor ? ';--accent:' + P.accentColor + ';--red:' + P.accentColor : '') + (P.paperColor ? ';--paper:' + P.paperColor : '') + (P.progressColor ? ';--teal:' + P.progressColor : '') + '}'
+    + 'body{color:var(--ink)}'
+    + '.chapter h1,.chapter h2,.ld-hero h1,.ld-block h2,.ld-card h3,.ld-tl h3,.ld-quote blockquote,.ld-wordmark,.v-title,.r-left h1,.thanks h2,.sheet h2,.pc .nm,.kpi b,.r-count b,.dn-n,.pw h1,.sp h1,.sp h2{font-family:var(--f-head)}'
+    + '.chapter h1,.chapter h2,.ld-hero h1,.ld-block h2,.v-title,.r-left h1,.thanks h2,.pw h1,.sp h1,.sp h2{font-weight:var(--head-w)}'
+    + '#navbar,#drawer,.ld-block.t-dark{background:var(--dark)}'
+    + '.ld-btn,.ld-nav a.ld-nav-cta,.ld-card,.ld-it-img img,.ld-it-ph,.go,.opt,.plot,.kpi,.pc,.scen,.r-qr,.money,.pw input,.pw button,.sp-btn,.sp-card{border-radius:var(--radius)}';
+  if (!S.caps) css += noCapsCSS(baseCss || '');
+  return css;
+}
+
+// ── STYLE EDITOR: the Style top tab. Left: presets; centre: preview; right: fonts, colours, shape.
+function buildStylePreviewHTML() {
+  if (P.layout === 'landing') return buildLandingPreviewHTML();
+  var sc = (P.scenes || [])[0] || {}, sc2 = (P.scenes || [])[1] || {};
+  var base = '*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--ink:#0f0e0d;--paper:#f8f6f1;--mid:#e9e5dc;--ghost:#9a9590;--accent:#c0392b;--teal:#2a7c6b;--f-body:"tt-commons-pro",system-ui,sans-serif}'
+    + 'body{font-family:var(--f-body);background:var(--paper);-webkit-font-smoothing:antialiased}'
+    + '.sp{display:grid;grid-template-columns:52px minmax(0,42%) 1fr;min-height:100vh}.sp-nav{background:#0f0e0d;display:flex;flex-direction:column;align-items:center;gap:14px;padding:22px 0}.sp-nav i{width:8px;height:8px;border-radius:50%;border:1.5px solid #9a9590}.sp-nav i.on{background:var(--accent);border-color:var(--accent)}'
+    + '.sp-prose{padding:12vh 48px 48px 56px;display:flex;flex-direction:column;gap:18px}.tag{display:inline-flex;align-items:center;gap:10px;font-size:9px;letter-spacing:.24em;text-transform:uppercase}.tag i{width:8px;height:8px;border-radius:50%;background:var(--accent)}'
+    + '.sp h2{font-size:34px;line-height:1.1}.sp p{font-size:15px;line-height:1.8;color:#3a3733}.sp-row{display:flex;gap:10px;flex-wrap:wrap}'
+    + '.sp-btn{padding:13px 18px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;background:var(--accent);color:#fff;border:1.5px solid var(--accent)}.sp-btn.ghost{background:none;color:var(--ink);border-color:var(--ink)}'
+    + '.sp-card{border:1px solid var(--mid);background:#fff;padding:16px 18px}.sp-card small{display:block;font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--ghost);margin-bottom:6px}.sp-card b{font-size:22px;font-weight:600;color:var(--teal)}'
+    + '.sp-map{background:linear-gradient(135deg,#2a2a29,#1d1d1c);position:relative}.sp-map span{position:absolute;top:18px;left:18px;background:rgba(15,14,13,.85);color:#e8e4dd;border-top:2px solid var(--accent);padding:10px 14px;font-size:10px;letter-spacing:.1em;text-transform:uppercase}'
+    + '.sp-map em{position:absolute;left:40%;top:45%;width:26%;height:22%;border:2px dashed var(--accent);background:rgba(192,57,43,.12)}';
+  var strip = function(s) { return h(String(s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 260)); };
+  var html = '<div class="sp"><div class="sp-nav"><i class="on"></i><i></i><i></i><i></i></div><div class="sp-prose">'
+    + '<div class="tag"><i></i><span>' + h(sc.label || 'Site boundary') + '</span></div><h2>' + h(sc.title || 'The red line') + '</h2><p>' + (strip(sc.body) || 'This is the defined application boundary for the proposed development.') + '</p>'
+    + '<div class="sp-row"><button class="sp-btn">Have your say</button><button class="sp-btn ghost">Explain the map</button></div>'
+    + '<div class="sp-row" style="margin-top:8px"><div class="sp-card"><small>Payback</small><b>Pays back in 12 years</b></div></div>'
+    + '<div class="tag" style="margin-top:22px"><i></i><span>' + h(sc2.label || 'Wider context') + '</span></div><h2>' + h(sc2.title || 'The neighbourhood') + '</h2><p>' + (strip(sc2.body) || '') + '</p>'
+    + '</div><div class="sp-map"><span>' + h(sc.label || 'Site boundary') + '</span><em></em></div></div>';
+  return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/><link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>' + fontLinks()
+    + '<style>' + base + styleCSS(base) + '</style></head><body>' + html + '</body></html>';
+}
+function renderStyleList() {
+  var box = el('st-list');
+  if (!box) return;
+  box.innerHTML = '<div class="ps"><div class="st">Presets</div><p style="font-size:11px;line-height:1.55;color:var(--ghost);margin:0 0 10px">A starting point for fonts, colours and corners. Fine-tune on the right.</p>'
+    + STYLE_PRESETS.map(function(s, i) {
+      return '<button class="st-preset" data-preset="' + i + '"><span class="sw">' + [s.accent, s.dark, s.paper, s.teal].map(function(c) { return '<i style="background:' + c + '"></i>'; }).join('') + '</span>'
+        + '<span class="nm" style="font-family:' + h(fontStack(s.head || s.body)) + '">' + h(s.n) + '</span><span class="fs">' + h(s.head ? s.head + ' + ' + s.body : s.body === 'tt-commons-pro' ? 'TT Commons Pro' : s.body) + '</span></button>';
+    }).join('') + '</div>'
+    + '<div class="ps"><p style="font-size:11px;line-height:1.55;color:var(--ghost);margin:0">The style applies to the whole site: the landing page, the narrative, poll pages and results screens.</p></div>';
+  box.querySelectorAll('[data-preset]').forEach(function(b) {
+    b.onclick = function() {
+      var s = STYLE_PRESETS[+b.dataset.preset], S = styleEnsure();
+      P.accentColor = s.accent; P.paperColor = s.paper; P.progressColor = s.teal; S.ink = s.ink; S.dark = s.dark; P.fontFamily = s.body; S.headFont = s.head; S.radius = s.radius;
+      markDirty(); renderStyleEditor(); ldRefresh();
+    };
+  });
+}
+function stFontPicker(label, key, cur, allowSame) {
+  var groups = {}, name = function(f) { return f === 'tt-commons-pro' ? 'TT Commons Pro' : f; };
+  FONT_CHOICES.forEach(function(x) { (groups[x.g] = groups[x.g] || []).push(x); });
+  var custom = cur && !fontInfo(cur);
+  var html = '<div class="f"><label class="fl">' + label + '</label><details class="st-fp"><summary style="font-family:' + h(fontStack(cur || P.fontFamily)) + '">' + (cur ? h(name(cur)) : 'Same as body text') + '</summary><div class="st-fp-list">';
+  if (allowSame) html += '<button data-font-k="' + key + '" data-font="" class="' + (!cur ? 'on' : '') + '">Same as body text</button>';
+  Object.keys(groups).forEach(function(g) {
+    html += '<div class="st-fp-g">' + h(g) + '</div>' + groups[g].map(function(x) {
+      return '<button data-font-k="' + key + '" data-font="' + h(x.f) + '" class="' + (cur === x.f ? 'on' : '') + '" style="font-family:' + h(fontStack(x.f)) + '">' + h(name(x.f)) + '<small>Aa Bb 123</small></button>';
+    }).join('');
+  });
+  html += '<div class="st-fp-g">Another Adobe font</div><div style="display:flex;gap:6px;padding:0 4px 6px"><input type="text" placeholder="Font name from your Adobe kit" value="' + (custom ? h(cur) : '') + '" data-font-custom="' + key + '" style="flex:1"/></div>';
+  return html + '</div></details></div>';
+}
+function stColour(label, id, val, hint) {
+  return '<div class="f"><label class="fl">' + label + '</label><div class="cr"><input type="color" data-col="' + id + '" value="' + h(val) + '"/><input type="text" data-col-t="' + id + '" value="' + h(val) + '"/></div>'
+    + (hint ? '<div style="font-size:10.5px;color:var(--ghost);margin-top:4px">' + hint + '</div>' : '') + '</div>';
+}
+function renderStyleEditor() {
+  var S = styleEnsure();
+  var html = '<div class="rh"><div class="re">Whole site</div><div class="rt">Style</div></div>'
+    + '<div class="rs"><div class="st">Fonts</div>' + stFontPicker('Headings', 'head', S.headFont, true) + stFontPicker('Body text', 'body', P.fontFamily || 'tt-commons-pro', false)
+    + ldSelect('Heading weight', 'style', 'headWeight', S.headWeight, [[400, 'Regular'], [500, 'Medium'], [600, 'Demibold']])
+    + '<div class="f"><label class="fl">Adobe Typekit kit ID</label><input type="text" id="st-kit" value="' + h(P.typekitId || 'dfg2dug') + '"/></div></div>'
+    + '<div class="rs"><div class="st">Colours</div>'
+    + stColour('Accent', 'accent', P.accentColor || '#c0392b', 'Buttons, the red line, highlights')
+    + stColour('Background', 'paper', P.paperColor || '#f8f6f1')
+    + stColour('Text', 'ink', S.ink)
+    + stColour('Dark', 'dark', S.dark, 'The narrative’s side bar and dark sections')
+    + stColour('Positive', 'teal', P.progressColor || '#2a7c6b', 'Progress bar, “pays back” and other good news') + '</div>'
+    + '<div class="rs"><div class="st">Shape and labels</div>'
+    + '<div class="f"><label class="fl">Corner rounding <span id="st-rad-v">' + (+S.radius || 0) + 'px</span></label><input type="range" min="0" max="20" step="1" data-s="style" data-k="radius" data-num="1" value="' + (+S.radius || 0) + '"/></div>'
+    + '<div class="lr"><span class="ll">Uppercase labels</span><button class="tg' + (S.caps ? ' on' : '') + '" id="st-caps"></button></div>'
+    + '<p style="font-size:10.5px;color:var(--ghost);margin-top:6px;line-height:1.5">Off: small labels such as “Public consultation” stay in sentence case.</p></div>';
+  setHTML('rpc', html);
+  var rp = el('rpc'), done = function() { markDirty(); ldRefresh(); };
+  rp.querySelectorAll('[data-s="style"]').forEach(function(inp) {
+    inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', function() {
+      S[inp.dataset.k] = inp.dataset.num || inp.tagName === 'SELECT' ? +inp.value : inp.value;
+      if (inp.dataset.k === 'radius') el('st-rad-v').textContent = inp.value + 'px';
+      done();
+    });
+  });
+  rp.querySelectorAll('[data-font]').forEach(function(b) {
+    b.onclick = function() { if (b.dataset.fontK === 'head') S.headFont = b.dataset.font; else P.fontFamily = b.dataset.font; done(); renderStyleEditor(); };
+  });
+  rp.querySelectorAll('[data-font-custom]').forEach(function(inp) {
+    inp.addEventListener('change', function() { var v = inp.value.trim(); if (!v) return; if (inp.dataset.fontCustom === 'head') S.headFont = v; else P.fontFamily = v; done(); renderStyleEditor(); });
+  });
+  var setCol = function(id, v) {
+    if (id === 'accent') P.accentColor = v; else if (id === 'paper') P.paperColor = v; else if (id === 'teal') P.progressColor = v; else S[id] = v;
+    var a = rp.querySelector('[data-col="' + id + '"]'), t = rp.querySelector('[data-col-t="' + id + '"]');
+    if (a && a.value !== v) a.value = v; if (t && t.value !== v) t.value = v;
+    done();
+  };
+  rp.querySelectorAll('[data-col]').forEach(function(inp) { inp.addEventListener('input', function() { setCol(inp.dataset.col, inp.value); }); });
+  rp.querySelectorAll('[data-col-t]').forEach(function(inp) { inp.addEventListener('change', function() { if (/^#[0-9a-f]{6}$/i.test(inp.value.trim())) setCol(inp.dataset.colT, inp.value.trim()); }); });
+  var kit = el('st-kit'); if (kit) kit.addEventListener('change', function() { P.typekitId = kit.value.trim() || 'dfg2dug'; done(); });
+  var caps = el('st-caps'); if (caps) caps.onclick = function() { S.caps = !S.caps; caps.classList.toggle('on', S.caps); done(); };
+}
+var _stFontsLoaded = false;
+function enterStyleMode() {
+  el('app').classList.add('st-mode');
+  styleEnsure();
+  if (!_stFontsLoaded) {
+    _stFontsLoaded = true;
+    var l = document.createElement('link'); l.rel = 'stylesheet';
+    l.href = 'https://fonts.googleapis.com/css2?' + FONT_CHOICES.filter(function(x) { return x.w; }).map(function(x) { return 'family=' + x.f.replace(/ /g, '+') + (x.w.indexOf(';') > 0 ? ':wght@400;600' : ''); }).join('&') + '&display=swap';
+    document.head.appendChild(l);
+  }
+  renderStyleList(); renderStyleEditor();
+  document.querySelectorAll('[data-ld-dev]').forEach(function(b) { b.onclick = function() { ldSetDevice(b.dataset.ldDev); }; });
+  ldSetDevice(LD_DEVICE);
+  ldRefresh();
+}
+function leaveStyleMode() { var a = el('app'); if (a) a.classList.remove('st-mode'); }
+
 function buildOutputHTML() {
   var LAND = P.layout === 'landing' ? buildLanding(false) : null;
   var cfg   = buildCfg();
@@ -7540,7 +7805,7 @@ function buildOutputHTML() {
     + '<link href="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.css" rel="stylesheet"/>\n'
     + '<script src="https://api.mapbox.com/mapbox-gl-js/v3.9.0/mapbox-gl.js"><' + '/script>\n'
     + (P.codesignEnabled ? '<script src="https://cdn.jsdelivr.net/npm/chart.js"><' + '/script>\n' : '')
-    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId||'dfg2dug') + '.css"/>\n'
+    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId||'dfg2dug') + '.css"/>\n' + fontLinks() + '\n'
     + '<style>\n' + css + '\n' + lbcss + '\n' + buildTextStyleCSS() + '\n</style>\n'
     + (function(){ var cc=''; if(P.accentColor&&P.accentColor!=='#c0392b')cc+='--accent:'+P.accentColor+';--red:'+P.accentColor+';'; if(P.paperColor&&P.paperColor!=='#f8f6f1')cc+='--paper:'+P.paperColor+';'; if(P.progressColor&&P.progressColor!=='#2a7c6b')cc+='--teal:'+P.progressColor+';'; if(P.fontFamily&&P.fontFamily!=='tt-commons-pro')cc+='--f-body:\"'+P.fontFamily+'\",system-ui,sans-serif;'; return cc?'<style>:root{'+cc+'}</style>\n':''; })()
     + '</head>\n<body>\n'
@@ -7567,6 +7832,7 @@ function buildOutputHTML() {
     + (LAND ? LAND.foot + buildCookieBanner() + '<style>' + LAND.css + '</style>\n' : '')
     + '<button type="button" id="lb-close-badge" onclick="closeLightbox()" aria-label="Close" style="display:none">&#10005;</button>\n'
     + '<style>\n' + pcss + '\n</style>\n'
+    + '<style>\n' + styleCSS(css + lbcss + pcss + buildTextStyleCSS() + (LAND ? LAND.css : '')) + '\n' + buildTextStyleCSS() + '\n</style>\n'
     + '<script>\n' + cfg + '\n' + js + '\n<' + '/script>\n'
     + (LAND ? '<script>\n' + LAND.js + '\n<' + '/script>\n' : '')
     + '</body>\n</html>';
