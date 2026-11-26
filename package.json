@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npm run build:pen && vite build",
+    "build:pen": "esbuild ultrahand/src/pen-global.ts --bundle --format=iife --target=es2018 --minify --external:mapbox-gl --outfile=public/shared/allto-pen.js",
     "preview": "vite preview"
   },
   "dependencies": {

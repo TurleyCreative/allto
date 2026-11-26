@@ -223,6 +223,8 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 .ctx-marker-wrap{display:flex;flex-direction:column;align-items:center;transform:translateY(-100%)}
 </style>
 <link rel="stylesheet" href="../shared/allto-editor.css"/>
+<script src="../shared/allto-pen.js"></script>
+<style>.pen-hint{position:absolute;left:0;top:0;z-index:5;pointer-events:none;background:#141414;color:#fff;font-size:11.5px;font-weight:600;padding:4px 8px;white-space:nowrap}.pen-measures{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden}.pen-m{position:absolute;left:0;top:0;background:rgba(20,20,20,.86);color:#fff;font-size:11.5px;font-weight:600;padding:3px 7px;white-space:nowrap}.pen-m.ang{background:#2433e0}</style>
 <style>
 #lp-landing{display:none}#ld-stage{display:none;position:absolute;inset:0;z-index:40;background:#1b1b1a;justify-content:center;align-items:stretch}
 #lp-style{display:none}#app.ld-mode #lp>.tabs,#app.ld-mode #lp>.tc,#app.st-mode #lp>.tabs,#app.st-mode #lp>.tc{display:none!important}#app.ld-mode #lp-landing,#app.st-mode #lp-style{display:block}#app.ld-mode #ld-stage,#app.st-mode #ld-stage{display:flex}
@@ -515,6 +517,7 @@ var LUCIDE_PATHS = {
   'panel-bottom': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>',
   'monitor': '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
   'smartphone': '<rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/>',
+  'pen-tool': '<path d="M15.707 21.293a1 1 0 0 1-1.414 0l-1.586-1.586a1 1 0 0 1 0-1.414l5.586-5.586a1 1 0 0 1 1.414 0l1.586 1.586a1 1 0 0 1 0 1.414z"/><path d="m18 13-1.375-6.874a1 1 0 0 0-.746-.776L3.235 2.028a1 1 0 0 0-1.207 1.207L5.35 15.879a1 1 0 0 0 .776.746L13 18"/><path d="m2.3 2.3 7.286 7.286"/><circle cx="11" cy="11" r="2"/>',
   'circle': '<circle cx="12" cy="12" r="9"/>',
   'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'type': '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
@@ -923,7 +926,7 @@ function h(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function el(id) { return document.getElementById(id); }
-function setHTML(id, html) { var e = el(id); if(e) e.innerHTML = html; }
+function setHTML(id, html) { var e = el(id); if(e) e.innerHTML = html; if (id === 'rpc' && window.__penSync) setTimeout(window.__penSync, 0); }
 function mk(tag, cls, html) { var e = document.createElement(tag); if(cls) e.className=cls; if(html) e.innerHTML=html; return e; }
 
 // ═══════════════════════════════════════════════════
@@ -1258,12 +1261,16 @@ function renderLineEditor(i) {
 
   // GeoJSON
   html += '<div class="rs"><div class="st">GeoJSON Coordinates'+infoBtn('Paste a GeoJSON Feature or FeatureCollection with LineString / MultiLineString geometry.')+'</div>';
-  html += '<button class="btn btn-g btn-ic" id="ln-draw-btn" style="width:100%;margin-bottom:8px;justify-content:center">'+lucideSVG('pencil',13,'currentColor')+'Draw on map</button>';
+  html += penToolsHTML('ln');
+  html += '<button class="btn btn-g btn-ic" id="ln-draw-btn" style="width:100%;margin-bottom:8px;justify-content:center">'+lucideSVG('pencil',13,'currentColor')+'Draw on map (simple)</button>';
   html += '<textarea id="ln-geojson" style="min-height:120px;font-family:var(--mono);font-size:10px">'+h(ln.geojson||'')+'</textarea>';
   html += '<button class="btn btn-g" id="ln-geojson-apply" style="margin-top:6px;width:100%">Apply GeoJSON</button>';
   html += '</div>';
 
   setHTML('rpc', html);
+  var lnPen = el('ln-pen-draw'); if (lnPen) lnPen.onclick = function() { penDraw('line', P.lines[i], function() { renderLineEditor(i); }); };
+  var lnSm = el('ln-pen-smooth'); if (lnSm) lnSm.onclick = function() { penSmoothAll('line', P.lines[i], 1); renderLineEditor(i); };
+  var lnSh = el('ln-pen-sharp'); if (lnSh) lnSh.onclick = function() { penSmoothAll('line', P.lines[i], 0); renderLineEditor(i); };
 
   // Bindings
   bindInput('ln-name', function(v){ P.lines[i].name=v; renderLines(); });
@@ -4106,7 +4113,8 @@ function renderZoneEditor(i) {
   html += '</div>';
   if (z.circle) html += '<div class="rs" style="display:none">';
   html += '<div class="rs"><div class="st">Polygon Coordinates</div>';
-  html += '<button class="btn btn-g btn-ic" id="zn-draw-btn" style="width:100%;margin-bottom:8px;justify-content:center">'+lucideSVG('pencil',13,'currentColor')+'Draw on map</button>';
+  html += penToolsHTML('zn');
+  html += '<button class="btn btn-g btn-ic" id="zn-draw-btn" style="width:100%;margin-bottom:8px;justify-content:center">'+lucideSVG('pencil',13,'currentColor')+'Draw on map (simple)</button>';
   html += '<div class="nt w">Draw on <a href="https://geojson.io" target="_blank">geojson.io</a> &rarr; copy coordinates array &rarr; paste below.</div>';
   html += '<div class="f"><label class="fl">Coordinates JSON</label><textarea id="zn-coords" style="min-height:110px;font-size:10px">'+h(JSON.stringify(z.coordinates,null,1))+'</textarea></div>';
   html += '</div>';
@@ -4114,6 +4122,10 @@ function renderZoneEditor(i) {
 
   setHTML('rpc', html);
 
+  // Pen
+  var znPen = el('zn-pen-draw'); if (znPen) znPen.onclick = function() { penDraw('zone', P.zones[i], function() { renderZoneEditor(i); }); };
+  var znSm = el('zn-pen-smooth'); if (znSm) znSm.onclick = function() { penSmoothAll('zone', P.zones[i], 1); renderZoneEditor(i); };
+  var znSh = el('zn-pen-sharp'); if (znSh) znSh.onclick = function() { penSmoothAll('zone', P.zones[i], 0); renderZoneEditor(i); };
   // Circle zone controls
   var circTog = el('zn-circ-tog');
   if (circTog) circTog.addEventListener('click', function() {
@@ -6531,6 +6543,7 @@ function initPreview() {
   pMap.on('load', function() {
     pMap.resize();
     addPreviewLayers();
+    try { penInit(); } catch (e) { console.warn('Pen unavailable', e); }
     initDraw();
     refreshMK();
     refreshOV();
@@ -6856,6 +6869,131 @@ function refreshLines() {
 // ── CIRCLE ZONES: a zone can be a circle (centre + radius in metres) with optional rings inside it.
 // Its coordinates are kept as the circle's polygon, so everything else treats it as any other zone; the
 // rings are extra, non-interactive shapes of the same colour, stacked so the centre reads strongest.
+// ── PEN: Ultrahand's Bezier pen (../shared/allto-pen.js) for zones and lines. The selected zone or line
+// shows its anchors on the map: drag them, drag their handles, Alt-drag an anchor to pull out curves,
+// double-click the path to add a point, select one and press Delete to remove it. "Draw with pen" starts
+// a new outline: click for corners, click-drag for curves, click the first point (or Enter) to finish.
+// Anchors are kept on the item (pen.nodes) so curves stay editable; its coordinates are the curve
+// sampled to points, so the rest of the editor and the export see an ordinary polygon or line.
+var pPen = null, _penTimer = null;
+function penKey(coords) { var s = 0; (coords || []).forEach(function(c, i) { s += (c[0] * 7 + c[1] * 13) * (i + 1); }); return (coords || []).length + ':' + s.toFixed(6); }
+function penRing(nodes) { var r = AlltoPen.bezierPath(nodes, true).map(function(p) { return [+p[0].toFixed(7), +p[1].toFixed(7)]; }); if (r.length && (r[0][0] !== r[r.length - 1][0] || r[0][1] !== r[r.length - 1][1])) r.push(r[0].slice()); return r; }
+function penOpen(nodes) { return AlltoPen.bezierPath(nodes, false).map(function(p) { return [+p[0].toFixed(7), +p[1].toFixed(7)]; }); }
+function lineCoords(ln) {
+  try {
+    var g = JSON.parse(ln.geojson || 'null');
+    if (g && g.type === 'FeatureCollection') { var ls = g.features.filter(function(f) { return f.geometry && f.geometry.type === 'LineString'; }); g = ls.length === 1 && g.features.length === 1 ? ls[0].geometry : null; }
+    else if (g && g.type === 'Feature') g = g.geometry;
+    return g && g.type === 'LineString' ? g.coordinates : null;
+  } catch (e) { return null; }
+}
+function zoneNodes(z) {
+  if (z.pen && z.pen.key === penKey(z.coordinates)) return AlltoPen.cloneNodes(z.pen.nodes);
+  var c = (z.coordinates || []).slice();
+  if (c.length > 1 && c[0][0] === c[c.length - 1][0] && c[0][1] === c[c.length - 1][1]) c.pop();
+  return AlltoPen.nodesFrom(c);
+}
+function lineNodes(ln) {
+  var c = lineCoords(ln);
+  if (!c) return null;
+  if (ln.pen && ln.pen.key === penKey(c)) return AlltoPen.cloneNodes(ln.pen.nodes);
+  return AlltoPen.nodesFrom(c);
+}
+function setZoneNodes(z, nodes) { z.coordinates = penRing(nodes); z.pen = { nodes: AlltoPen.cloneNodes(nodes), key: penKey(z.coordinates) }; z.circle = null; }
+function setLineNodes(ln, nodes) { var c = penOpen(nodes); ln.geojson = JSON.stringify({ type: 'LineString', coordinates: c }); ln.pen = { nodes: AlltoPen.cloneNodes(nodes), key: penKey(c) }; }
+function penSources(exclude) {
+  var pts = [], lines = [];
+  (P.zones || []).forEach(function(z) {
+    if (exclude.indexOf('zone:' + z.id) >= 0 || !z.coordinates) return;
+    var ring = z.pen && z.pen.key === penKey(z.coordinates) ? z.pen.nodes.map(function(n) { return n.p; }) : z.coordinates;
+    if (!z.circle) ring.forEach(function(p) { pts.push({ p: p, label: z.name || 'a zone' }); });
+    lines.push({ coords: z.coordinates, label: 'the edge of ' + (z.name || 'a zone') });
+  });
+  (P.lines || []).forEach(function(ln) {
+    var c = lineCoords(ln);
+    if (!c || exclude.indexOf('line:' + ln.id) >= 0) return;
+    c.forEach(function(p, i) { if (i === 0 || i === c.length - 1) pts.push({ p: p, label: 'the end of ' + (ln.name || 'a line') }); });
+    lines.push({ coords: c, label: ln.name || 'a line' });
+  });
+  (P.markers || []).forEach(function(m) { if (m.coords) pts.push({ p: m.coords, label: m.name || 'a marker' }); });
+  if (P.redLine && P.redLine.coordinates) lines.push({ coords: P.redLine.coordinates, label: 'the red line' });
+  return { points: pts, lines: lines };
+}
+function penOnEdit(changed) {
+  changed.forEach(function(nodes, id) {
+    var p = id.split(':'), kind = p[0], key = p.slice(1).join(':');
+    if (kind === 'zone') { var z = P.zones.filter(function(x) { return x.id === key; })[0]; if (z) setZoneNodes(z, nodes); }
+    else if (kind === 'line') { var ln = P.lines.filter(function(x) { return x.id === key; })[0]; if (ln) setLineNodes(ln, nodes); }
+  });
+  markDirty();
+  penSync();
+  // Quick redraw now; the full refresh (lists, panel, scene) once it settles.
+  if (pMap && pMap.getSource('p-zn')) pMap.getSource('p-zn').setData(znGJ());
+  if (pMap && pMap.getSource('p-ln')) pMap.getSource('p-ln').setData(lnGJ());
+  clearTimeout(_penTimer);
+  _penTimer = setTimeout(function() {
+    refreshZN(); refreshLines();
+    var ta = el('zn-coords'); if (ta && AZ != null && P.zones[AZ]) ta.value = JSON.stringify(P.zones[AZ].coordinates, null, 1);
+    var lg = el('ln-geojson'); if (lg && ALN != null && P.lines[ALN]) lg.value = P.lines[ALN].geojson;
+  }, 250);
+}
+function penInit() {
+  if (pPen || !pMap || !window.AlltoPen) return;
+  pPen = AlltoPen.createPen(pMap, { sources: penSources, onEdit: penOnEdit });
+  // The selected item's outline, so it can be edited on scenes that hide zones or lines.
+  if (!pMap.getSource('p-pen-sel')) pMap.addSource('p-pen-sel', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  if (!pMap.getLayer('p-pen-sel')) pMap.addLayer({ id: 'p-pen-sel', type: 'line', source: 'p-pen-sel', layout: { 'line-join': 'round', 'line-cap': 'round' }, paint: { 'line-color': '#2433e0', 'line-width': 1.5, 'line-dasharray': [3, 2], 'line-emissive-strength': 1 } });
+  pPen.addLayers();
+  penSync();
+}
+/** Show the anchors of whatever zone or line is open in the editor. */
+function penSync() {
+  if (!pPen) return;
+  var list = [];
+  var tabOn = function(t) { var e = el('tab-' + t); return e && e.classList.contains('on'); };
+  if (mainTab === 'editor') {
+    if (tabOn('zn') && AZ != null && P.zones[AZ] && !P.zones[AZ].circle && P.zones[AZ].coordinates && P.zones[AZ].coordinates.length > 2)
+      list.push({ id: 'zone:' + P.zones[AZ].id, nodes: zoneNodes(P.zones[AZ]), closed: true, handles: true, kind: 'zone', minNodes: 3 });
+    if (tabOn('ln') && ALN != null && P.lines[ALN]) { var ns = lineNodes(P.lines[ALN]); if (ns && ns.length > 1) list.push({ id: 'line:' + P.lines[ALN].id, nodes: ns, closed: false, handles: true, kind: 'line', minNodes: 2 }); }
+  }
+  pPen.setEditables(list);
+  // Outline of what's being edited, and the pen's own layers kept above everything added since.
+  var sel = pMap.getSource('p-pen-sel');
+  if (sel) sel.setData({ type: 'FeatureCollection', features: list.map(function(e) { return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: AlltoPen.bezierPath(e.nodes, e.closed).concat(e.closed ? [e.nodes[0].p] : []) } }; }) });
+  ['p-pen-sel', 'pen-preview', 'pen-path', 'pen-hline', 'pen-handle', 'pen-anchor', 'pen-guide', 'pen-guide-on', 'pen-snap'].forEach(function(id) { if (pMap.getLayer(id)) pMap.moveLayer(id); });
+}
+window.__penSync = function() { try { penSync(); } catch (e) {} };
+/** Draw a new outline (zone) or path (line) with the pen; it replaces the item's shape. */
+function penDraw(kind, item, after) {
+  if (!pPen) { alert('The map needs to be running first (add your Mapbox token in Settings).'); return; }
+  pPen.setEditables([]);
+  pPen.draw({
+    closed: kind === 'zone', exclude: [kind + ':' + item.id],
+    onDone: function(nodes) {
+      if (kind === 'zone') { if (nodes.length < 3) return penSync(); setZoneNodes(item, nodes); refreshZN(); }
+      else { if (nodes.length < 2) return penSync(); setLineNodes(item, nodes); refreshLines(); }
+      markDirty(); if (after) after(); penSync();
+    },
+    onCancel: function() { penSync(); }
+  });
+}
+/** Curve every corner (k 1) or make them all sharp (k 0). */
+function penSmoothAll(kind, item, k) {
+  var nodes = kind === 'zone' ? zoneNodes(item) : lineNodes(item);
+  if (!nodes) return;
+  nodes = AlltoPen.autoHandles(nodes, k, kind === 'zone');
+  if (kind === 'zone') { setZoneNodes(item, nodes); refreshZN(); } else { setLineNodes(item, nodes); refreshLines(); }
+  markDirty(); penSync();
+}
+function penToolsHTML(kind) {
+  return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:8px">'
+    + '<button class="btn btn-g btn-ic" id="' + kind + '-pen-draw" style="justify-content:center">' + lucideSVG('pen-tool', 13, 'currentColor') + 'Pen</button>'
+    + '<button class="btn btn-g" id="' + kind + '-pen-smooth" title="Curve every corner">Smooth</button>'
+    + '<button class="btn btn-g" id="' + kind + '-pen-sharp" title="Make every corner sharp">Sharpen</button></div>'
+    + '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin-bottom:10px"><b>Pen:</b> click for corners, click and drag for curves, click the first point or press Enter to finish, Esc to cancel. '
+    + '<b>Editing:</b> drag points and handles on the map; Alt-drag a point to pull out curves; double-click the outline to add a point; select a point and press Delete to remove it. Points snap to roads, other zones and lines; hold Ctrl to stop snapping.</div>';
+}
+
 function circleRing(center, r, n) {
   n = n || 96;
   var lat = center[1] * Math.PI / 180, kx = 1 / (111320 * Math.cos(lat)), ky = 1 / 110574, out = [];
