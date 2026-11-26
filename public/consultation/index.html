@@ -492,6 +492,7 @@ var LUCIDE_PATHS = {
   'list': '<path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/><path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>',
   'eraser': '<path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21"/><path d="m5.082 11.09 8.828 8.828"/>',
   'eye': '<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/>',
+  'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'type': '<path d="M12 4v16"/><path d="M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/><path d="M9 20h6"/>',
   'text': '<path d="M21 5H3"/><path d="M15 12H3"/><path d="M17 19H3"/>',
   'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
@@ -5229,6 +5230,9 @@ function renderSettings() {
   html += '<div class="f"><label class="fl">Paper colour (prose background)</label><div class="cr"><input type="color" id="cfg-paper-p" value="'+(P.paperColor||'#f8f6f1')+'"/><input type="text" id="cfg-paper-t" value="'+(P.paperColor||'#f8f6f1')+'"/></div></div>';
   html += '<div class="f"><label class="fl">Progress bar end colour</label><div class="cr"><input type="color" id="cfg-prog-p" value="'+(P.progressColor||'#2a7c6b')+'"/><input type="text" id="cfg-prog-t" value="'+(P.progressColor||'#2a7c6b')+'"/></div></div>';
   html += '</div>';
+  html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('lock',14,'currentColor')+'Password</span>'+infoBtn('Anyone opening the exported site, or a poll&rsquo;s results page, has to type this password first. The poll page people reach from the QR code never asks for it. The page is encrypted with the password, so its contents (including your flow addresses) can&rsquo;t be read without it. There&rsquo;s no way to recover it: if it&rsquo;s forgotten, set a new one and export again. Leave blank for no password.')+'</div>'
+    + '<div class="f"><label class="fl">Password for exported pages</label><input type="text" id="cfg-pw" value="'+h(P.exportPassword||'')+'" placeholder="No password" autocomplete="off" spellcheck="false"/></div>'
+    + '<p style="font-size:11px;line-height:1.5;color:var(--ghost);margin:-4px 0 0">Applies to the site download and poll results pages. Poll pages for phones stay open. Previews aren&rsquo;t locked.</p></div>';
   html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('type',14,'currentColor')+'Typography</span>'+infoBtn('The Typekit kit ID is the code in your <code>use.typekit.net/XXXX.css</code> embed URL. Change font family to match the font name in your kit.')+'</div>';
   html += '<div class="f"><label class="fl">Adobe Typekit kit ID (for custom fonts)</label><input type="text" id="cfg-kit" value="'+h(P.typekitId||'dfg2dug')+'" placeholder="dfg2dug"/></div>';
   html += '<div class="f"><label class="fl">Body font family</label><input type="text" id="cfg-font" value="'+h(P.fontFamily||'tt-commons-pro')+'" placeholder="tt-commons-pro"/></div>';
@@ -5410,6 +5414,7 @@ function renderSettings() {
   // Apply on settings open so colours match current P values
   applyPreviewCSSVars();
   bindInput('cfg-kit', function(v){P.typekitId=v;});
+  bindInput('cfg-pw', function(v){ P.exportPassword = v; });
   bindInput('cfg-font', function(v){P.fontFamily=v;});
   ['h1','h2','p'].forEach(function(key){
     bindInput('cfg-'+key+'-size', function(v){ P[key+'Size']=parseInt(v)||undefined; markDirty(); });
@@ -6957,14 +6962,15 @@ function renderPollExports() {
         + '<button class="btn btn-g" data-poll-pv="' + x.gi + '">Preview</button>'
         + '<button class="btn btn-g" data-poll-rdl="' + x.gi + '">Download results page</button>'
         + '<button class="btn btn-g" data-poll-rs="' + x.gi + '">Preview results screen</button>'
+        + (P.exportPassword ? '<div style="width:100%;font-size:11px;color:var(--ghost)">The results page asks for your password; the poll page doesn’t.</div>' : '')
         + (x.g.poll && x.g.poll.url ? '' : '<div style="width:100%;font-size:11px;color:var(--ghost)">Add the poll page’s web address (Settings › Co-Design › Presentation poll) so the results page’s QR code points to it.</div>') + '</div>';
     }).join('');
   var open = function(html) { var w = window.open('', '_blank'); if (!w) return alert('Pop-up blocked — please allow pop-ups for this page.'); w.document.open(); w.document.write(html); w.document.close(); };
   var dl = function(gi, mode) {
-    var g = P.codesignGroups[gi], a = document.createElement('a');
-    a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(buildPollHTML(gi, mode));
-    a.download = ((P.name || 'consultation') + '-' + (g.label || 'poll')).toLowerCase().replace(/[^a-z0-9]+/g, '-') + (mode ? '-results.html' : '-poll.html');
-    document.body.appendChild(a); a.click(); a.remove();
+    var g = P.codesignGroups[gi], fname = ((P.name || 'consultation') + '-' + (g.label || 'poll')).toLowerCase().replace(/[^a-z0-9]+/g, '-') + (mode ? '-results.html' : '-poll.html');
+    // Only the results page is password-protected: phones arriving from the QR code go straight in.
+    protectHTML(buildPollHTML(gi, mode), mode ? P.exportPassword : '', (g.label || 'Poll') + ' results').then(function(out) { saveHTMLFile(out, fname); })
+      .catch(function(err) { alert('Download failed: ' + err.message); });
   };
   box.querySelectorAll('[data-poll-dl]').forEach(function(b) { b.onclick = function() { dl(+this.dataset.pollDl); }; });
   box.querySelectorAll('[data-poll-rdl]').forEach(function(b) { b.onclick = function() { dl(+this.dataset.pollRdl, 'results'); }; });
@@ -6972,19 +6978,71 @@ function renderPollExports() {
   box.querySelectorAll('[data-poll-rs]').forEach(function(b) { b.onclick = function() { open(buildPollHTML(+this.dataset.pollRs, 'results')); }; });
 }
 
+// ── PASSWORD: an exported page encrypted with the project's password (PBKDF2 → AES-GCM) behind a small
+// unlock screen. Without the password the page's contents can't be read; with it the page is decrypted
+// in the browser and written in place, so it runs exactly as the unprotected export.
+var PW_ITER = 250000;
+function pwB64(bytes) { var s = '', i; for (i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
+function protectHTML(html, password, title) {
+  if (!password) return Promise.resolve(html);
+  if (!window.crypto || !crypto.subtle) return Promise.reject(new Error('This browser can’t encrypt pages here — open the editor over https.'));
+  var salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  return crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey'])
+    .then(function(base) { return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: PW_ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']); })
+    .then(function(key) { return crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv }, key, new TextEncoder().encode(html)); })
+    .then(function(ct) { return lockPageHTML(pwB64(salt), pwB64(iv), pwB64(new Uint8Array(ct)), title); });
+}
+function lockPageHTML(salt, iv, data, title) {
+  var acc = P.accentColor || '#c0392b', paper = P.paperColor || '#f8f6f1';
+  var unlock = function(SALT, IV, ITER) {
+    var form = document.getElementById('pw-f'), inp = document.getElementById('pw-i'), msg = document.getElementById('pw-m'), btn = document.getElementById('pw-b');
+    var b64 = function(s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+    var KEY = 'allto:pw:' + SALT;
+    var tryIt = function(pw, quiet) {
+      if (!window.crypto || !crypto.subtle) { msg.textContent = 'This browser can’t open protected pages here. Open it over https, or from your computer.'; return; }
+      btn.disabled = true; if (!quiet) msg.textContent = 'Opening…';
+      crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey'])
+        .then(function(base) { return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(SALT), iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']); })
+        .then(function(key) { return crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(IV) }, key, b64(document.getElementById('pw-d').textContent.trim())); })
+        .then(function(pt) {
+          try { sessionStorage.setItem(KEY, pw); } catch (e) {}
+          var html = new TextDecoder().decode(pt);
+          document.open(); document.write(html); document.close();
+        })
+        .catch(function() { btn.disabled = false; try { sessionStorage.removeItem(KEY); } catch (e) {} msg.textContent = quiet ? '' : 'That password isn’t right.'; inp.select(); });
+    };
+    form.onsubmit = function(e) { e.preventDefault(); if (inp.value) tryIt(inp.value); };
+    var saved = null; try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+    if (saved) tryIt(saved, true); else inp.focus();
+  };
+  return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>'
+    + '<title>' + h(title || P.name || 'Protected page') + '</title><meta name="robots" content="noindex"/>'
+    + '<link rel="stylesheet" href="https://use.typekit.net/' + (P.typekitId || 'dfg2dug') + '.css"/>'
+    + '<style>*{box-sizing:border-box}html,body{margin:0;height:100%}body{font-family:"tt-commons-pro",system-ui,sans-serif;background:' + h(paper) + ';color:#0f0e0d;display:flex;align-items:center;justify-content:center;padding:24px;-webkit-font-smoothing:antialiased}'
+    + '.pw{width:100%;max-width:380px}.tag{display:flex;align-items:center;gap:10px;font-size:9px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:16px}.tag i{width:8px;height:8px;border-radius:50%;background:' + h(acc) + '}.tag span{opacity:.7}'
+    + 'h1{font-size:30px;font-weight:600;line-height:1.1;margin:0 0 10px}p{font-size:14px;line-height:1.6;color:#3a3733;margin:0 0 22px}'
+    + 'input{width:100%;font:inherit;font-size:16px;padding:13px 14px;border:1.5px solid rgba(15,14,13,.18);border-radius:4px;background:#fff;color:inherit}input:focus{outline:none;border-color:#0f0e0d}'
+    + 'button{width:100%;margin-top:10px;border:0;border-radius:4px;background:' + h(acc) + ';color:#fff;font:inherit;font-weight:600;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:15px;cursor:pointer}button:disabled{opacity:.5}'
+    + '#pw-m{min-height:20px;font-size:13px;color:' + h(acc) + ';margin-top:12px}</style></head><body>'
+    + '<form class="pw" id="pw-f" autocomplete="off"><div class="tag"><i></i><span>' + h(P.name || 'Consultation') + '</span></div><h1>Password needed</h1><p>Enter the password you were given to open this page.</p>'
+    + '<label for="pw-i" style="position:absolute;left:-9999px">Password</label><input id="pw-i" type="password" autocomplete="current-password"/><button id="pw-b" type="submit">Open</button><div id="pw-m" role="status"></div></form>'
+    + '<script type="application/octet-stream" id="pw-d">' + data + '<' + '/script>'
+    + '<script>(' + unlock.toString() + ')(' + JSON.stringify(salt) + ',' + JSON.stringify(iv) + ',' + PW_ITER + ');<' + '/script></body></html>';
+}
+/** Save a page as a file (a data URI, so it works when the editor itself is opened from disk). */
+function saveHTMLFile(html, fname) {
+  var a = document.createElement('a');
+  a.href = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+  a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+}
 function downloadHTML() {
   el('em').classList.remove('on');
   try {
     var html = buildOutputHTML();
     var fname = (P.name||'consultation').toLowerCase().replace(/\s+/g,'-') + '.html';
-    // Use data URI for file:// compatibility (Blob URLs blocked on file:// in some browsers)
-    var encoded = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
-    var a = document.createElement('a');
-    a.href = encoded;
-    a.download = fname;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    protectHTML(html, P.exportPassword, P.siteTitle || P.name).then(function(out) { saveHTMLFile(out, fname); })
+      .catch(function(err) { console.error('Download failed:', err); alert('Download failed: ' + err.message); });
   } catch(err) {
     console.error('Download failed:', err);
     alert('Download failed: ' + err.message);
@@ -10026,7 +10084,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
