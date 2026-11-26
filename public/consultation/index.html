@@ -4747,7 +4747,8 @@ function pollRuntime(C) {
       var btn = document.getElementById('send');
       btn.disabled = true; btn.textContent = 'Sending…';
       var post = G.submitUrl ? fetch(G.submitUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data: rows }) }) : Promise.resolve();
-      post.then(function() {
+      post.then(function(r) {
+        if (r && !r.ok) throw new Error('flow ' + r.status);
         try { localStorage.setItem(DONE_KEY, JSON.stringify({ picks: picks, storeys: storeys })); } catch (e) {}
         done = true; render();
       }).catch(function() { btn.disabled = false; btn.textContent = 'Couldn’t send — try again'; });
