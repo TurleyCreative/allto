@@ -6144,12 +6144,26 @@ var BLOCK_TYPES = [
   {id:'hotspot-image', label:'Image Hotspots',  icon:'map-pin'},
   {id:'columns',       label:'Two Columns',     icon:'columns-2'},
   {id:'stats',         label:'Stats',           icon:'bar-chart-3'},
+  {id:'iconfacts',     label:'Icon facts',      icon:'layout-grid'},
   {id:'timeline',      label:'Timeline',        icon:'git-commit-vertical'},
   {id:'quote',         label:'Quote',           icon:'quote'},
   {id:'button',        label:'Button',          icon:'link'},
   {id:'video',         label:'Video',           icon:'play'},
   {id:'divider',       label:'Divider',         icon:'minus'}
 ];
+function icfIconHTML(icon, size) {
+  if (icon && icon.indexOf('data:') === 0) return '<img src="' + icon + '" width="' + size + '" height="' + size + '" alt="" style="display:block"/>';
+  return lucideSVG(icon || 'check-circle', size, 'currentColor');
+}
+/** Blocks as they go into the exported site: icon facts carry their icon already drawn. */
+function exportBlocks(blocks) {
+  return (blocks || []).map(function(b) {
+    if (b.type !== 'iconfacts') return b;
+    var c = JSON.parse(JSON.stringify(b));
+    c.items = (c.items || []).map(function(it) { it.svg = icfIconHTML(it.icon, 26); return it; });
+    return c;
+  });
+}
 function newBlock(type) {
   var id = 'blk'+Date.now()+Math.floor(Math.random()*1000);
   if(type==='heading')       return {id:id,type:'heading',text:'',size:'lg'};
@@ -6163,6 +6177,7 @@ function newBlock(type) {
   if(type==='stats')         return {id:id,type:'stats',items:[{value:'11,456',label:'New homes'},{value:'29,000 sqm',label:'Office space'},{value:'600',label:'Hotel beds'}]};
   if(type==='timeline')      return {id:id,type:'timeline',items:[{date:'Now',title:'Consultation',body:'Tell us what you think.'},{date:'Later this year',title:'Planning application',body:''},{date:'Next year',title:'Decision',body:''}]};
   if(type==='quote')         return {id:id,type:'quote',text:'',cite:''};
+  if(type==='iconfacts')     return {id:id,type:'iconfacts',layout:'grid',items:[{icon:'home',title:'11,456 new homes',text:'A mix of sizes and tenures.'},{icon:'briefcase',title:'4,000 jobs',text:'In offices, shops and workshops.'},{icon:'trees',title:'12 ha of parkland',text:'Open to everyone.'}]};
   return {id:id,type:'divider'};
 }
 // Shared by the on-image hotspot dot and its icon-picker preview button, so both always
@@ -6308,13 +6323,18 @@ function blockRowHTML(b, bi, total, prefix) {
       + '<option value="filled"'+(b.style!=='outline'?' selected':'')+'>Filled</option>'
       + '<option value="outline"'+(b.style==='outline'?' selected':'')+'>Outline</option>'
       + '</select>';
-  } else if(b.type==='stats' || b.type==='timeline') {
-    var isT = b.type==='timeline';
+  } else if(b.type==='stats' || b.type==='timeline' || b.type==='iconfacts') {
+    var isT = b.type==='timeline', isI = b.type==='iconfacts';
+    if(isI) html += '<select data-blklayout="1" style="width:100%;margin-bottom:6px"><option value="grid"'+(b.layout!=='list'?' selected':'')+'>Icons above the text, side by side</option><option value="list"'+(b.layout==='list'?' selected':'')+'>Icons beside the text, in a list</option></select>';
     html += '<div style="display:flex;flex-direction:column;gap:6px">';
     (b.items||[]).forEach(function(it, ii) {
       html += '<div style="border:1px solid var(--border);border-radius:6px;padding:7px 8px;position:relative">'
         + '<button type="button" data-blkitemdel="'+ii+'" title="Remove" style="position:absolute;top:5px;right:5px;border:none;background:none;color:var(--ghost);cursor:pointer;padding:2px">'+lucideSVG('x',12,'currentColor')+'</button>'
-        + (isT
+        + (isI
+          ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:5px;width:calc(100% - 22px)"><button type="button" class="icon-pick-anchor" data-blkicon="'+ii+'" title="Choose icon" style="width:32px;height:32px;flex-shrink:0;border-radius:7px;border:1px solid var(--border2);background:var(--bg);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer">'+icfIconHTML(it.icon,15)+'</button>'
+            + '<input type="text" data-blkitem="'+ii+'" data-k="title" value="'+h(it.title||'')+'" placeholder="Headline, e.g. 4,000 jobs" style="flex:1;min-width:0;font-size:11px"/></div>'
+            + '<textarea data-blkitem="'+ii+'" data-k="text" placeholder="A line of detail (optional)" style="width:100%;min-height:36px;font-size:11px">'+h(it.text||'')+'</textarea>'
+          : isT
           ? '<input type="text" data-blkitem="'+ii+'" data-k="date" value="'+h(it.date||'')+'" placeholder="When, e.g. Spring 2027" style="width:calc(100% - 22px);margin-bottom:5px;font-size:11px"/>'
             + '<input type="text" data-blkitem="'+ii+'" data-k="title" value="'+h(it.title||'')+'" placeholder="What happens" style="width:100%;margin-bottom:5px;font-size:11px"/>'
             + '<textarea data-blkitem="'+ii+'" data-k="body" placeholder="More detail (optional)" style="width:100%;min-height:38px;font-size:11px">'+h(it.body||'')+'</textarea>'
@@ -6322,7 +6342,7 @@ function blockRowHTML(b, bi, total, prefix) {
             + '<input type="text" data-blkitem="'+ii+'" data-k="label" value="'+h(it.label||'')+'" placeholder="What it counts, e.g. new homes" style="width:100%;font-size:11px"/>')
         + '</div>';
     });
-    html += '</div><button type="button" data-blkitemadd="1" class="btn btn-g btn-ic" style="width:100%;justify-content:center;margin-top:6px;font-size:11px">'+lucideSVG('plus',12,'currentColor')+(isT?'Add a step':'Add a figure')+'</button>';
+    html += '</div><button type="button" data-blkitemadd="1" class="btn btn-g btn-ic" style="width:100%;justify-content:center;margin-top:6px;font-size:11px">'+lucideSVG('plus',12,'currentColor')+(isT?'Add a step':isI?'Add an item':'Add a figure')+'</button>';
   } else if(b.type==='quote') {
     html += '<textarea id="'+rid+'-qtext" placeholder="The quote" style="width:100%;min-height:60px;margin-bottom:6px">'+h(b.text||'')+'</textarea>';
     html += '<input type="text" id="'+rid+'-qcite" value="'+h(b.cite||'')+'" placeholder="Who said it (optional)" style="width:100%"/>';
@@ -6369,16 +6389,24 @@ function bindBlocksEditor(prefix, getLB, rerender) {
   });
   blocks().forEach(function(b) {
     var rid = prefix+'-'+b.id;
-    if(b.type==='stats' || b.type==='timeline') {
+    if(b.type==='stats' || b.type==='timeline' || b.type==='iconfacts') {
       var card = container.querySelector('[data-blk="'+b.id+'"].blk-card');
       if(card) {
+        var lay = card.querySelector('[data-blklayout]'); if(lay) lay.addEventListener('change', function(){ b.layout = lay.value; markDirty(); });
+        card.querySelectorAll('[data-blkicon]').forEach(function(ib) {
+          ib.addEventListener('click', function(e2) {
+            e2.stopPropagation();
+            var it = (b.items||[])[+ib.dataset.blkicon]; if(!it) return;
+            openIconPicker(it.icon, ib, function(v) { it.icon = v; markDirty(); ib.innerHTML = icfIconHTML(v, 15); }, {allowUpload:true});
+          });
+        });
         card.querySelectorAll('[data-blkitem]').forEach(function(inp) {
           inp.addEventListener('input', function() { var it = (b.items||[])[+inp.dataset.blkitem]; if(it) { it[inp.dataset.k] = inp.value; markDirty(); } });
         });
         card.addEventListener('click', function(e) {
           var del = e.target.closest('[data-blkitemdel]'), add = e.target.closest('[data-blkitemadd]');
           if(del) { b.items.splice(+del.dataset.blkitemdel, 1); markDirty(); rerender(); }
-          else if(add) { b.items = b.items || []; b.items.push(b.type==='timeline' ? {date:'',title:'',body:''} : {value:'',label:''}); markDirty(); rerender(); }
+          else if(add) { b.items = b.items || []; b.items.push(b.type==='timeline' ? {date:'',title:'',body:''} : b.type==='iconfacts' ? {icon:'check-circle',title:'',text:''} : {value:'',label:''}); markDirty(); rerender(); }
         });
       }
       return;
@@ -7211,6 +7239,7 @@ function refreshLines() {
 // then line them up or spread them out. A selected circle zone shows handles for its centre and edge; other
 // zones and lines show a move handle. An optional grid (metres, from the site centre) snaps what you drag.
 var MT_ICONS = {
+  'layout-grid': '<rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/>',
   'quote': '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
   'git-commit-vertical': '<path d="M12 3v6"/><circle cx="12" cy="12" r="3"/><path d="M12 15v6"/>',
   'bar-chart-3': '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
@@ -9926,9 +9955,9 @@ function buildCfg() {
 
   var labels = P.scenes.map(function(sc){return JSON.stringify(sc.label||'Scene');}).join(',');
 
-  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxBack:(m.lightbox&&m.lightbox.backLabel)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:ppSceneIdx('markers',m,(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;})).join(','),ppScene:ppSceneOf(m),showInDrawer:m.showInDrawer!==false,zl:+m.layer||0,anim:animMode('marker',m),aDur:m.animOverride?(m.animDuration||800):0,aDelay:m.animOverride?(m.animDelay||0):0,aEase:m.animOverride?easingCSS(m.animEasing||'easeOut',m.animEasingCurve):''}};})};
+  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxBack:(m.lightbox&&m.lightbox.backLabel)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify(exportBlocks(m.lightbox&&m.lightbox.blocks)),scenes:ppSceneIdx('markers',m,(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;})).join(','),ppScene:ppSceneOf(m),showInDrawer:m.showInDrawer!==false,zl:+m.layer||0,anim:animMode('marker',m),aDur:m.animOverride?(m.animDuration||800):0,aDelay:m.animOverride?(m.animDelay||0):0,aEase:m.animOverride?easingCSS(m.animEasing||'easeOut',m.animEasingCurve):''}};})};
 
-  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:ppSceneIdx('zones',z._src||z,(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;})).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,anim:animMode('zone',z._src||z),codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
+  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:ppSceneIdx('zones',z._src||z,(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;})).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(exportBlocks(zlb.blocks)),showInDrawer:z.showInDrawer!==false,anim:animMode('zone',z._src||z),codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
   var ciLines = P.zones.map(function(z){return '  '+JSON.stringify(z.id||z.name)+': { title:'+JSON.stringify(z.name)+', body:'+JSON.stringify(z.popup||'')+' }';}).join(',\n');
 
@@ -10995,6 +11024,11 @@ function buildJS() {
 '    var tl=(b.items||[]).filter(function(it){return it.date||it.title||it.body;});',
 '    if(!tl.length) return "";',
 '    return "<ol class=\\"lbk-tl\\">" + tl.map(function(it){ return "<li><div class=\\"lbk-tl-d\\">" + lbEsc(it.date) + "</div><div class=\\"lbk-tl-t\\">" + lbEsc(it.title) + "</div>" + (it.body ? "<div class=\\"lbk-tl-b\\">" + lbEsc(it.body) + "</div>" : "") + "</li>"; }).join("") + "</ol>";',
+'  }',
+'  if(b.type === "iconfacts"){',
+'    var fi=(b.items||[]).filter(function(it){return it.title||it.text;});',
+'    if(!fi.length) return "";',
+'    return "<div class=\\"lbk-icf" + (b.layout==="list" ? " lbk-icf-list" : "") + "\\">" + fi.map(function(it){ return "<div class=\\"lbk-icf-i\\"><div class=\\"lbk-icf-ic\\" aria-hidden=\\"true\\">" + (it.svg||"") + "</div><div class=\\"lbk-icf-tx\\"><div class=\\"lbk-icf-t\\">" + lbEsc(it.title) + "</div>" + (it.text ? "<div class=\\"lbk-icf-b\\">" + lbEsc(it.text) + "</div>" : "") + "</div></div>"; }).join("") + "</div>";',
 '  }',
 '  if(b.type === "quote"){',
 '    if(!b.text) return "";',
@@ -12649,6 +12683,13 @@ function buildLbCSS() {
     '.lbk-tl-d{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#9a9590;margin-bottom:3px}',
     '.lbk-tl-t{font-size:15px;font-weight:700;color:#0f0e0d;line-height:1.3}',
     '.lbk-tl-b{font-size:13px;line-height:1.65;color:#5a5652;margin-top:4px}',
+    '.lbk-icf{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:18px 14px}',
+    '.lbk-icf-i{display:flex;flex-direction:column;align-items:flex-start;gap:10px}',
+    '.lbk-icf-ic{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--accent,#c0392b);background:color-mix(in srgb,var(--accent,#c0392b) 12%,transparent)}',
+    '.lbk-icf-ic img{width:26px;height:26px}',
+    '.lbk-icf-t{font-size:15px;font-weight:700;line-height:1.3;color:#0f0e0d}',
+    '.lbk-icf-b{font-size:12.5px;line-height:1.55;color:#5a5652;margin-top:3px}',
+    '.lbk-icf-list{grid-template-columns:1fr;gap:14px}.lbk-icf-list .lbk-icf-i{flex-direction:row;align-items:center;gap:14px}.lbk-icf-list .lbk-icf-ic{width:44px;height:44px}',
     '.lbk-quote{margin:0;padding:4px 0 4px 18px;border-left:3px solid var(--accent,#c0392b)}',
     '.lbk-quote p{font-size:17px;line-height:1.55;color:#0f0e0d;font-style:italic;margin:0}',
     '.lbk-quote cite{display:block;margin-top:8px;font-size:12px;font-style:normal;color:#9a9590}',
