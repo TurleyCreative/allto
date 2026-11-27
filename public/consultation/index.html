@@ -253,6 +253,8 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 #mt-bar .mt-unlock{display:none}#mt-bar .mt-unlock.on{display:inline-flex}
 .mt-sb .btn{justify-content:center;font-size:11px;padding:6px 8px}
 .mt-sb .btn:disabled{opacity:.45;cursor:default}
+#pp-prev-bar{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:7;display:flex;align-items:center;gap:10px;background:var(--ink);color:var(--bg);border-radius:9px;padding:6px 6px 6px 14px;font-size:12px;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+#pp-prev-bar .btn{padding:4px 10px;font-size:11px}
 #mt-bar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:4px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
 #mt-bar .btn{padding:5px 8px;font-size:11px}
 #mt-bar .btn:disabled{opacity:.4;cursor:default}
@@ -1312,7 +1314,7 @@ function renderLineEditor(i) {
   html += '</div>';
 
   // Scenes
-  html += '<div class="rs"><div class="st">Visible in scenes'+infoBtn('Leave all off to show in every scene.')+'</div>';
+  html += '<div class="rs"><div class="st">Visible in scenes'+infoBtn('Leave all off to show in every scene.')+'</div>' + pageOnlyRowHTML('line', i, ln);
   P.scenes.forEach(function(sc,si){
     var on=(ln.scenes||[]).indexOf(sc.id)>=0;
     html += '<div class="lr"><span class="ll">'+h(sc.label||'Scene '+(si+1))+'</span><button class="tg'+(on?' on':'')+'" data-lnsc="'+sc.id+'"></button></div>';
@@ -2712,6 +2714,7 @@ function bindLeftPanel() {
 
 var AOV = -1;
 function switchTab(t) {
+  if (t !== 'mk') ppPreviewOff();
   ['sc','mk','zn','ln','pr','ov'].forEach(function(x) {
     el('tab-'+x).classList.toggle('on', x===t);
     var tc = el('tc-'+x); if(tc) tc.classList.toggle('on', x===t);
@@ -2852,7 +2855,7 @@ function renderScenes() {
     ul.appendChild(div);
   });
 }
-function selScene(i) { AS=i; AM=null; AZ=null; ensureEditorTab(); renderScenes(); renderRightPanel(); updatePreview(); updateCtxMarkerSelection(); }
+function selScene(i) { ppPreviewOff(); AS=i; AM=null; AZ=null; ensureEditorTab(); renderScenes(); renderRightPanel(); updatePreview(); updateCtxMarkerSelection(); }
 function addScene() {
   markDirty(); P.scenes.push({id:'s'+Date.now(),label:'New Scene',title:'Scene Title',body:'<p>Add your scene description here.</p>',camera:{zoom:15,pitch:30,bearing:0,duration:2000},layers:{redline:true,context:false,constraints:false,buildings3d:false,orbit:false,buildings:true,feedback:false},codesignGroupId:null});
   AS = P.scenes.length-1;
@@ -3163,6 +3166,7 @@ function renderMarkers() {
   makeListContainerDroppable(ul, 'markers', refreshMK);
 }
 function selMarker(i) {
+  if (PP_PREVIEW && PP_PREVIEW.m !== P.markers[i]) ppPreviewOff();
   AM=i; AZ=null;
   if (ALB != null) { ALB = null; refreshLB(); }
   MT.sel = P.markers[i] ? [mtMid(i)] : []; mtAlignBar();
@@ -3798,7 +3802,7 @@ function renderMarkerEditor(i) {
   html += '<div class="f">'+fldInner('Latitude','mk-lat',m.coords[1])+'</div></div>';
   html += '</div>';
   // Scene visibility checklist
-  html += '<div class="rs"><div class="st">Visible on scenes'+infoBtn('Tick the scenes where this marker should appear. Leave all unticked to hide everywhere.')+'</div>';
+  html += '<div class="rs"><div class="st">Visible on scenes'+infoBtn('Tick the scenes where this marker should appear. Leave all unticked to show it on every scene.')+'</div>' + pageOnlyRowHTML('marker', i, m);
   var mScenes = m.scenes || [];
   if(!P.scenes.length) {
     html += '<div style="font-size:11px;color:var(--ghost);font-family:var(--mono)">No scenes yet — add scenes first.</div>';
@@ -3902,6 +3906,9 @@ function renderMarkerEditor(i) {
     if(lbLy === 'story') {
       html += '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-2px 0 10px">Clicking the marker swaps the text on the left for this page and moves the map to the marker (to its own camera view if Fly camera is on). A back link returns to the scene the visitor was on.</div>';
       html += '<div class="f"><label class="fl">Back link text'+infoBtn('Leave blank to use \u201cBack to\u201d and the name of the scene the visitor came from.')+'</label><input type="text" id="mk-lb-back" value="'+h(lb.backLabel||'')+'" placeholder="Back to [scene name]"/></div>';
+      var pm = lb.pageMap || {};
+      html += '<div class="f"><label class="fl">Map while this page is open</label><select id="mk-lb-pm"><option value=""'+(pm.mode!=='pick'?' selected':'')+'>Same as the scene</option><option value="pick"'+(pm.mode==='pick'?' selected':'')+'>Show only what I pick</option></select></div>';
+      if(pm.mode==='pick') html += '<button type="button" class="btn btn-g btn-ic" id="mk-pm-prev" style="width:100%;justify-content:center;margin:-2px 0 12px">'+(PP_PREVIEW && PP_PREVIEW.m===m ? 'Stop preview' : 'Preview on map')+'</button>' + ppPickHTML(pm, m);
     }
     if(lbLy === 'image-text' || lbLy === 'story') {
       html += '<div class="f"><label class="fl">Image URL'+infoBtn('Image is clickable to expand fullscreen.')+'</label>';
@@ -4111,6 +4118,38 @@ function renderMarkerEditor(i) {
     if(mkBgT) mkBgT.addEventListener('input', function() { P.markers[i].lightbox.embedBg=this.value; if(mkBgP)mkBgP.value=this.value; lbChanged(); });
     bindInput('mk-lb-imgcap', function(v) { P.markers[i].lightbox.imgCaption=v; markDirty(); });
     bindInput('mk-lb-back', function(v) { P.markers[i].lightbox.backLabel=v; markDirty(); });
+    var pmPrev = el('mk-pm-prev');
+    if(pmPrev) pmPrev.addEventListener('click', function() {
+      if (PP_PREVIEW && PP_PREVIEW.m === P.markers[i]) { ppPreviewOff(); return; }
+      PP_PREVIEW = { m: P.markers[i] }; pmPrev.textContent = 'Stop preview'; ppPreviewRefresh();
+    });
+    var pmSel = el('mk-lb-pm');
+    if(pmSel) pmSel.addEventListener('change', function() {
+      var lbx = P.markers[i].lightbox, pm0 = lbx.pageMap || {};
+      if (pmSel.value === 'pick' && !pm0.zones) {
+        // Start from what the current scene shows, so picking begins from something familiar.
+        var sid = P.scenes[AS] ? P.scenes[AS].id : null, onScene = function(x) { return !(x.scenes && x.scenes.length) || x.scenes.indexOf(sid) >= 0; };
+        pm0 = { zones: P.zones.filter(onScene).map(function(x){ return x.id; }), lines: (P.lines||[]).filter(onScene).map(function(x){ return x.id; }),
+          markers: P.markers.filter(onScene).map(function(x){ return x.id; }), labels: (P.mapLabels||[]).filter(onScene).map(function(x){ return x.id; }) };
+      }
+      pm0.mode = pmSel.value; lbx.pageMap = pm0; if (pm0.mode !== 'pick') ppPreviewOff(); markDirty(); renderMarkerEditor(i);
+    });
+    document.querySelectorAll('#rpc [data-pm]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var pm = P.markers[i].lightbox.pageMap, k = b.dataset.pm, id = b.dataset.pmid, arr = pm[k] = pm[k] || [];
+        var at = arr.map(String).indexOf(id);
+        if (at >= 0) arr.splice(at, 1); else { var it = ({ zones: P.zones, lines: P.lines, markers: P.markers, labels: P.mapLabels }[k] || []).filter(function(x){ return String(x.id) === id; })[0]; if (it) arr.push(it.id); }
+        b.classList.toggle('on', at < 0); markDirty();
+        if (PP_PREVIEW) ppPreviewRefresh();
+      });
+    });
+    document.querySelectorAll('#rpc [data-pmall],#rpc [data-pmnone]').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var k = b.dataset.pmall || b.dataset.pmnone, pm = P.markers[i].lightbox.pageMap;
+        pm[k] = b.dataset.pmall ? ({ zones: P.zones, lines: P.lines, markers: P.markers, labels: P.mapLabels }[k] || []).map(function(x){ return x.id; }) : [];
+        markDirty(); renderMarkerEditor(i); if (PP_PREVIEW) ppPreviewRefresh();
+      });
+    });
     var imgsEl = el('mk-lb-imgs');
     if(imgsEl) imgsEl.addEventListener('input', function() {
       P.markers[i].lightbox.images = this.value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
@@ -4185,7 +4224,7 @@ function renderZoneEditor(i) {
     + '<button class="tg'+(z.clipMap?' on':'')+' " id="zn-clip-tog"></button></div>';
   html += '</div>';
   // Scene visibility checklist
-  html += '<div class="rs"><div class="st">Visible on scenes'+infoBtn('Tick the scenes where this zone should appear. Leave all unticked to hide everywhere.')+'</div>';
+  html += '<div class="rs"><div class="st">Visible on scenes'+infoBtn('Tick the scenes where this zone should appear. Leave all unticked to show it on every scene.')+'</div>' + pageOnlyRowHTML('zone', i, z);
   var zScenes = z.scenes || [];
   if(!P.scenes.length) {
     html += '<div style="font-size:11px;color:var(--ghost);font-family:var(--mono)">No scenes yet — add scenes first.</div>';
@@ -7010,8 +7049,7 @@ function lnGJ() {
   var features = [];
   (P.lines||[]).forEach(function(ln, li) {
     if(!ln.geojson) return;
-    var ls = ln.scenes||[];
-    if(ls.length>0 && (!sceneId || ls.indexOf(sceneId)<0)) return;
+    if(!edVis('lines', ln, sceneId)) return;
     try {
       var gj = JSON.parse(ln.geojson);
       var geoms = [];
@@ -7036,8 +7074,7 @@ function lnPtsGJ() {
   var features = [];
   (P.lines||[]).forEach(function(ln) {
     if(!ln.showEndpoints||!ln.geojson) return;
-    var ls = ln.scenes||[];
-    if(ls.length>0 && (!sceneId || ls.indexOf(sceneId)<0)) return;
+    if(!edVis('lines', ln, sceneId)) return;
     try {
       var gj = JSON.parse(ln.geojson);
       var geoms = [];
@@ -7603,7 +7640,7 @@ function mtLbScale() {
 }
 function mtLbVis() {
   var sc = P.scenes[AS], sid = sc ? sc.id : null;
-  pLabels.forEach(function(m) { var ss = m._lb.scenes || []; m.getElement().style.display = !ss.length || (sid && ss.indexOf(sid) >= 0) ? '' : 'none'; });
+  pLabels.forEach(function(m) { m.getElement().style.display = edVis('labels', m._lb, sid) ? '' : 'none'; });
 }
 function refreshLB() {
   renderLabels();
@@ -7718,7 +7755,7 @@ function renderLabelEditor(i) {
     + tog('Grow and shrink with the map', 'scaleWithMap', !!lb.scaleWithMap)
     + (lb.scaleWithMap ? '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-2px 0 8px">Shown at its set size at zoom ' + (+lb.zoom || 15).toFixed(1) + ', bigger closer in and smaller further out, like a place name printed on the map. <button class="btn btn-g" id="lb-zoom-now" style="margin-top:6px;width:100%">Use the current zoom</button></div>' : '')
     + '<div class="f2"><div class="f"><label class="fl">Longitude</label><input type="number" step="0.00001" data-lbk="lng" data-num="1" value="' + lb.coords[0] + '"/></div><div class="f"><label class="fl">Latitude</label><input type="number" step="0.00001" data-lbk="lat" data-num="1" value="' + lb.coords[1] + '"/></div></div></div>';
-  html += '<div class="rs"><div class="st">Visible on scenes' + infoBtn('Leave every scene unticked to show the label on all of them.') + '</div>'
+  html += '<div class="rs"><div class="st">Visible on scenes' + infoBtn('Leave every scene unticked to show the label on all of them.') + '</div>' + pageOnlyRowHTML('label', i, lb)
     + P.scenes.map(function(sc, si) { return '<div class="lr" style="margin-bottom:5px"><span class="ll">' + h(sc.label || 'Scene ' + (si + 1)) + '</span><button class="tg' + ((lb.scenes || []).indexOf(sc.id) >= 0 ? ' on' : '') + '" data-lbsc="' + h(sc.id) + '"></button></div>'; }).join('') + '</div>';
   html += '<div class="rs"><button class="btn btn-g btn-ic" id="lb-del" style="width:100%;justify-content:center;color:var(--red)">' + lucideSVG('trash-2', 12, 'currentColor') + 'Delete label</button></div>';
   setHTML('rpc', html);
@@ -7759,7 +7796,7 @@ function renderLabelEditor(i) {
 function exportMapLabels() {
   return (P.mapLabels || []).filter(function(lb) { return lb.coords && String(lb.text || '').trim(); }).map(function(lb) {
     return { t: lb.text, c: lb.coords, zl: +lb.layer || 0, css: mapLabelCSS(lb, lbFam(lb)), r: +lb.rotate || 0, f: !!lb.flat, s: !!lb.scaleWithMap, z: +lb.zoom || 15,
-      sc: (lb.scenes || []).map(function(id) { return P.scenes.map(function(s) { return s.id; }).indexOf(id); }).filter(function(x) { return x >= 0; }) };
+      sc: ppSceneIdx('labels', lb, (lb.scenes || []).map(function(id) { return P.scenes.map(function(s) { return s.id; }).indexOf(id); }).filter(function(x) { return x >= 0; })) };
   });
 }
 
@@ -7850,6 +7887,12 @@ function mtBindUI() {
       mtAlign(b.dataset.al);
     });
     bar.querySelector('.mt-unlock').onclick = function() { var l = mtAllLocked(); if (!l.length) return; mtSetLock(l, false); mtToast('Unlocked ' + l.length + (l.length === 1 ? ' item' : ' items')); };
+    document.addEventListener('click', function(e) {
+      var b = e.target.closest && e.target.closest('[data-ponly]'); if (!b) return;
+      var u = b.dataset.ponly.split(':'), it = mtArr(u[0])[+u[1]]; if (!it) return;
+      it.pageOnly = !it.pageOnly; markDirty(); mtRefresh(u[0]); window._pNoFly = true; try { updatePreview(); } catch (x) {} window._pNoFly = false;
+      mtToast(it.pageOnly ? 'Hidden from scenes. It now shows only on story pages that pick it.' : 'Back on its scenes.');
+    });
     // Lock buttons in the left-hand lists (caught before the row's own click opens the item).
     document.addEventListener('click', function(e) {
       var b = e.target.closest && e.target.closest('[data-mtlock]'); if (!b) return;
@@ -8163,20 +8206,17 @@ function updatePreview() {
     var scenes = marker.scenes || [];
     // Show if: context layer is on AND (marker has no scene restrictions OR current scene is in its list)
     var sceneId = P.scenes[AS] ? P.scenes[AS].id : null;
-    var visibleOnScene = scenes.length === 0 || (sceneId && scenes.indexOf(sceneId) >= 0);
-    mk.getElement().style.display = (L.context && visibleOnScene) ? '' : 'none';
+    var visibleOnScene = edVis('markers', marker, sceneId);
+    mk.getElement().style.display = ((L.context || PP_PREVIEW) && visibleOnScene) ? '' : 'none';
   });
   // Per-zone scene visibility in preview
   ps('p-zn-ex', false);
   ps('p-zn-3d', L.constraints);
-  ps('p-zn-f', L.constraints);
-  ps('p-zn-s', L.constraints);
-  if(pMap && pMap.getSource('p-zn') && L.constraints) {
+  ps('p-zn-f', L.constraints || !!PP_PREVIEW);
+  ps('p-zn-s', L.constraints || !!PP_PREVIEW);
+  if(pMap && pMap.getSource('p-zn') && (L.constraints || PP_PREVIEW)) {
     var sceneId = P.scenes[AS] ? P.scenes[AS].id : null;
-    var visibleZones = P.zones.filter(function(z) {
-      var zs = z.scenes || [];
-      return zs.length === 0 || (sceneId && zs.indexOf(sceneId) >= 0);
-    });
+    var visibleZones = P.zones.filter(function(z) { return edVis('zones', z, sceneId); });
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:zonesForMap(visibleZones).map(function(z){
       var zco = z.smoothRadius > 0.01 ? smoothPolygon(z.coordinates, z.smoothRadius) : z.coordinates;
       return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,zi:P.zones.indexOf(z._src||z),color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,interactive:z.interactive!==false}};
@@ -9622,6 +9662,66 @@ function buildQuestionItem(sc, i, q, qi) {
     + '        '+input+'\n'
     + '      </div>\n';
 }
+// ── Story pages that set their own map: each gets a hidden "scene" number after the real scenes, and
+// every zone, line, marker and label it shows has that number added to its scene list in the export.
+var PP_PREVIEW = null;
+/** Is this zone / line / marker / label shown on the editor map right now? */
+function edVis(kind, it, sceneId) {
+  if (PP_PREVIEW) { if (kind === 'markers' && it === PP_PREVIEW.m) return true; return ((PP_PREVIEW.m.lightbox.pageMap || {})[kind] || []).indexOf(it.id) >= 0; }
+  if (it.pageOnly) return false;
+  var s0 = it.scenes || [];
+  return s0.length === 0 || (!!sceneId && s0.indexOf(sceneId) >= 0);
+}
+function ppPreviewRefresh() {
+  if (!pMap) return;
+  window._pNoFly = true; try { updatePreview(); } catch (e) {} window._pNoFly = false;
+  try { refreshLines(); } catch (e) {} try { mtLbVis(); } catch (e) {}
+  var mp = el('mp'), bar = el('pp-prev-bar');
+  if (PP_PREVIEW && mp) {
+    if (!bar) { bar = document.createElement('div'); bar.id = 'pp-prev-bar'; mp.appendChild(bar); bar.addEventListener('click', function(e) { if (e.target.closest('button')) ppPreviewOff(); }); }
+    bar.innerHTML = '<span>Story page map \u00b7 ' + h(PP_PREVIEW.m.name || 'marker') + '</span><button type="button" class="btn btn-g">Stop preview</button>';
+  } else if (bar) bar.remove();
+}
+function ppPreviewOff() { if (!PP_PREVIEW) return; PP_PREVIEW = null; ppPreviewRefresh(); var b = el('mk-pm-prev'); if (b) b.textContent = 'Preview on map'; }
+function pageOnlyRowHTML(kind, i, it) {
+  return '<div class="lr" style="margin-bottom:8px"><span class="ll">Only on story pages' + infoBtn('Hides this ' + kind + ' from every scene. It then shows only on marker story pages that switch it on under Map while this page is open.') + '</span><button type="button" class="tg' + (it.pageOnly ? ' on' : '') + '" data-ponly="' + kind + ':' + i + '"></button></div>'
+    + (it.pageOnly ? '<div style="font-size:10.5px;line-height:1.5;color:var(--ghost);margin:-2px 0 10px">Hidden from every scene; the scene ticks below are ignored.</div>' : '');
+}
+function ppPages() {
+  return (P.markers || []).filter(function(m) { var lb = m.lightbox || {}; return lb.enabled && lb.layout === 'story' && lb.pageMap && lb.pageMap.mode === 'pick'; });
+}
+function ppSceneOf(m) { var k = ppPages().indexOf(m); return k >= 0 ? P.scenes.length + k : -1; }
+function ppSceneIdx(kind, it, real) {
+  var pages = ppPages();
+  if (it.pageOnly) {
+    var only = [];
+    pages.forEach(function(m, k) { if ((m.lightbox.pageMap[kind] || []).indexOf(it.id) >= 0) only.push(P.scenes.length + k); });
+    return only.length ? only : [-1];
+  }
+  if (!pages.length) return real;
+  var list = real.length ? real.slice() : P.scenes.map(function(_, i) { return i; });
+  pages.forEach(function(m, k) { var ids = m.lightbox.pageMap[kind] || []; if (ids.indexOf(it.id) >= 0 || (kind === 'markers' && it === m)) list.push(P.scenes.length + k); });
+  return list;
+}
+function ppPickHTML(pm, self) {
+  var kinds = [['zones', 'Zones', P.zones || [], 'z'], ['lines', 'Lines', P.lines || [], 'l'], ['markers', 'Markers', P.markers || [], 'mk'], ['labels', 'Text labels', P.mapLabels || [], 'lb']];
+  var out = '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-2px 0 10px">While this page is open, the map shows only what you switch on here. Going back restores the scene.</div>';
+  kinds.forEach(function(k) {
+    if (!k[2].length) return;
+    var on = pm[k[0]] || [];
+    out += '<div class="f"><label class="fl" style="display:flex;align-items:center;gap:8px">' + k[1] + '<span style="margin-left:auto;display:flex;gap:4px"><button type="button" class="btn btn-g" data-pmall="' + k[0] + '" style="padding:2px 8px;font-size:10px">All</button><button type="button" class="btn btn-g" data-pmnone="' + k[0] + '" style="padding:2px 8px;font-size:10px">None</button></span></label>'
+      + '<div style="max-height:200px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 10px">';
+    k[2].forEach(function(it, i) {
+      if (it.id == null || it.id === '') it.id = k[3] + Date.now() + i;
+      var nm = it.name || (it.text || '').split('\n')[0] || (k[1] + ' ' + (i + 1));
+      if (it === self) { out += '<div class="lr" style="margin:3px 0"><span class="ll">' + h(nm) + ' <span style="color:var(--ghost)">(this marker, always shown)</span></span></div>'; return; }
+      out += '<div class="lr" style="margin:3px 0"><span class="ll">' + h(nm) + '</span><button type="button" class="tg' + (on.indexOf(it.id) >= 0 ? ' on' : '') + '" data-pm="' + k[0] + '" data-pmid="' + h(String(it.id)) + '"></button></div>';
+    });
+    out += '</div></div>';
+  });
+  return out;
+}
+
 function buildChapters() {
   var out = '';
   P.scenes.forEach(function(sc, i) {
@@ -9712,9 +9812,9 @@ function buildCfg() {
   // Build overlay config
   // Lines config
   var lnData = (P.lines||[]).map(function(ln) {
-    var sceneIdxs = (ln.scenes||[]).map(function(sid){
+    var sceneIdxs = ppSceneIdx('lines', ln, (ln.scenes||[]).map(function(sid){
       var si=P.scenes.findIndex(function(s){return s.id===sid;}); return si>=0?si:-1;
-    }).filter(function(si){return si>=0;});
+    }).filter(function(si){return si>=0;}));
     return JSON.stringify({
       color:ln.color||'#fff', width:ln.width||3, opacity:ln.opacity||1,
       dash:ln.dash||'solid',
@@ -9750,9 +9850,9 @@ function buildCfg() {
 
   var labels = P.scenes.map(function(sc){return JSON.stringify(sc.label||'Scene');}).join(',');
 
-  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxBack:(m.lightbox&&m.lightbox.backLabel)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false,zl:+m.layer||0,anim:animMode('marker',m),aDur:m.animOverride?(m.animDuration||800):0,aDelay:m.animOverride?(m.animDelay||0):0,aEase:m.animOverride?easingCSS(m.animEasing||'easeOut',m.animEasingCurve):''}};})};
+  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxBack:(m.lightbox&&m.lightbox.backLabel)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:ppSceneIdx('markers',m,(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;})).join(','),ppScene:ppSceneOf(m),showInDrawer:m.showInDrawer!==false,zl:+m.layer||0,anim:animMode('marker',m),aDur:m.animOverride?(m.animDuration||800):0,aDelay:m.animOverride?(m.animDelay||0):0,aEase:m.animOverride?easingCSS(m.animEasing||'easeOut',m.animEasingCurve):''}};})};
 
-  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,anim:animMode('zone',z._src||z),codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
+  var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:ppSceneIdx('zones',z._src||z,(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;})).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,anim:animMode('zone',z._src||z),codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
   var ciLines = P.zones.map(function(z){return '  '+JSON.stringify(z.id||z.name)+': { title:'+JSON.stringify(z.name)+', body:'+JSON.stringify(z.popup||'')+' }';}).join(',\n');
 
@@ -10845,6 +10945,7 @@ function buildJS() {
 '    pg.addEventListener("click",function(e){if(e.target.closest(".pp-back"))closeProsePage();});',
 '  }',
 '  if(!_pp){var c=map.getCenter();_pp={cam:{center:[c.lng,c.lat],zoom:map.getZoom(),pitch:map.getPitch(),bearing:map.getBearing()},opener:document.activeElement};}',
+'  if(p.ppScene!=null&&p.ppScene>=0){_pp.custom=true;showPageMap(p.ppScene);}else if(_pp.custom){var keep=_pp;_pp=null;applyScene(cS,false);_pp=keep;_pp.custom=false;}',
 '  var wrap=document.createElement("div");wrap.className="chapter pp";',
 '  var back=document.createElement("button");back.type="button";back.className="pp-back";',
 '  back.innerHTML="<svg viewBox=\\"0 0 24 24\\" width=\\"14\\" height=\\"14\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"2\\" stroke-linecap=\\"round\\" stroke-linejoin=\\"round\\" aria-hidden=\\"true\\"><path d=\\"M19 12H5M12 19l-7-7 7-7\\"/></svg>";',
@@ -10862,10 +10963,22 @@ function buildJS() {
 '    else map.easeTo({center:p.coords,duration:900,essential:true});',
 '  }',
 '}',
+'function showPageMap(v){',
+'  applyLines(v,true);',
+'  filterZones(v,true);',
+'  zIds("con-f").forEach(function(id){sv(id,true);});zIds("con-s").forEach(function(id){sv(id,true);});sv("con-ex",true);sv("con-3d",true);',
+'  ctxMarkers.forEach(function(mk){',
+'    var ids=mk._sceneIds||[],vis=ids.length===0||ids.indexOf(v)>=0,el=mk.getElement(),was=el.style.display!=="none";',
+'    if(vis&&!was&&ANIMATE_ENTRANCES&&mk._anim!=="none"){el.style.display="";el.classList.remove("mk-drop","mk-fade");void el.offsetWidth;el.classList.add(mk._anim==="fade"?"mk-fade":"mk-drop");}',
+'    else el.style.display=vis?"":"none";',
+'  });',
+'  applyMapLabels(v);',
+'}',
 'function closeProsePage(keepCamera){',
 '  var pg=document.getElementById("prose-page");if(!pg||!_pp)return;',
 '  var st=_pp;_pp=null;',
 '  pg.classList.remove("open");document.body.classList.remove("pp-open");',
+'  if(st.custom&&!keepCamera)applyScene(cS,false);',
 '  if(!keepCamera&&st.cam)map.flyTo({center:st.cam.center,zoom:st.cam.zoom,pitch:st.cam.pitch,bearing:st.cam.bearing,duration:1000,essential:true});',
 '  if(!keepCamera&&st.opener&&st.opener.focus)try{st.opener.focus({preventScroll:true});}catch(e){}',
 '}',
