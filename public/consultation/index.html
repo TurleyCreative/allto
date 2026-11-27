@@ -10089,7 +10089,7 @@ function buildJS() {
 '      else if(gj.type==="Feature") geoms.push(gj.geometry);',
 '      else if(gj.type==="LineString"||gj.type==="MultiLineString") geoms.push(gj);',
 '      geoms.forEach(function(g){',
-'        lf.push({type:"Feature",geometry:g,properties:{color:ln.color||"#fff",width:ln.width||3,opacity:ln.opacity||1,dash:ln.dash||"solid",label:ln.showLabel?(ln.labelText||""):"",labelSize:ln.labelSize||12,labelColor:ln.labelColor||"#fff",labelBg:ln.labelBg||"rgba(0,0,0,0.85)",_new:isNew,_dur:lnDur,_ease:lnEase,_delay:lnDelay,_curve:lnCurve}});',
+'        lf.push({type:"Feature",geometry:g,properties:{z:ln.z||0,color:ln.color||"#fff",width:ln.width||3,opacity:ln.opacity||1,dash:ln.dash||"solid",label:ln.showLabel?(ln.labelText||""):"",labelSize:ln.labelSize||12,labelColor:ln.labelColor||"#fff",labelBg:ln.labelBg||"rgba(0,0,0,0.85)",_new:isNew,_dur:lnDur,_ease:lnEase,_delay:lnDelay,_curve:lnCurve}});',
 '        if(ln.showEndpoints){var cs=g.type==="LineString"?[g.coordinates]:g.coordinates;cs.forEach(function(line){if(line.length>0)pf.push({type:"Feature",geometry:{type:"Point",coordinates:line[0]},properties:{color:ln.color||"#fff",opacity:ln.opacity||1,radius:ln.endpointRadius||5}});if(line.length>1)pf.push({type:"Feature",geometry:{type:"Point",coordinates:line[line.length-1]},properties:{color:ln.color||"#fff",opacity:ln.opacity||1,radius:ln.endpointRadius||5}});});}',
 '      });',
 '    }catch(e){}',
