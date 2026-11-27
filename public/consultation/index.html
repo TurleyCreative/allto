@@ -6113,6 +6113,9 @@ var BLOCK_TYPES = [
   {id:'imagetext',     label:'Image + Text',    icon:'id-card'},
   {id:'hotspot-image', label:'Image Hotspots',  icon:'map-pin'},
   {id:'columns',       label:'Two Columns',     icon:'columns-2'},
+  {id:'stats',         label:'Stats',           icon:'bar-chart-3'},
+  {id:'timeline',      label:'Timeline',        icon:'git-commit-vertical'},
+  {id:'quote',         label:'Quote',           icon:'quote'},
   {id:'button',        label:'Button',          icon:'link'},
   {id:'video',         label:'Video',           icon:'play'},
   {id:'divider',       label:'Divider',         icon:'minus'}
@@ -6127,6 +6130,9 @@ function newBlock(type) {
   if(type==='columns')       return {id:id,type:'columns',leftHtml:'<p></p>',rightHtml:'<p></p>'};
   if(type==='button')        return {id:id,type:'button',label:'',url:'',style:'filled'};
   if(type==='video')         return {id:id,type:'video',url:''};
+  if(type==='stats')         return {id:id,type:'stats',items:[{value:'11,456',label:'New homes'},{value:'29,000 sqm',label:'Office space'},{value:'600',label:'Hotel beds'}]};
+  if(type==='timeline')      return {id:id,type:'timeline',items:[{date:'Now',title:'Consultation',body:'Tell us what you think.'},{date:'Later this year',title:'Planning application',body:''},{date:'Next year',title:'Decision',body:''}]};
+  if(type==='quote')         return {id:id,type:'quote',text:'',cite:''};
   return {id:id,type:'divider'};
 }
 // Shared by the on-image hotspot dot and its icon-picker preview button, so both always
@@ -6272,6 +6278,24 @@ function blockRowHTML(b, bi, total, prefix) {
       + '<option value="filled"'+(b.style!=='outline'?' selected':'')+'>Filled</option>'
       + '<option value="outline"'+(b.style==='outline'?' selected':'')+'>Outline</option>'
       + '</select>';
+  } else if(b.type==='stats' || b.type==='timeline') {
+    var isT = b.type==='timeline';
+    html += '<div style="display:flex;flex-direction:column;gap:6px">';
+    (b.items||[]).forEach(function(it, ii) {
+      html += '<div style="border:1px solid var(--border);border-radius:6px;padding:7px 8px;position:relative">'
+        + '<button type="button" data-blkitemdel="'+ii+'" title="Remove" style="position:absolute;top:5px;right:5px;border:none;background:none;color:var(--ghost);cursor:pointer;padding:2px">'+lucideSVG('x',12,'currentColor')+'</button>'
+        + (isT
+          ? '<input type="text" data-blkitem="'+ii+'" data-k="date" value="'+h(it.date||'')+'" placeholder="When, e.g. Spring 2027" style="width:calc(100% - 22px);margin-bottom:5px;font-size:11px"/>'
+            + '<input type="text" data-blkitem="'+ii+'" data-k="title" value="'+h(it.title||'')+'" placeholder="What happens" style="width:100%;margin-bottom:5px;font-size:11px"/>'
+            + '<textarea data-blkitem="'+ii+'" data-k="body" placeholder="More detail (optional)" style="width:100%;min-height:38px;font-size:11px">'+h(it.body||'')+'</textarea>'
+          : '<input type="text" data-blkitem="'+ii+'" data-k="value" value="'+h(it.value||'')+'" placeholder="Figure, e.g. 11,456" style="width:calc(100% - 22px);margin-bottom:5px;font-size:11px"/>'
+            + '<input type="text" data-blkitem="'+ii+'" data-k="label" value="'+h(it.label||'')+'" placeholder="What it counts, e.g. new homes" style="width:100%;font-size:11px"/>')
+        + '</div>';
+    });
+    html += '</div><button type="button" data-blkitemadd="1" class="btn btn-g btn-ic" style="width:100%;justify-content:center;margin-top:6px;font-size:11px">'+lucideSVG('plus',12,'currentColor')+(isT?'Add a step':'Add a figure')+'</button>';
+  } else if(b.type==='quote') {
+    html += '<textarea id="'+rid+'-qtext" placeholder="The quote" style="width:100%;min-height:60px;margin-bottom:6px">'+h(b.text||'')+'</textarea>';
+    html += '<input type="text" id="'+rid+'-qcite" value="'+h(b.cite||'')+'" placeholder="Who said it (optional)" style="width:100%"/>';
   } else if(b.type==='video') {
     html += '<input type="text" id="'+rid+'-url" value="'+h(b.url||'')+'" placeholder="YouTube or Vimeo link" style="width:100%"/>';
     html += '<div style="font-size:9px;color:var(--ghost);font-family:var(--mono);margin-top:5px">Embeds responsively — fits any screen automatically, unlike a fixed-size embed.</div>';
@@ -6315,6 +6339,25 @@ function bindBlocksEditor(prefix, getLB, rerender) {
   });
   blocks().forEach(function(b) {
     var rid = prefix+'-'+b.id;
+    if(b.type==='stats' || b.type==='timeline') {
+      var card = container.querySelector('[data-blk="'+b.id+'"].blk-card');
+      if(card) {
+        card.querySelectorAll('[data-blkitem]').forEach(function(inp) {
+          inp.addEventListener('input', function() { var it = (b.items||[])[+inp.dataset.blkitem]; if(it) { it[inp.dataset.k] = inp.value; markDirty(); } });
+        });
+        card.addEventListener('click', function(e) {
+          var del = e.target.closest('[data-blkitemdel]'), add = e.target.closest('[data-blkitemadd]');
+          if(del) { b.items.splice(+del.dataset.blkitemdel, 1); markDirty(); rerender(); }
+          else if(add) { b.items = b.items || []; b.items.push(b.type==='timeline' ? {date:'',title:'',body:''} : {value:'',label:''}); markDirty(); rerender(); }
+        });
+      }
+      return;
+    }
+    if(b.type==='quote') {
+      var qt = el(rid+'-qtext'); if(qt) qt.addEventListener('input', function(){ b.text=this.value; markDirty(); });
+      bindInput(rid+'-qcite', function(v){ b.cite=v; });
+      return;
+    }
     if(b.type==='heading') {
       bindInput(rid+'-text', function(v){ b.text=v; });
       var szEl=el(rid+'-size'); if(szEl) szEl.addEventListener('change', function(){ b.size=this.value; markDirty(); });
@@ -7138,6 +7181,9 @@ function refreshLines() {
 // then line them up or spread them out. A selected circle zone shows handles for its centre and edge; other
 // zones and lines show a move handle. An optional grid (metres, from the site centre) snaps what you drag.
 var MT_ICONS = {
+  'quote': '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/><path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+  'git-commit-vertical': '<path d="M12 3v6"/><circle cx="12" cy="12" r="3"/><path d="M12 15v6"/>',
+  'bar-chart-3': '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
   'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
   'lock-open': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
   'pause': '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
@@ -10860,6 +10906,7 @@ function buildJS() {
 '  if(vm) return "https://player.vimeo.com/video/" + vm[1];',
 '  return url;', // already an embed-style URL — used as-is
 '}',
+'function lbEsc(t){return String(t==null?"":t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\\n/g,"<br/>");}',
 'function lbBlockHTML(b){',
 '  if(!b || !b.type) return "";',
 '  if(b.type === "heading"){',
@@ -10908,6 +10955,20 @@ function buildJS() {
 '    return "<div class=\\"lbk-video\\"><iframe src=\\"" + embed + "\\" allow=\\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\\" allowfullscreen frameborder=\\"0\\"></iframe></div>";',
 '  }',
 '  if(b.type === "divider") return "<div class=\\"lbk-divider\\"></div>";',
+'  if(b.type === "stats"){',
+'    var st=(b.items||[]).filter(function(it){return it.value||it.label;});',
+'    if(!st.length) return "";',
+'    return "<div class=\\"lbk-stats\\">" + st.map(function(it){ return "<div class=\\"lbk-stat\\"><div class=\\"lbk-stat-v\\">" + lbEsc(it.value) + "</div><div class=\\"lbk-stat-l\\">" + lbEsc(it.label) + "</div></div>"; }).join("") + "</div>";',
+'  }',
+'  if(b.type === "timeline"){',
+'    var tl=(b.items||[]).filter(function(it){return it.date||it.title||it.body;});',
+'    if(!tl.length) return "";',
+'    return "<ol class=\\"lbk-tl\\">" + tl.map(function(it){ return "<li><div class=\\"lbk-tl-d\\">" + lbEsc(it.date) + "</div><div class=\\"lbk-tl-t\\">" + lbEsc(it.title) + "</div>" + (it.body ? "<div class=\\"lbk-tl-b\\">" + lbEsc(it.body) + "</div>" : "") + "</li>"; }).join("") + "</ol>";',
+'  }',
+'  if(b.type === "quote"){',
+'    if(!b.text) return "";',
+'    return "<blockquote class=\\"lbk-quote\\"><p>" + lbEsc(b.text) + "</p>" + (b.cite ? "<cite>" + lbEsc(b.cite) + "</cite>" : "") + "</blockquote>";',
+'  }',
 '  return "";',
 '}',
 // Hotspot data travels as a JSON blob in a data- attribute (see lbBlockHTML above) rather
@@ -12537,6 +12598,20 @@ function buildLbCSS() {
     '.lbk-image{display:flex;flex-direction:column;gap:6px}',
     '.lbk-image img{width:100%;border-radius:8px;display:block}',
     '.lbk-img-cap{font-size:11px;color:#9a9590;font-style:italic}',
+    '.lbk-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}',
+    '.lbk-stat{background:#f4f1ea;border-radius:10px;padding:16px 16px 14px}',
+    '.lbk-stat-v{font-size:26px;font-weight:700;line-height:1.1;color:var(--accent,#c0392b);letter-spacing:-.01em}',
+    '.lbk-stat-l{font-size:12px;line-height:1.45;color:#5a5652;margin-top:6px}',
+    '.lbk-tl{list-style:none;margin:0;padding:0 0 0 22px;position:relative}',
+    '.lbk-tl::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:#e9e5dc}',
+    '.lbk-tl li{position:relative;padding-bottom:16px}.lbk-tl li:last-child{padding-bottom:0}',
+    '.lbk-tl li::before{content:"";position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--accent,#c0392b);box-sizing:border-box}',
+    '.lbk-tl-d{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#9a9590;margin-bottom:3px}',
+    '.lbk-tl-t{font-size:15px;font-weight:700;color:#0f0e0d;line-height:1.3}',
+    '.lbk-tl-b{font-size:13px;line-height:1.65;color:#5a5652;margin-top:4px}',
+    '.lbk-quote{margin:0;padding:4px 0 4px 18px;border-left:3px solid var(--accent,#c0392b)}',
+    '.lbk-quote p{font-size:17px;line-height:1.55;color:#0f0e0d;font-style:italic;margin:0}',
+    '.lbk-quote cite{display:block;margin-top:8px;font-size:12px;font-style:normal;color:#9a9590}',
     // flex-wrap (not a media query) is what makes this reflow: past a natural minimum
     // width the image and text columns wrap to stacked full-width on their own — the same
     // "no fixed canvas" idea as the box sizing above.
