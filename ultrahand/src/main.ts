@@ -3289,8 +3289,33 @@ try {
   if (old && !localStorage.getItem(KEY)) localStorage.setItem(KEY, old);
   localStorage.removeItem('site-lab:last');
 } catch { /* storage blocked */ }
+/**
+ * A ready-made copy of the masterplan as drawn here, for Consultation to bring onto its scenes:
+ * homes as walls plus stepped roof slices (the map can only extrude flat tops), and the sketch
+ * (pencil outlines, ridges, hatching). Written a moment after each change, and before a project file is saved.
+ */
+const MP_EXPORT_KEY = 'ultrahand:mp-export';
+let mpExportT = 0;
+const r6 = (c: any): any => (typeof c[0] === 'number' ? [+c[0].toFixed(6), +c[1].toFixed(6)] : c.map(r6));
+function writeMpExport() {
+  clearTimeout(mpExportT);
+  try {
+    const p = S.plan;
+    if (!p.homes.length && !p.streets.length && !p.open.length && !p.trees.length && !S.blocks.length) return localStorage.removeItem(MP_EXPORT_KEY);
+    const typeOf = new Map(p.homes.map((h) => [h.id, h.type]));
+    const homes = planGeoJSON(p, null).homes.features.map((f: any) => ({
+      type: 'Feature', geometry: { type: f.geometry.type, coordinates: r6(f.geometry.coordinates) },
+      properties: { type: typeOf.get(f.properties.id), colour: f.properties.colour, wash: f.properties.wash, base: +(+f.properties.base).toFixed(2), top: +(+f.properties.top).toFixed(2) },
+    }));
+    const sk = sketchGeoJSON(p, S.blocks.map((b) => b.shape));
+    const slim = (fs: any[]) => fs.map((f) => ({ type: 'Feature', geometry: { type: f.geometry.type, coordinates: r6(f.geometry.coordinates) }, properties: f.properties }));
+    localStorage.setItem(MP_EXPORT_KEY, JSON.stringify({ v: 1, at: Date.now(), homes, sketch: { lines: slim(sk.lines.features), hatches: slim(sk.hatches.features) } }));
+  } catch { /* storage full or blocked: Consultation falls back to flat-topped homes */ }
+}
 function saveProject() {
   recordHistory();
+  clearTimeout(mpExportT);
+  mpExportT = window.setTimeout(writeMpExport, 700);
   try {
     const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length || S.plan.clear.length || S.plan.clearRed;
     if (!S.red && !S.blocks.length && !hasPlan) return localStorage.removeItem(KEY);
@@ -3349,7 +3374,9 @@ function takeInShared(opening: boolean): boolean {
 }
 Allto?.onChange(() => map.isStyleLoaded() && takeInShared(false));
 // The .allto project file stores the latest site, masterplan and assumptions.
-Allto?.beforeSave?.(saveProject);
+Allto?.beforeSave?.(() => { saveProject(); writeMpExport(); });
+// A copy for Consultation from a plan saved before this existed.
+setTimeout(() => { try { if (!localStorage.getItem(MP_EXPORT_KEY)) writeMpExport(); } catch { /* ignore */ } }, 2500);
 window.addEventListener('focus', () => map.isStyleLoaded() && takeInShared(false));
 
 renderLayerList();

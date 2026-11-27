@@ -44,7 +44,7 @@
 
   var FILE_FORMAT = 'allto-project';
   // What belongs to the project. Per-person preferences (theme, guides, snapping) stay out of it.
-  var FILE_KEYS = ['allto:project', 'consultation_builder_project', 'ultrahand:last'];
+  var FILE_KEYS = ['allto:project', 'consultation_builder_project', 'ultrahand:last', 'ultrahand:mp-export'];
   var FILE_PREFIXES = ['present:project'];
   var flushers = [];
   function fileKeys() {

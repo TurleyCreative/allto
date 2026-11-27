@@ -1951,8 +1951,10 @@ function bldGJ() {
       if(gj.type==='FeatureCollection') gj.features.forEach(function(f){ if(f.geometry.type==='Polygon'||f.geometry.type==='MultiPolygon') geoms.push(f.geometry); });
       else if(gj.type==='Feature') geoms.push(gj.geometry);
       else if(gj.type==='Polygon'||gj.type==='MultiPolygon') geoms.push(gj);
-      geoms.forEach(function(g){
-        features.push({type:'Feature',geometry:g,properties:{color:b.color||'#8899aa',height:b.height||20,opacity:b.opacity||0.85}});
+      var fs = gj.type==='FeatureCollection' ? gj.features : (gj.type==='Feature' ? [gj] : [{properties:{}}]);
+      geoms.forEach(function(g, gi){
+        var pr = (fs[gi] && fs[gi].properties) || {};
+        features.push({type:'Feature',geometry:g,properties:{color:pr.color||b.color||'#8899aa',height:pr.top!=null?+pr.top:(b.height||20),base:+pr.base||0,opacity:b.opacity||0.85}});
       });
     } catch(e) {}
   });
@@ -7064,6 +7066,9 @@ function addPreviewLayers() {
 pMap.addLayer({id:'p-ln-pt',type:'circle',source:'p-ln-pts',paint:{'circle-radius':['get','radius'],'circle-color':['get','color'],'circle-opacity':['get','opacity']},layout:{visibility:'visible'}});
   pMap.addLayer({id:'p-ln-lb',type:'symbol',source:'p-ln',layout:{'text-field':['get','label'],'text-font':['DIN Pro Medium','Arial Unicode MS Regular'],'text-size':['get','labelSize'],'symbol-placement':'line-center','symbol-spacing':500,'text-allow-overlap':true,'text-ignore-placement':true,'text-background':true,visibility:'visible'},paint:{'text-color':['get','labelColor'],'text-background-color':['get','labelBg'],'text-background-opacity':1,'text-background-padding':[8,14,8,14]}});
     pMap.addSource('p-bld', {type:'geojson', data:bldGJ()});
+  pMap.addLayer({id:'p-bld-ex',type:'fill-extrusion',source:'p-bld',
+    paint:{'fill-extrusion-color':['get','color'],'fill-extrusion-height':['get','height'],'fill-extrusion-base':['coalesce',['get','base'],0],'fill-extrusion-opacity':0.85},
+    layout:{visibility:(P.scenes[AS]&&P.scenes[AS].layers.buildings===false)?'none':'visible'}});
   pMap.addSource('p-props', {type:'geojson', data:propsGJ()});
   pMap.addLayer({id:'p-props-ex',type:'fill-extrusion',source:'p-props',
     paint:{'fill-extrusion-color':['get','color'],'fill-extrusion-height':['get','height'],'fill-extrusion-base':['get','base'],'fill-extrusion-opacity':0.85},
@@ -8344,7 +8349,7 @@ function updatePreview() {
     var visibleZones = P.zones.filter(function(z) { return edVis('zones', z, sceneId); });
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:zonesForMap(visibleZones).map(function(z){
       var zco = z.smoothRadius > 0.01 ? smoothPolygon(z.coordinates, z.smoothRadius) : z.coordinates;
-      return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,zi:P.zones.indexOf(z._src||z),color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,interactive:z.interactive!==false}};
+      return {type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,zi:P.zones.indexOf(z._src||z),color:z.color,opacity:z.opacity,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,interactive:z.interactive!==false}};
     })});
   } else if(pMap && pMap.getSource('p-zn') && !L.constraints) {
     pMap.getSource('p-zn').setData({type:'FeatureCollection',features:[]});
@@ -9802,8 +9807,11 @@ var MP_USE = { residential: ['Residential', '#e6262e', 3.15], office: ['Workspac
 // label, colour, storeys, depth (m): height to halfway up a 35° gable roof
 var MP_HOUSE = { terrace2: ['Terrace, 2 bed', '#f07d6e', 2, 8.5], terrace: ['Terrace, 3 bed', '#e6262e', 2, 9], semi: ['Semi-detached pair, 3 bed', '#ef5f5f', 2, 9], detached: ['Detached, 4 bed', '#c43a3f', 2, 9.5], townhouse: ['Townhouse, 4 bed', '#9c1c22', 3, 10], bungalow: ['Bungalow, 2 bed', '#f7b6b6', 1, 8] };
 var MP_TREE = { small: 8, medium: 13, large: 20, columnar: 12, conifer: 15, fruit: 5 };
-var MP_PARTS = [['blocks', 'Massing blocks (3D)'], ['homes', 'Homes (3D)'], ['open', 'Open spaces'], ['streets', 'Streets'], ['trees', 'Trees'], ['clear', 'Hide existing buildings where cleared']];
-var MP_GROUPS = { zoneGroups: [['grp-mp-build', 'Masterplan · buildings'], ['grp-mp-open', 'Masterplan · open space'], ['grp-mp-clear', 'Masterplan · cleared areas']], lineGroups: [['grp-mp-streets', 'Masterplan · streets']], propGroups: [['grp-mp-trees', 'Masterplan · trees']] };
+var MP_PARTS = [['blocks', 'Massing blocks (3D)'], ['homes', 'Homes (3D, with roofs)'], ['open', 'Open spaces'], ['streets', 'Streets'], ['trees', 'Trees'], ['clear', 'Hide existing buildings where cleared'], ['sketch', 'Sketch style: pencil lines, hatching and soft colours']];
+var MP_EXPORT_KEY = 'ultrahand:mp-export';
+function mpExport() { try { return JSON.parse(localStorage.getItem(MP_EXPORT_KEY) || 'null'); } catch (e) { return null; } }
+function mpWash(hex, t) { t = t == null ? 0.45 : t; hex = String(hex || '#888888'); return '#' + [1, 3, 5].map(function(i) { var v = parseInt(hex.slice(i, i + 2), 16) || 0; return Math.round(v + (255 - v) * t).toString(16).padStart(2, '0'); }).join(''); }
+var MP_GROUPS = { zoneGroups: [['grp-mp-build', 'Masterplan · buildings'], ['grp-mp-open', 'Masterplan · open space'], ['grp-mp-clear', 'Masterplan · cleared areas'], ['grp-mp-paper', 'Masterplan · sketch paper']], lineGroups: [['grp-mp-streets', 'Masterplan · streets'], ['grp-mp-sketch', 'Masterplan · sketch']], propGroups: [['grp-mp-trees', 'Masterplan · trees']] };
 
 function mpRead() {
   var j = null;
@@ -9814,7 +9822,8 @@ function mpRead() {
     clear: (pl.clear || []).map(function(c) { return c.shape && c.shape.geometry ? c.shape.geometry.coordinates[0] : null; }).filter(Boolean).concat(pl.clearRed && red ? [red] : []) };
 }
 function mpCount(d) {
-  return d ? { blocks: d.blocks.length, homes: d.homes.length, open: d.open.length, streets: d.streets.length, trees: d.trees.length, clear: d.clear.length } : {};
+  var ex = mpExport(), sk = ex && ex.sketch ? (ex.sketch.lines || []).length + (ex.sketch.hatches || []).length : 0;
+  return d ? { blocks: d.blocks.length, homes: d.homes.length, open: d.open.length, streets: d.streets.length, trees: d.trees.length, clear: d.clear.length, sketch: sk ? 1 : 0 } : {};
 }
 function mpItems() {
   var f = function(a) { return (a || []).filter(function(x) { return x && x.mp; }); };
@@ -9837,16 +9846,28 @@ function mpImport(sceneIds, parts) {
     P.zones.push(Object.assign({ popup: '', opacity: 0.6, smoothRadius: 0, render3d: false, height3d: 20, base3d: 0, interactive: true, clipMap: false, codesignGroupId: null,
       lightbox: { enabled: false, layout: 'popover', heading: '', subheading: '', body: '', img: '', imgCaption: '', embedUrl: '' }, scenes: sc(), layer: 0, mp: true, showInDrawer: false }, o));
   };
+  // Sketch style: Ultrahand's paper wash over the base map, under everything else.
+  if (parts.sketch) zone({ id: 'mp-paper', name: 'Sketch paper', color: '#f8f4eb', opacity: 0.62, interactive: false, layer: -9, groupId: 'grp-mp-paper', coordinates: [[-179, -85], [179, -85], [179, 85], [-179, 85], [-179, -85]] });
   if (parts.clear) d.clear.forEach(function(r, i) { zone({ id: 'mp-clear-' + i, name: 'Cleared area ' + (i + 1), color: '#000000', opacity: 0, interactive: false, clipMap: true, coordinates: mpRing(r), groupId: 'grp-mp-clear' }); });
   if (parts.open) d.open.forEach(function(o) {
     var t = MP_OPEN[o.type] || MP_OPEN.park;
-    if (o.shape && o.shape.geometry) zone({ id: 'mp-open-' + o.id, name: o.name || t[0], popup: t[0], color: t[1], opacity: 0.6, coordinates: mpRing(o.shape.geometry.coordinates[0]), groupId: 'grp-mp-open' });
+    if (o.shape && o.shape.geometry) zone({ id: 'mp-open-' + o.id, name: o.name || t[0], popup: t[0], color: t[1], opacity: parts.sketch ? 0.42 : 0.6, coordinates: mpRing(o.shape.geometry.coordinates[0]), groupId: 'grp-mp-open' });
   });
   if (parts.blocks) d.blocks.forEach(function(b) {
     var u = MP_USE[b.use] || MP_USE.other, base = +b.baseM || 0, top = base + (+b.storeys || 1) * u[2];
-    if (b.shape && b.shape.geometry) zone({ id: 'mp-blk-' + b.id, name: b.name || u[0], popup: u[0] + ', ' + (b.storeys || 1) + ' storeys', color: u[1], opacity: 0.85, render3d: true, base3d: +base.toFixed(1), height3d: +top.toFixed(1), coordinates: mpRing(b.shape.geometry.coordinates[0]), groupId: 'grp-mp-build', layer: 1 });
+    if (b.shape && b.shape.geometry) zone({ id: 'mp-blk-' + b.id, name: b.name || u[0], popup: u[0] + ', ' + (b.storeys || 1) + ' storeys', color: parts.sketch ? mpWash(u[1]) : u[1], opacity: 0.85, render3d: true, base3d: +base.toFixed(1), height3d: +top.toFixed(1), coordinates: mpRing(b.shape.geometry.coordinates[0]), groupId: 'grp-mp-build', layer: 1 });
   });
-  if (parts.homes) {
+  var ex = mpExport();
+  if (parts.homes && ex && ex.homes && ex.homes.length) {
+    var byT = {}, cnt = {};
+    d.homes.forEach(function(hm) { cnt[hm.type] = (cnt[hm.type] || 0) + 1; });
+    ex.homes.forEach(function(f) { (byT[f.properties.type] = byT[f.properties.type] || []).push(f); });
+    Object.keys(byT).forEach(function(k) {
+      var t = MP_HOUSE[k] || MP_HOUSE.terrace; n++;
+      P.buildings.push({ id: 'mp-homes-' + k, name: 'Masterplan \u00b7 ' + t[0] + ' (' + (cnt[k] || byT[k].length) + ')', color: t[1], height: Math.max.apply(null, byT[k].map(function(f) { return +f.properties.top || 0; })), opacity: 0.92, scenes: sc(), mp: true,
+        geojson: JSON.stringify({ type: 'FeatureCollection', features: byT[k].map(function(f) { return { type: 'Feature', geometry: f.geometry, properties: { base: f.properties.base, top: f.properties.top, color: parts.sketch ? (f.properties.wash || mpWash(f.properties.colour)) : f.properties.colour } }; }) }) });
+    });
+  } else if (parts.homes) {
     var byType = {};
     d.homes.forEach(function(hm) { if (hm.shape && hm.shape.geometry) (byType[hm.type] = byType[hm.type] || []).push(hm); });
     Object.keys(byType).forEach(function(k) {
@@ -9863,6 +9884,20 @@ function mpImport(sceneIds, parts) {
     P.lines.push({ id: 'mp-st-' + st.id, name: st.name || 'Street', color: t[1], width: t[0], opacity: 0.95, dash: t[2], scenes: sc(), layer: 0, groupId: 'grp-mp-streets', mp: true,
       geojson: JSON.stringify({ type: 'LineString', coordinates: mpRing(st.line.geometry.coordinates) }) });
   });
+  if (parts.sketch && ex && ex.sketch) {
+    // Ultrahand's pencil: one line per colour, weight and strength, so they draw as one sketch.
+    var combos = {};
+    (ex.sketch.lines || []).concat(ex.sketch.hatches || []).forEach(function(f) {
+      var p = f.properties || {}, key = (p.c || '#2b2a27') + '|' + (+p.w || 1) + '|' + (+p.o || 0.8);
+      (combos[key] = combos[key] || []).push({ type: 'Feature', properties: {}, geometry: f.geometry });
+    });
+    Object.keys(combos).forEach(function(key, ki) {
+      var k = key.split('|'), pencil = k[0].toLowerCase() === '#2b2a27';
+      used['grp-mp-sketch'] = 1; n++;
+      P.lines.push({ id: 'mp-sk-' + ki, name: 'Sketch \u00b7 ' + (pencil ? 'pencil' : 'hatching') + (+k[2] < 0.5 ? ', light' : ''), color: k[0], width: Math.max(0.5, +(+k[1] * 1.3).toFixed(2)), opacity: +k[2], dash: 'solid', scenes: sc(), layer: 2, groupId: 'grp-mp-sketch', mp: true,
+        geojson: JSON.stringify({ type: 'FeatureCollection', features: combos[key] }) });
+    });
+  }
   if (parts.trees) d.trees.forEach(function(tr) {
     if (!tr.p) return;
     var hgt = (MP_TREE[tr.type] || 13) * (+tr.scale || 1), pine = tr.type === 'conifer';
@@ -9891,7 +9926,7 @@ function mpSectionHTML(sc) {
   }
   if (sum) html += '<div style="font-size:11px;line-height:1.55;color:var(--ghost);margin-bottom:10px">In Ultrahand: ' + sum + '.</div>';
   if (!has) {
-    var pr = (P.mpImport && P.mpImport.parts) || { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true };
+    var pr = (P.mpImport && P.mpImport.parts) || { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true, sketch: false };
     MP_PARTS.forEach(function(p) {
       var cnt = c[p[0]] || 0;
       html += '<div class="lr" style="margin-bottom:6px' + (cnt ? '' : ';opacity:.45') + '"><span class="ll">' + p[1] + (cnt ? ' <span style="color:var(--ghost)">(' + cnt + ')</span>' : '') + '</span><button type="button" class="tg' + (pr[p[0]] && cnt ? ' on' : '') + '" data-mppart="' + p[0] + '"' + (cnt ? '' : ' disabled') + '></button></div>';
@@ -9908,7 +9943,7 @@ function mpSectionHTML(sc) {
   return html + '</div>';
 }
 function mpBind(sc) {
-  var parts = Object.assign({}, (P.mpImport && P.mpImport.parts) || { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true });
+  var parts = Object.assign({}, (P.mpImport && P.mpImport.parts) || { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true, sketch: false });
   document.querySelectorAll('#rpc [data-mppart]').forEach(function(b) {
     b.addEventListener('click', function() { var k = b.dataset.mppart; parts[k] = !b.classList.contains('on'); b.classList.toggle('on', parts[k]); });
   });
@@ -10414,7 +10449,7 @@ function buildJS() {
 '  zOrder();',
 '  map.addLayer({id:"ln-lb",type:"symbol",source:"ln-all",layout:{"text-field":["get","label"],"text-size":["get","labelSize"],"text-font":["DIN Pro Medium","Arial Unicode MS Regular"],"symbol-placement":"line-center","symbol-spacing":500,"text-background":true,"text-allow-overlap":true,"text-ignore-placement":true,visibility:"visible"},paint:{"text-opacity":["coalesce",["feature-state","k"],1],"text-color":["get","labelColor"],"text-background-color":["get","labelBg"],"text-background-opacity":1,"text-background-padding":[8,14,8,14]}});',
 '  map.addLayer({id:"bld-custom-ex",type:"fill-extrusion",source:"bld-custom",'
-    +'paint:{"fill-extrusion-color":["get","color"],"fill-extrusion-height":["get","height"],"fill-extrusion-base":0,"fill-extrusion-opacity":0.85},'
+    +'paint:{"fill-extrusion-color":["get","color"],"fill-extrusion-height":["get","height"],"fill-extrusion-base":["coalesce",["get","base"],0],"fill-extrusion-opacity":0.85},'
     +'layout:{visibility:"none"}});',
 '  map.addLayer({id:"props-ex",type:"fill-extrusion",source:"props",'
     +'paint:{"fill-extrusion-color":["get","color"],"fill-extrusion-height":["get","height"],"fill-extrusion-base":["get","base"],"fill-extrusion-opacity":0.85},'
@@ -10796,7 +10831,8 @@ function buildJS() {
 '      if(gj.type==="FeatureCollection") gj.features.forEach(function(f){if(f.geometry.type==="Polygon"||f.geometry.type==="MultiPolygon")geoms.push(f.geometry);});',
 '      else if(gj.type==="Feature") geoms.push(gj.geometry);',
 '      else if(gj.type==="Polygon"||gj.type==="MultiPolygon") geoms.push(gj);',
-'      geoms.forEach(function(g){features.push({type:"Feature",geometry:g,properties:{color:b.color||"#8899aa",height:b.height||20,opacity:b.opacity||0.85}});});',
+'      var fs=gj.type==="FeatureCollection"?gj.features:(gj.type==="Feature"?[gj]:[{properties:{}}]);',
+'      geoms.forEach(function(g,gi){var pr=(fs[gi]&&fs[gi].properties)||{};features.push({type:"Feature",geometry:g,properties:{color:pr.color||b.color||"#8899aa",height:pr.top!=null?+pr.top:(b.height||20),base:+pr.base||0,opacity:b.opacity||0.85}});});',
 '    }catch(e){}',
 '  });',
 '  return {type:"FeatureCollection",features:features};',
@@ -10813,7 +10849,8 @@ function buildJS() {
 '      if(gj.type==="FeatureCollection") gj.features.forEach(function(f){if(f.geometry.type==="Polygon"||f.geometry.type==="MultiPolygon")geoms.push(f.geometry);});',
 '      else if(gj.type==="Feature") geoms.push(gj.geometry);',
 '      else if(gj.type==="Polygon"||gj.type==="MultiPolygon") geoms.push(gj);',
-'      geoms.forEach(function(g){features.push({type:"Feature",geometry:g,properties:{color:b.color||"#8899aa",height:b.height||20,opacity:b.opacity||0.85}});});',
+'      var fs=gj.type==="FeatureCollection"?gj.features:(gj.type==="Feature"?[gj]:[{properties:{}}]);',
+'      geoms.forEach(function(g,gi){var pr=(fs[gi]&&fs[gi].properties)||{};features.push({type:"Feature",geometry:g,properties:{color:pr.color||b.color||"#8899aa",height:pr.top!=null?+pr.top:(b.height||20),base:+pr.base||0,opacity:b.opacity||0.85}});});',
 '    }catch(e){}',
 '  });',
 '  map.getSource("bld-custom").setData({type:"FeatureCollection",features:features});',
