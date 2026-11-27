@@ -2902,6 +2902,7 @@ function renderGroupHeader(g, gi, groups, itemsKey, renderFn) {
     '<div class="ia">'+
       (gi>0?'<button class="ib" data-ga="up" title="Move group up">'+lucideSVG('arrow-up',11,'currentColor')+'</button>':'')+
       (gi<groups.length-1?'<button class="ib" data-ga="dn" title="Move group down">'+lucideSVG('arrow-down',11,'currentColor')+'</button>':'')+
+      '<button class="ib" data-ga="dup" title="Duplicate group with everything in it">'+lucideSVG('copy',11,'currentColor')+'</button>'+
       '<button class="ib d" data-ga="del" title="Delete group">'+lucideSVG('trash-2',11,'currentColor')+'</button>'+
     '</div>';
   div.addEventListener('click', function(e) {
@@ -2915,6 +2916,7 @@ function renderGroupHeader(g, gi, groups, itemsKey, renderFn) {
       if(nm!=null && nm.trim()) { g.name = nm.trim(); markDirty(); renderFn(); }
     }
     else if(ga==='up') { var idx=groups.indexOf(g); if(idx>0){ groups.splice(idx,1); groups.splice(idx-1,0,g); markDirty(); renderFn(); } }
+    else if(ga==='dup') { grpDuplicate(itemsKey, groups, g, renderFn); }
     else if(ga==='dn') { var idx2=groups.indexOf(g); if(idx2<groups.length-1){ groups.splice(idx2,1); groups.splice(idx2+1,0,g); markDirty(); renderFn(); } }
     else if(ga==='del') {
       if(confirm('Delete group "'+(g.name||'Group')+'"? Items inside will become ungrouped.')) {
@@ -2927,6 +2929,39 @@ function renderGroupHeader(g, gi, groups, itemsKey, renderFn) {
   });
   makeGroupHeaderDroppable(div, itemsKey, g.id, renderFn);
   return div;
+}
+
+/**
+ * Copy a group and everything in it. Each copy keeps all its settings (scenes, animation, opacity,
+ * style, lightbox and so on) and sits exactly where the original is; only ids are new, so the copy
+ * can be moved or shown on other scenes without touching the original.
+ */
+function grpDuplicate(itemsKey, groups, g, renderFn) {
+  var items = P[itemsKey] || [];
+  var ng = JSON.parse(JSON.stringify(g));
+  ng.id = 'grp' + Date.now() + Math.floor(Math.random() * 1000);
+  ng.name = (g.name || 'Group') + ' (copy)';
+  ng.collapsed = false;
+  groups.splice(groups.indexOf(g) + 1, 0, ng);
+  var last = -1, copies = [], stamp = Date.now();
+  items.forEach(function(it, i) {
+    if (it.groupId !== g.id) return;
+    last = i;
+    var c = JSON.parse(JSON.stringify(it));
+    c.groupId = ng.id;
+    c.id = (c.id != null ? String(c.id).replace(/-c\d+$/, '') : itemsKey.charAt(0)) + '-c' + stamp + copies.length;
+    c.locked = false;
+    copies.push(c);
+  });
+  if (copies.length) Array.prototype.splice.apply(items, [last + 1, 0].concat(copies));
+  markDirty(); renderFn();
+  var what = { markers: 'marker', zones: 'zone', lines: 'line', props: 'prop' }[itemsKey] || 'item';
+  var msg = 'Copied \u201c' + (g.name || 'Group') + '\u201d with ' + copies.length + ' ' + what + (copies.length === 1 ? '' : 's') + '. The copies sit exactly on top of the originals.';
+  if (typeof mtToast === 'function' && el('mt-bar')) mtToast(msg);
+  return ng;
+}
+function grpRenderFor(itemsKey) {
+  return { markers: refreshMK, zones: function() { renderZones(); refreshZN(); }, lines: function() { renderLines(); refreshLines(); } }[itemsKey];
 }
 
 function moveItemInScope(itemsKey, i, dir, renderFn, selRef) {
@@ -7226,6 +7261,8 @@ function mtMenu(hit, x, y, lockedHere) {
     var many = hit.kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0;
     rows.push('-', it.animOff ? ['anim', 'play', many ? 'Animate these markers' : 'Animate on entry'] : ['anim', 'pause', many ? 'Don\u2019t animate these markers' : 'Don\u2019t animate on entry']);
   }
+  var gk = { zone: 'zoneGroups', line: 'lineGroups', marker: 'markerGroups' }[hit.kind], grp = gk && it.groupId ? grpArr(gk).filter(function(g) { return g.id === it.groupId; })[0] : null;
+  if (grp) rows.splice(2, 0, ['dupgrp', 'copy', 'Duplicate group \u201c' + h(grp.name || 'Group') + '\u201d']);
   var manyLk = hit.kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0;
   rows.push(['lock', 'lock', manyLk ? 'Lock these markers' : 'Lock']);
   rows.push('-', ['copy', 'paintbrush', 'Copy style'], ['paste', 'clipboard-paste', 'Paste style'], '-', ['del', 'trash-2', 'Delete']);
@@ -7284,6 +7321,12 @@ function mtAct(hit, act) {
   var kind = hit.kind, arr = mtArr(kind), it = arr[hit.i];
   if (!it) return;
   if (act === 'edit') return mtOpen(hit);
+  if (act === 'dupgrp') {
+    var ik = { zone: 'zones', line: 'lines', marker: 'markers' }[kind], gs = grpArr({ zone: 'zoneGroups', line: 'lineGroups', marker: 'markerGroups' }[kind]);
+    var g0 = gs.filter(function(g) { return g.id === it.groupId; })[0];
+    if (g0) grpDuplicate(ik, gs, g0, grpRenderFor(ik));
+    return;
+  }
   if (act === 'lock') {
     var on = !it.locked, lst = [hit];
     if (kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0) lst = mtSelMarkers().map(function(x) { return { kind: 'marker', i: P.markers.indexOf(x) }; });
