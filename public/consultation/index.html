@@ -224,6 +224,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 /* Map tools (editor only): handles, right-click menu, align bar, snap bar, text labels. */
 .ctx-marker.mt-multi{box-shadow:0 2px 10px rgba(0,0,0,.35),0 0 0 3px #8b93ff}
 .li.mt-on{border-color:#8b93ff}
+.mapboxgl-canvas-container{isolation:isolate}.mapboxgl-canvas-container .mapboxgl-marker{z-index:10}.mapboxgl-canvas-container .mapboxgl-popup{z-index:40}.mapboxgl-marker.mt-h{z-index:40}
 .mt-h{width:16px;height:16px;border-radius:50%;background:#fff;border:2.5px solid var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.4);cursor:grab;box-sizing:border-box;position:relative}
 .mt-h-move{width:28px;height:28px;background:var(--accent);border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:move}
 .mt-h-edge{border-radius:4px;cursor:ew-resize}
@@ -3816,6 +3817,7 @@ function renderMarkerEditor(i) {
   html += '<div class="rs"><div class="lr"><span class="ll">Show in accessibility drawer'+infoBtn('Lists this marker in the keyboard/screen-reader “Map Contents” panel. Turn off for markers that don’t need a text-based entry, e.g. purely decorative pins.')+'</span>'
     + '<button class="tg'+(m.showInDrawer!==false?' on':'')+'" id="mk-showdrawer-tog"></button></div>';
   html += '</div>';
+  html += '<div class="rs"><div class="st">Layer</div>' + mkLayerHTML('mk-z', m.layer) + '</div>';
   html += '<div class="rs"><div class="st">'+lucideSVG('play',14,'currentColor')+' Entrance Animation</div>';
   html += animSelectHTML('marker', m, 'mk-anim-style');
   if(!m.animOff) html += '<div class="lr"><span class="ll">Override default duration/easing/delay'+infoBtn('Give this marker its own timing, e.g. a delay so it lands after the others.')+'</span><button class="tg'+(m.animOverride?' on':'')+'" id="mk-anim-tog"></button></div>';
@@ -4028,6 +4030,7 @@ function renderMarkerEditor(i) {
     markDirty(); renderMarkerEditor(i);
   });
   bindAnimSelect('mk-anim-style', P.markers[i], function(){ renderMarkerEditor(i); });
+  bindMkLayer('mk-z', P.markers[i], function(){ refreshMK(); });
   var mkAnimTog=el('mk-anim-tog');
   if(mkAnimTog) mkAnimTog.addEventListener('click',function(){ P.markers[i].animOverride=!P.markers[i].animOverride; markDirty(); renderMarkerEditor(i); });
   bindAnimControls('mk-anim',
@@ -7121,8 +7124,8 @@ var ALB = null, pLabels = [], _mtHandles = [], _mtNoClick = 0, _mtCross = false,
 var MT_STYLE_KEYS = {
   zone: ['color', 'opacity', 'layer', 'smoothRadius', 'extrude', 'extrudeHeight', 'anim', 'animOff'],
   line: ['color', 'width', 'opacity', 'dash', 'layer', 'showEndpoints', 'endpointRadius', 'labelSize', 'labelColor', 'labelBg', 'anim', 'animOff', 'animOverride', 'animDuration', 'animEasing', 'animDelay', 'animEasingCurve'],
-  marker: ['color', 'icon', 'style', 'labelSide', 'labelBg', 'anim', 'animOff', 'animOverride', 'animDuration', 'animEasing', 'animDelay', 'animEasingCurve'],
-  label: ['size', 'weight', 'font', 'italic', 'spacing', 'color', 'haloOn', 'halo', 'bg', 'opacity', 'rotate', 'flat', 'scaleWithMap', 'zoom']
+  marker: ['color', 'icon', 'style', 'labelSide', 'labelBg', 'layer', 'anim', 'animOff', 'animOverride', 'animDuration', 'animEasing', 'animDelay', 'animEasingCurve'],
+  label: ['layer', 'size', 'weight', 'font', 'italic', 'spacing', 'color', 'haloOn', 'halo', 'bg', 'opacity', 'rotate', 'flat', 'scaleWithMap', 'zoom']
 };
 var MT_KIND_NAME = { zone: 'zone', line: 'line', marker: 'marker', label: 'label' };
 
@@ -7296,7 +7299,7 @@ function mtMenu(hit, x, y, lockedHere) {
   var it = mtArr(hit.kind)[hit.i];
   if (!it) return;
   var shape = hit.kind === 'zone' || hit.kind === 'line', rows = [['edit', 'pencil', 'Edit'], ['dup', 'copy', 'Duplicate']];
-  if (shape) rows.push('-', ['front', 'arrow-up-to-line', 'Bring to front'], ['fwd', 'chevron-up', 'Bring forward'], ['back', 'chevron-down', 'Send backward'], ['bottom', 'arrow-down-to-line', 'Send to back']);
+  rows.push('-', ['front', 'arrow-up-to-line', 'Bring to front'], ['fwd', 'chevron-up', 'Bring forward'], ['back', 'chevron-down', 'Send backward'], ['bottom', 'arrow-down-to-line', 'Send to back']);
   if (hit.kind === 'line' || hit.kind === 'marker') {
     var many = hit.kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0;
     rows.push('-', it.animOff ? ['anim', 'play', many ? 'Animate these markers' : 'Animate on entry'] : ['anim', 'pause', many ? 'Don\u2019t animate these markers' : 'Don\u2019t animate on entry']);
@@ -7309,7 +7312,7 @@ function mtMenu(hit, x, y, lockedHere) {
   lockedHere.forEach(function(h0, k) { if (!k) rows.push('-'); rows.push(['unlock:' + h0.kind + ':' + h0.i, 'lock-open', 'Unlock ' + h(mtLockName(h0))]); });
   var m = document.createElement('div');
   m.id = 'mt-menu'; m.setAttribute('role', 'menu');
-  m.innerHTML = '<div class="mt-mh">' + h(it.name || it.text || MT_KIND_NAME[hit.kind]) + (shape ? ' <span>· layer ' + (+it.layer || 0) + '</span>' : '') + '</div>'
+  m.innerHTML = '<div class="mt-mh">' + h(it.name || it.text || MT_KIND_NAME[hit.kind]) + ' <span>· layer ' + (+it.layer || 0) + '</span>' + '</div>'
     + rows.map(function(r) {
       if (r === '-') return '<hr/>';
       var off = r[0] === 'paste' && !MT.clip[hit.kind];
@@ -7424,14 +7427,28 @@ function mtAct(hit, act) {
     else { selLabel(hit.i + 1); }
     return;
   }
-  // Layer order (zones and lines share the layer numbers).
-  var lv = zLevels(), cur = +it.layer || 0, top = Math.max.apply(null, lv), bot = Math.min.apply(null, lv);
-  var alone = function(v) { return P.zones.concat(P.lines).filter(function(x) { return (+x.layer || 0) === v; }).length === 1; };
+  // Layer order: zones and lines share one set of numbers, markers and text labels another.
+  var pool = (kind === 'zone' || kind === 'line') ? P.zones.concat(P.lines) : P.markers.concat(P.mapLabels || []);
+  var lv = pool.map(function(x) { return +x.layer || 0; }), cur = +it.layer || 0, top = Math.max.apply(null, lv), bot = Math.min.apply(null, lv);
+  var alone = function(v) { return pool.filter(function(x) { return (+x.layer || 0) === v; }).length === 1; };
   var nv = act === 'fwd' ? cur + 1 : act === 'back' ? cur - 1 : act === 'front' ? (cur === top && alone(top) ? cur : top + 1) : (cur === bot && alone(bot) ? cur : bot - 1);
   it.layer = Math.max(-9, Math.min(9, nv));
   markDirty(); mtRefresh(kind);
   mtToast('Layer ' + it.layer + (it.layer === cur ? ' (already there)' : ''));
 }
+// ── Layers for markers and text labels: they sit above zones and lines, and stack among themselves.
+var MK_LAYER_INFO = 'Higher numbers sit on top where markers and text labels overlap. Markers and labels always sit above zones and lines.';
+function mkLayerHTML(id, v) {
+  return '<div class="f"><label class="fl">Layer' + infoBtn(MK_LAYER_INFO) + '</label><div style="display:flex;gap:6px;align-items:center"><button class="btn btn-g" id="' + id + '-dn" title="Send back">\u2212</button><input type="number" id="' + id + '" value="' + (+v || 0) + '" step="1" min="-9" max="9" style="width:70px;text-align:center"/><button class="btn btn-g" id="' + id + '-up" title="Bring forward">+</button><span style="font-size:10.5px;color:var(--ghost)">higher is on top</span></div></div>';
+}
+function bindMkLayer(id, o, after) {
+  var inp = el(id), set = function(v) { o.layer = Math.max(-9, Math.min(9, Math.round(v) || 0)); if (inp) inp.value = o.layer; markDirty(); after(); };
+  if (inp) inp.addEventListener('change', function() { set(+inp.value); });
+  var dn = el(id + '-dn'), up = el(id + '-up');
+  if (dn) dn.onclick = function() { set((+o.layer || 0) - 1); };
+  if (up) up.onclick = function() { set((+o.layer || 0) + 1); };
+}
+function mkZ(o) { return String(10 + Math.max(-9, Math.min(9, +(o && o.layer) || 0))); }
 // ── Locking: a locked item stays put and lets clicks on the map pass through it to whatever is beneath.
 function mtLockBtn(kind, i, it) {
   var lk = !!(it && it.locked);
@@ -7591,6 +7608,7 @@ function refreshLB() {
     if (!lb.coords) return;
     var w = document.createElement('div'), t = document.createElement('div');
     w.className = 'map-lb' + (ALB === i ? ' on' : '') + (lb.locked ? ' mt-locked' : '');
+    w.style.zIndex = mkZ(lb);
     t.className = 'map-lb-t'; t.style.cssText = mapLabelCSS(lb, lbFam(lb)); t.textContent = lb.text || ' ';
     w.appendChild(t);
     var m = new mapboxgl.Marker({ element: w, draggable: !lb.locked, anchor: 'center', rotation: +lb.rotate || 0, rotationAlignment: lb.flat ? 'map' : 'viewport', pitchAlignment: lb.flat ? 'map' : 'viewport' }).setLngLat(lb.coords).addTo(pMap);
@@ -7689,6 +7707,7 @@ function renderLabelEditor(i) {
     + tog('Background', 'bgOn', !!lb.bg) + (lb.bg ? col('Background colour', 'bg', '#0f0e0d') : '')
     + rng('Opacity', 'opacity', 0.1, 1, 0.05, lb.opacity != null ? lb.opacity : 1, '') + '</div>';
   html += '<div class="rs"><div class="st">Placement</div>'
+    + mkLayerHTML('lb-z', lb.layer)
     + rng('Rotation', 'rotate', -180, 180, 1, +lb.rotate || 0, '°')
     + tog('Lie flat on the map', 'flat', !!lb.flat)
     + tog('Grow and shrink with the map', 'scaleWithMap', !!lb.scaleWithMap)
@@ -7698,6 +7717,7 @@ function renderLabelEditor(i) {
     + P.scenes.map(function(sc, si) { return '<div class="lr" style="margin-bottom:5px"><span class="ll">' + h(sc.label || 'Scene ' + (si + 1)) + '</span><button class="tg' + ((lb.scenes || []).indexOf(sc.id) >= 0 ? ' on' : '') + '" data-lbsc="' + h(sc.id) + '"></button></div>'; }).join('') + '</div>';
   html += '<div class="rs"><button class="btn btn-g btn-ic" id="lb-del" style="width:100%;justify-content:center;color:var(--red)">' + lucideSVG('trash-2', 12, 'currentColor') + 'Delete label</button></div>';
   setHTML('rpc', html);
+  bindMkLayer('lb-z', lb, function() { refreshLB(); });
   var rp = el('rpc'), redraw = function() { markDirty(); refreshLB(); };
   rp.querySelectorAll('[data-lbk]').forEach(function(inp) {
     inp.addEventListener(inp.tagName === 'SELECT' ? 'change' : 'input', function() {
@@ -7733,7 +7753,7 @@ function renderLabelEditor(i) {
 /** The labels for the exported site, with their CSS worked out here. */
 function exportMapLabels() {
   return (P.mapLabels || []).filter(function(lb) { return lb.coords && String(lb.text || '').trim(); }).map(function(lb) {
-    return { t: lb.text, c: lb.coords, css: mapLabelCSS(lb, lbFam(lb)), r: +lb.rotate || 0, f: !!lb.flat, s: !!lb.scaleWithMap, z: +lb.zoom || 15,
+    return { t: lb.text, c: lb.coords, zl: +lb.layer || 0, css: mapLabelCSS(lb, lbFam(lb)), r: +lb.rotate || 0, f: !!lb.flat, s: !!lb.scaleWithMap, z: +lb.zoom || 15,
       sc: (lb.scenes || []).map(function(id) { return P.scenes.map(function(s) { return s.id; }).indexOf(id); }).filter(function(x) { return x >= 0; }) };
   });
 }
@@ -8213,6 +8233,7 @@ function refreshMK() {
     el.querySelector('.ctx-marker').classList.toggle('ctx-marker-selected', AM === mi);
     el.querySelector('.ctx-marker').classList.toggle('mt-multi', MT.sel.length > 1 && MT.sel.indexOf(mk.id) >= 0);
     el.classList.toggle('mt-locked', !!mk.locked);
+    el.style.zIndex = mkZ(mk);
     pCtxMarkers.push(marker);
   });
   // Reapply per-marker scene-visibility now that pCtxMarkers is rebuilt in the current P.markers order
@@ -9724,7 +9745,7 @@ function buildCfg() {
 
   var labels = P.scenes.map(function(sc){return JSON.stringify(sc.label||'Scene');}).join(',');
 
-  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false,anim:animMode('marker',m),aDur:m.animOverride?(m.animDuration||800):0,aDelay:m.animOverride?(m.animDelay||0):0,aEase:m.animOverride?easingCSS(m.animEasing||'easeOut',m.animEasingCurve):''}};})};
+  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false,zl:+m.layer||0,anim:animMode('marker',m),aDur:m.animOverride?(m.animDuration||800):0,aDelay:m.animOverride?(m.animDelay||0):0,aEase:m.animOverride?easingCSS(m.animEasing||'easeOut',m.animEasingCurve):''}};})};
 
   var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,anim:animMode('zone',z._src||z),codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
@@ -10153,7 +10174,7 @@ function buildJS() {
 'function addMapLabels(){',
 '  mapLabels.forEach(function(m){m.remove();});mapLabels=[];',
 '  MAP_LABELS.forEach(function(lb){',
-'    var w=document.createElement("div");w.className="map-lb";w.setAttribute("aria-hidden","true");w.style.pointerEvents="none";',
+'    var w=document.createElement("div");w.className="map-lb";w.setAttribute("aria-hidden","true");w.style.pointerEvents="none";w.style.zIndex=String(10+(lb.zl||0));',
 '    var t=document.createElement("div");t.style.cssText=lb.css;t.textContent=lb.t;w.appendChild(t);',
 '    var m=new mapboxgl.Marker({element:w,anchor:"center",rotation:lb.r||0,rotationAlignment:lb.f?"map":"viewport",pitchAlignment:lb.f?"map":"viewport"}).setLngLat(lb.c).addTo(map);',
 '    m._lb=lb;w.style.display="none";mapLabels.push(m);',
@@ -10212,6 +10233,7 @@ function buildJS() {
 '    mk.getElement().style.display="none";',
 '    mk._sceneIds = p.scenes ? p.scenes.split(",").filter(Boolean).map(Number) : [];',
 '    mk._anim = p.anim||"drop";',
+'    mk.getElement().style.zIndex=String(10+(p.zl||0));',
 '    if(p.aDur){var me=mk.getElement();me.style.setProperty("--ad",p.aDur+"ms");me.style.setProperty("--adl",(p.aDelay||0)+"ms");me.style.setProperty("--ae",p.aEase);}',
 '    ctxMarkers.push(mk);',
 '  });',
@@ -12045,6 +12067,7 @@ function buildCSS() {
 + '#allto-export-splash{position:fixed;inset:0;z-index:9999;background:#252524;display:flex;align-items:center;justify-content:center;transition:opacity .6s ease}'
 + '#allto-export-splash.hide{opacity:0;pointer-events:none}'
 + '#splash-gif{width:min(1050px,46vw,75.5vh);height:auto;display:block}'
++ '.mapboxgl-canvas-container{isolation:isolate}.mapboxgl-canvas-container .mapboxgl-marker{z-index:10}.mapboxgl-canvas-container .mapboxgl-popup{z-index:40}'
 + '.mk-drop>*{animation:mkDropIn var(--ad,'+animDur+'ms) var(--ae,'+animEasingCSS+') var(--adl,'+animDelay+'ms) backwards}'
 + '@keyframes mkDropIn{0%{opacity:0;transform:translate3d(0,-28px,0)}60%{opacity:1;transform:translate3d(0,4px,0)}100%{opacity:1;transform:none}}'
 + '.mk-fade>*{animation:mkFadeIn var(--ad,'+animDur+'ms) var(--ae,'+animEasingCSS+') var(--adl,'+animDelay+'ms) backwards}'
