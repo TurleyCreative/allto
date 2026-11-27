@@ -238,7 +238,18 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
 #mt-menu button:disabled{opacity:.4;cursor:default}
 #mt-menu button.d{color:var(--red)}
 #mt-menu hr{border:0;border-top:1px solid var(--border);margin:4px 2px}
-.mt-sb{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:0 0 12px}
+.mt-sb{display:grid;grid-template-columns:auto 1fr 1fr;gap:6px;margin:12px 18px 0;min-width:0}
+.mt-sb .btn{min-width:0;overflow:hidden;white-space:nowrap}
+.mt-sb .mt-sb-lk.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mt-lknote{display:flex;gap:7px;align-items:flex-start;font-size:11px;line-height:1.45;color:var(--ghost);background:var(--mid);border-radius:8px;padding:8px 10px;margin:12px 18px 0}
+.mt-lknote svg{flex-shrink:0;margin-top:1px}
+.li .mt-lk{width:22px;height:22px;flex-shrink:0;border:none;background:none;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--ghost);cursor:pointer;opacity:0;transition:opacity .18s,background .18s;margin-left:auto;margin-right:3px}
+.li .nm+.mt-lk{margin-left:auto}
+.li:hover .mt-lk,.li .mt-lk.on,.li .mt-lk:focus-visible{opacity:1}
+.li .mt-lk.on{color:var(--ink)}
+.li .mt-lk:hover{background:var(--border2);color:var(--ink)}
+.mt-locked,.mt-locked *{pointer-events:none!important}
+#mt-bar .mt-unlock{display:none}#mt-bar .mt-unlock.on{display:inline-flex}
 .mt-sb .btn{justify-content:center;font-size:11px;padding:6px 8px}
 .mt-sb .btn:disabled{opacity:.45;cursor:default}
 #mt-bar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:6;display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border2);border-radius:9px;padding:4px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
@@ -1208,7 +1219,7 @@ function renderLines() {
     var div = mk('div', 'li' + (i===ALN?' on':'')+(ln.groupId?' grp-item':''));
     div.innerHTML =
       '<div style="width:20px;height:4px;border-radius:2px;flex-shrink:0;background:'+h(ln.color||'#ffffff')+';margin-right:8px;margin-top:2px"></div>'+
-      '<span class="nm">' + h(ln.name||'Untitled') + '</span>' +
+      '<span class="nm">' + h(ln.name||'Untitled') + '</span>' + mtLockBtn('line', i, ln) +
       '<div class="ia">' +
         (i>0 ? '<button class="ib" data-i="'+i+'" data-a="up" title="Move up">'+lucideSVG('arrow-up',12,'currentColor')+'</button>' : '') +
         (i<P.lines.length-1 ? '<button class="ib" data-i="'+i+'" data-a="dn" title="Move down">'+lucideSVG('arrow-down',12,'currentColor')+'</button>' : '') +
@@ -1255,7 +1266,7 @@ function addLine() {
 function renderLineEditor(i) {
   if(i<0||!P.lines||!P.lines[i]) { setHTML('rpc','<div class="es">Select a line to edit</div>'); return; }
   var ln = P.lines[i];
-  var html = '<div class="rh"><div class="re">Line</div><div class="rt">'+h(ln.name||'Untitled')+'</div></div>' + mtStyleBar('line');
+  var html = '<div class="rh"><div class="re">Line</div><div class="rt">'+h(ln.name||'Untitled')+'</div></div>' + mtStyleBar('line', ln);
 
   // Details
   html += '<div class="rs"><div class="st">Details</div>';
@@ -3081,7 +3092,7 @@ function renderMarkers() {
     var div = mk('div', 'li'+(AM===i?' on':'')+(MT.sel.length>1&&MT.sel.indexOf(m.id)>=0?' mt-on':'')+(m.groupId?' grp-item':''));
     div.innerHTML =
       '<div class="id" style="background:'+h(m.color)+'"></div>' +
-      '<span class="nm">'+h(m.name||'Unnamed')+'</span>' +
+      '<span class="nm">'+h(m.name||'Unnamed')+'</span>' + mtLockBtn('marker', i, m) +
       '<div class="ia">'+
         (i>0?'<button class="ib" data-a="up" data-i="'+i+'" title="Move up">'+lucideSVG('arrow-up',12,'currentColor')+'</button>':'')+
         (i<P.markers.length-1?'<button class="ib" data-a="dn" data-i="'+i+'" title="Move down">'+lucideSVG('arrow-down',12,'currentColor')+'</button>':'')+
@@ -3148,7 +3159,7 @@ function renderZones() {
     var div = mk('div', 'li'+(AZ===i?' on':'')+(z.groupId?' grp-item':''));
     div.innerHTML =
       '<div class="id" style="background:'+h(z.color)+';border-radius:2px"></div>' +
-      '<span class="nm">'+h(z.name||'Unnamed')+'</span>' +
+      '<span class="nm">'+h(z.name||'Unnamed')+'</span>' + mtLockBtn('zone', i, z) +
       '<div class="ia">'+
         (i>0?'<button class="ib" data-a="up" data-i="'+i+'">'+lucideSVG('arrow-up',12,'currentColor')+'</button>':'')+
         (i<P.zones.length-1?'<button class="ib" data-a="dn" data-i="'+i+'">'+lucideSVG('arrow-down',12,'currentColor')+'</button>':'')+
@@ -3698,7 +3709,7 @@ function renderMarkerEditor(i) {
   if (!m) { setHTML('rpc','<div class="es">Select a marker to edit</div>'); return; }
   var lb = m.lightbox || {enabled:false,heading:'',body:'',img:''};
 
-  var html = '<div class="rh"><div class="re">Marker</div><div class="rt">'+h(m.name||'Unnamed')+'</div></div>' + mtStyleBar('marker');
+  var html = '<div class="rh"><div class="re">Marker</div><div class="rt">'+h(m.name||'Unnamed')+'</div></div>' + mtStyleBar('marker', m);
   html += '<div class="rs"><div class="st">Details</div>';
   html += fld('Name','mk-name',h(m.name));
   html += '<div class="f"><label class="fl">Group</label><select id="mk-group">'+groupSelectOptions('markerGroups', m.groupId)+'</select></div>';
@@ -4084,7 +4095,7 @@ function renderZoneEditor(i) {
   var z = P.zones[i];
   if (!z) { setHTML('rpc','<div class="es">Select a zone to edit</div>'); return; }
 
-  var html = '<div class="rh"><div class="re">Zone</div><div class="rt">'+h(z.name||'Unnamed')+'</div></div>' + mtStyleBar('zone');
+  var html = '<div class="rh"><div class="re">Zone</div><div class="rt">'+h(z.name||'Unnamed')+'</div></div>' + mtStyleBar('zone', z);
   html += '<div class="rs"><div class="st">Details</div>';
   html += fld('Name','zn-name',h(z.name));
   html += '<div class="f"><label class="fl">Group</label><select id="zn-group">'+groupSelectOptions('zoneGroups', z.groupId)+'</select></div>';
@@ -7007,6 +7018,8 @@ function refreshLines() {
 // then line them up or spread them out. A selected circle zone shows handles for its centre and edge; other
 // zones and lines show a move handle. An optional grid (metres, from the site centre) snaps what you drag.
 var MT_ICONS = {
+  'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+  'lock-open': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>',
   'pause': '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
   'undo-2': '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   'redo-2': '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
@@ -7157,12 +7170,12 @@ function mtSync() {
   mtClearHandles();
   mtAlignBar();
   if (!pMap || !pReady || mainTab !== 'editor' || (pPen && pPen.drawing && pPen.drawing())) return;
-  if (mtTabOn('zn') && AZ != null && P.zones[AZ]) {
+  if (mtTabOn('zn') && AZ != null && P.zones[AZ] && !P.zones[AZ].locked) {
     var z = P.zones[AZ];
     if (z.circle) mtCircleHandles(z);
     else if (z.coordinates && z.coordinates.length > 3) mtMoveHandle(zoneCentroid(z.coordinates), function(dx, dy) { mtMoveZone(z, dx, dy); }, 'zone');
   }
-  if (mtTabOn('ln') && ALN != null && ALN >= 0 && P.lines[ALN]) {
+  if (mtTabOn('ln') && ALN != null && ALN >= 0 && P.lines[ALN] && !P.lines[ALN].locked) {
     var ln = P.lines[ALN], p = mtLineMid(ln);
     if (p) mtMoveHandle(p, function(dx, dy) { mtMoveLine(ln, dx, dy); }, 'line');
   }
@@ -7178,8 +7191,8 @@ function mtHit(pt) {
   var fs = pMap.queryRenderedFeatures([[pt.x - 5, pt.y - 5], [pt.x + 5, pt.y + 5]], { layers: zl.concat(ll) });
   for (var k = 0; k < fs.length; k++) {
     var f = fs[k], pr = f.properties || {};
-    if (f.layer.id.indexOf('p-ln-l') === 0 && pr.li != null && P.lines[pr.li]) return { kind: 'line', i: +pr.li };
-    if (f.layer.id.indexOf('p-zn-f') === 0 && pr.zi != null && under[pr.zi] && P.zones[pr.zi]) return { kind: 'zone', i: +pr.zi };
+    if (f.layer.id.indexOf('p-ln-l') === 0 && pr.li != null && P.lines[pr.li] && !P.lines[pr.li].locked) return { kind: 'line', i: +pr.li };
+    if (f.layer.id.indexOf('p-zn-f') === 0 && pr.zi != null && under[pr.zi] && P.zones[pr.zi] && !P.zones[pr.zi].locked) return { kind: 'zone', i: +pr.zi };
   }
   return null;
 }
@@ -7201,8 +7214,10 @@ function mtOpen(hit) {
 function mtMenuClose() { var m = el('mt-menu'); if (m) m.remove(); document.removeEventListener('mousedown', mtMenuAway, true); document.removeEventListener('keydown', mtMenuKey, true); }
 function mtMenuAway(e) { var m = el('mt-menu'); if (m && !m.contains(e.target)) mtMenuClose(); }
 function mtMenuKey(e) { if (e.key === 'Escape') { e.preventDefault(); mtMenuClose(); } }
-function mtMenu(hit, x, y) {
+function mtMenu(hit, x, y, lockedHere) {
   mtMenuClose();
+  lockedHere = lockedHere || [];
+  if (!hit) return mtUnlockMenu(lockedHere, x, y);
   var it = mtArr(hit.kind)[hit.i];
   if (!it) return;
   var shape = hit.kind === 'zone' || hit.kind === 'line', rows = [['edit', 'pencil', 'Edit'], ['dup', 'copy', 'Duplicate']];
@@ -7211,7 +7226,10 @@ function mtMenu(hit, x, y) {
     var many = hit.kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0;
     rows.push('-', it.animOff ? ['anim', 'play', many ? 'Animate these markers' : 'Animate on entry'] : ['anim', 'pause', many ? 'Don\u2019t animate these markers' : 'Don\u2019t animate on entry']);
   }
+  var manyLk = hit.kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0;
+  rows.push(['lock', 'lock', manyLk ? 'Lock these markers' : 'Lock']);
   rows.push('-', ['copy', 'paintbrush', 'Copy style'], ['paste', 'clipboard-paste', 'Paste style'], '-', ['del', 'trash-2', 'Delete']);
+  lockedHere.forEach(function(h0, k) { if (!k) rows.push('-'); rows.push(['unlock:' + h0.kind + ':' + h0.i, 'lock-open', 'Unlock ' + h(mtLockName(h0))]); });
   var m = document.createElement('div');
   m.id = 'mt-menu'; m.setAttribute('role', 'menu');
   m.innerHTML = '<div class="mt-mh">' + h(it.name || it.text || MT_KIND_NAME[hit.kind]) + (shape ? ' <span>· layer ' + (+it.layer || 0) + '</span>' : '') + '</div>'
@@ -7223,7 +7241,31 @@ function mtMenu(hit, x, y) {
   document.body.appendChild(m);
   m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
-  m.addEventListener('click', function(ev) { var b = ev.target.closest('[data-mt]'); if (!b || b.disabled) return; mtMenuClose(); mtAct(hit, b.dataset.mt); });
+  m.addEventListener('click', function(ev) {
+    var b = ev.target.closest('[data-mt]'); if (!b || b.disabled) return; mtMenuClose();
+    var u = b.dataset.mt.split(':');
+    if (u[0] === 'unlock') { mtSetLock([{ kind: u[1], i: +u[2] }], false); mtToast('Unlocked'); mtOpen({ kind: u[1], i: +u[2] }); return; }
+    mtAct(hit, b.dataset.mt);
+  });
+  setTimeout(function() { document.addEventListener('mousedown', mtMenuAway, true); document.addEventListener('keydown', mtMenuKey, true); }, 0);
+  var first = m.querySelector('button'); if (first) first.focus();
+}
+/** Right-click where only locked things are: offer to unlock them. */
+function mtUnlockMenu(list, x, y) {
+  if (!list.length) return;
+  var m = document.createElement('div');
+  m.id = 'mt-menu'; m.setAttribute('role', 'menu');
+  m.innerHTML = '<div class="mt-mh">Locked here</div>' + list.map(function(h0) {
+    return '<button type="button" role="menuitem" data-u="' + h0.kind + ':' + h0.i + '">' + lucideSVG('lock-open', 13, 'currentColor') + '<span>Unlock ' + h(mtLockName(h0)) + ' <span style="opacity:.55">\u00b7 ' + MT_KIND_NAME[h0.kind] + '</span></span></button>';
+  }).join('') + (list.length > 1 ? '<hr/><button type="button" role="menuitem" data-u="all">' + lucideSVG('lock-open', 13, 'currentColor') + '<span>Unlock all of these</span></button>' : '');
+  document.body.appendChild(m);
+  m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
+  m.addEventListener('click', function(ev) {
+    var b = ev.target.closest('[data-u]'); if (!b) return; mtMenuClose();
+    if (b.dataset.u === 'all') { mtSetLock(list, false); mtToast('Unlocked ' + list.length); return; }
+    var u = b.dataset.u.split(':'); mtSetLock([{ kind: u[0], i: +u[1] }], false); mtToast('Unlocked'); mtOpen({ kind: u[0], i: +u[1] });
+  });
   setTimeout(function() { document.addEventListener('mousedown', mtMenuAway, true); document.addEventListener('keydown', mtMenuKey, true); }, 0);
   var first = m.querySelector('button'); if (first) first.focus();
 }
@@ -7242,6 +7284,13 @@ function mtAct(hit, act) {
   var kind = hit.kind, arr = mtArr(kind), it = arr[hit.i];
   if (!it) return;
   if (act === 'edit') return mtOpen(hit);
+  if (act === 'lock') {
+    var on = !it.locked, lst = [hit];
+    if (kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0) lst = mtSelMarkers().map(function(x) { return { kind: 'marker', i: P.markers.indexOf(x) }; });
+    mtSetLock(lst, on);
+    mtToast(on ? (lst.length > 1 ? lst.length + ' markers locked' : 'Locked. Clicks on the map now pass through it.') : 'Unlocked');
+    return;
+  }
   if (act === 'anim') {
     var off = !it.animOff, list = [it];
     if (kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0) list = mtSelMarkers();
@@ -7277,6 +7326,7 @@ function mtAct(hit, act) {
     var cp = JSON.parse(JSON.stringify(it)), p0 = mtPos(kind, it);
     cp.id = { zone: 'z', line: 'l', marker: 'mk', label: 'lb' }[kind] + Date.now();
     if (cp.name) cp.name += ' (copy)';
+    cp.locked = false;
     if (p0 && pMap) {
       var s = pMap.project(p0), q = pMap.unproject([s.x + 28, s.y + 28]), dx = q.lng - p0[0], dy = q.lat - p0[1];
       if (kind === 'zone') mtMoveZone(cp, dx, dy); else if (kind === 'line') mtMoveLine(cp, dx, dy); else cp.coords = mtMove(cp.coords, dx, dy);
@@ -7297,9 +7347,60 @@ function mtAct(hit, act) {
   markDirty(); mtRefresh(kind);
   mtToast('Layer ' + it.layer + (it.layer === cur ? ' (already there)' : ''));
 }
+// ── Locking: a locked item stays put and lets clicks on the map pass through it to whatever is beneath.
+function mtLockBtn(kind, i, it) {
+  var lk = !!(it && it.locked);
+  return '<button type="button" class="mt-lk' + (lk ? ' on' : '') + '" data-mtlock="' + kind + ':' + i + '" title="' + (lk ? 'Locked: click to unlock' : 'Lock so it can\u2019t be clicked or dragged on the map') + '" aria-label="' + (lk ? 'Unlock' : 'Lock') + '" aria-pressed="' + lk + '">' + lucideSVG(lk ? 'lock' : 'lock-open', 12, 'currentColor') + '</button>';
+}
+function mtLocked(kind, i) { var it = mtArr(kind)[i]; return !!(it && it.locked); }
+function mtAllLocked() {
+  var out = [];
+  ['zone', 'line', 'marker', 'label'].forEach(function(k) { mtArr(k).forEach(function(it, i) { if (it && it.locked) out.push({ kind: k, i: i }); }); });
+  return out;
+}
+/** Locked things under a point on the map (they don't take clicks, so they have to be found by position). */
+function mtLockedAt(pt) {
+  var out = [], seen = {};
+  if (!pMap) return out;
+  var add = function(kind, i) { var key = kind + i; if (!seen[key] && mtLocked(kind, i)) { seen[key] = 1; out.push({ kind: kind, i: i }); } };
+  pCtxMarkers.forEach(function(m, i) {
+    if (!P.markers[i] || !P.markers[i].locked || m.getElement().style.display === 'none') return;
+    var r = m.getElement().getBoundingClientRect(), c = pMap.getCanvas().getBoundingClientRect(), x = pt.x + c.left, y = pt.y + c.top;
+    if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4) add('marker', i);
+  });
+  pLabels.forEach(function(m) {
+    var i = (P.mapLabels || []).indexOf(m._lb); if (i < 0 || !m._lb.locked || m.getElement().style.display === 'none') return;
+    var r = m.getElement().firstChild.getBoundingClientRect(), c = pMap.getCanvas().getBoundingClientRect(), x = pt.x + c.left, y = pt.y + c.top;
+    if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) add('label', i);
+  });
+  if (pMap.getLayer('p-zn-f') && pMap.getLayer('p-ln-l')) {
+    var zl = mtLayers('p-zn-f'), ll = mtLayers('p-ln-l');
+    pMap.queryRenderedFeatures([[pt.x - 5, pt.y - 5], [pt.x + 5, pt.y + 5]], { layers: ll }).forEach(function(f) { if (f.properties.li != null) add('line', +f.properties.li); });
+    pMap.queryRenderedFeatures([pt.x, pt.y], { layers: zl }).forEach(function(f) { if (f.properties.zi != null) add('zone', +f.properties.zi); });
+  }
+  return out;
+}
+function mtSetLock(list, on) {
+  list.forEach(function(h0) { var it = mtArr(h0.kind)[h0.i]; if (it) it.locked = on; });
+  markDirty();
+  var kinds = {}; list.forEach(function(h0) { kinds[h0.kind] = 1; });
+  Object.keys(kinds).forEach(function(k) { mtRefresh(k); });
+  renderZones(); renderLines(); renderMarkers(); renderLabels();
+  mtLockBar();
+}
+function mtLockBar() {
+  var b = document.querySelector('#mt-bar .mt-unlock'); if (!b) return;
+  var n = mtAllLocked().length;
+  b.classList.toggle('on', n > 0);
+  b.querySelector('span').textContent = n + ' locked';
+}
+function mtLockName(h0) { var it = mtArr(h0.kind)[h0.i] || {}; return (it.name || (it.text || '').split('\n')[0] || MT_KIND_NAME[h0.kind]); }
 /** Copy and paste style buttons for the top of an editor panel. */
-function mtStyleBar(kind) {
-  return '<div class="mt-sb"><button type="button" class="btn btn-g btn-ic" data-mt-sty="copy" data-kind="' + kind + '" title="Copy this ' + kind + '’s look (Ctrl+Alt+C)">' + lucideSVG('paintbrush', 12, 'currentColor') + 'Copy style</button>'
+function mtStyleBar(kind, it) {
+  var lk = !!(it && it.locked);
+  return (lk ? '<div class="mt-lknote">' + lucideSVG('lock', 12, 'currentColor') + '<span>Locked: clicks on the map go straight through this ' + kind + ', and it can\u2019t be dragged. You can still change it here.</span></div>' : '')
+    + '<div class="mt-sb"><button type="button" class="btn btn-g btn-ic mt-sb-lk' + (lk ? ' on' : '') + '" data-mt-sty="lock" title="' + (lk ? 'Unlock' : 'Lock') + ' on the map (Ctrl+Shift+L)">' + lucideSVG(lk ? 'lock' : 'lock-open', 12, 'currentColor') + (lk ? 'Unlock' : 'Lock') + '</button>'
+    + '<button type="button" class="btn btn-g btn-ic" data-mt-sty="copy"<button type="button" class="btn btn-g btn-ic" data-mt-sty="copy" data-kind="' + kind + '" title="Copy this ' + kind + '’s look (Ctrl+Alt+C)">' + lucideSVG('paintbrush', 12, 'currentColor') + 'Copy style</button>'
     + '<button type="button" class="btn btn-g btn-ic" data-mt-sty="paste" data-kind="' + kind + '" title="Give this ' + kind + ' the copied look (Ctrl+Alt+V)"' + (MT.clip[kind] ? '' : ' disabled') + '>' + lucideSVG('clipboard-paste', 12, 'currentColor') + 'Paste style</button></div>';
 }
 function mtCurrent() {
@@ -7404,10 +7505,10 @@ function refreshLB() {
   (P.mapLabels || []).forEach(function(lb, i) {
     if (!lb.coords) return;
     var w = document.createElement('div'), t = document.createElement('div');
-    w.className = 'map-lb' + (ALB === i ? ' on' : '');
+    w.className = 'map-lb' + (ALB === i ? ' on' : '') + (lb.locked ? ' mt-locked' : '');
     t.className = 'map-lb-t'; t.style.cssText = mapLabelCSS(lb, lbFam(lb)); t.textContent = lb.text || ' ';
     w.appendChild(t);
-    var m = new mapboxgl.Marker({ element: w, draggable: true, anchor: 'center', rotation: +lb.rotate || 0, rotationAlignment: lb.flat ? 'map' : 'viewport', pitchAlignment: lb.flat ? 'map' : 'viewport' }).setLngLat(lb.coords).addTo(pMap);
+    var m = new mapboxgl.Marker({ element: w, draggable: !lb.locked, anchor: 'center', rotation: +lb.rotate || 0, rotationAlignment: lb.flat ? 'map' : 'viewport', pitchAlignment: lb.flat ? 'map' : 'viewport' }).setLngLat(lb.coords).addTo(pMap);
     m._lb = lb;
     var moved = false;
     m.on('dragstart', function() { moved = true; });
@@ -7430,7 +7531,7 @@ function refreshLB() {
       te.addEventListener('blur', onBlur);
       te.addEventListener('keydown', function(k) { k.stopPropagation(); if (k.key === 'Enter' && !k.shiftKey) { k.preventDefault(); te.blur(); } else if (k.key === 'Escape') { te.removeEventListener('blur', onBlur); done(false); } });
     });
-    if (ALB === i) {
+    if (ALB === i && !lb.locked) {
       // Corner handle: drag to resize.
       var rz = document.createElement('div');
       rz.className = 'map-lb-rz'; rz.title = 'Drag to resize';
@@ -7449,11 +7550,12 @@ function refreshLB() {
   mtLbScale(); mtLbVis();
 }
 function renderLabels() {
+  try { mtLockBar(); } catch (e) {}
   var ul = el('label-list'); if (!ul) return;
   var L = P.mapLabels || [];
   if (!L.length) { ul.innerHTML = '<div class="es">No labels yet. Add place names or big headings on the map.</div>'; return; }
   ul.innerHTML = L.map(function(lb, i) {
-    return '<div class="li' + (ALB === i ? ' on' : '') + '" data-lbi="' + i + '"><div class="id" style="background:' + h(lb.color || '#fff') + ';border:1px solid var(--border2)"></div><span class="nm">' + h((lb.text || 'Label').split('\n').join(' ')) + '</span>'
+    return '<div class="li' + (ALB === i ? ' on' : '') + '" data-lbi="' + i + '"><div class="id" style="background:' + h(lb.color || '#fff') + ';border:1px solid var(--border2)"></div><span class="nm">' + h((lb.text || 'Label').split('\n').join(' ')) + '</span>' + mtLockBtn('label', i, lb)
       + '<div class="ia"><button class="ib" data-lba="dup" title="Duplicate">' + lucideSVG('copy', 12, 'currentColor') + '</button><button class="ib d" data-lba="del" title="Delete">' + lucideSVG('trash-2', 12, 'currentColor') + '</button></div></div>';
   }).join('');
   ul.querySelectorAll('[data-lbi]').forEach(function(row) {
@@ -7489,7 +7591,7 @@ function renderLabelEditor(i) {
     return '<div class="f"><label class="fl">' + label + ' <span data-lbv="' + k + '" style="font-family:var(--mono);color:var(--ink)">' + v + (unit || '') + '</span></label><input type="range" data-lbk="' + k + '" data-num="1" data-unit="' + (unit || '') + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + v + '"/></div>';
   };
   var tog = function(label, k, on) { return '<div class="lr" style="margin-bottom:8px"><span class="ll">' + label + '</span><button class="tg' + (on ? ' on' : '') + '" data-lbt="' + k + '"></button></div>'; };
-  var html = '<div class="rh"><div class="re">Text label</div><div class="rt">' + h((lb.text || 'Label').split('\n')[0]) + '</div></div>' + mtStyleBar('label');
+  var html = '<div class="rh"><div class="re">Text label</div><div class="rt">' + h((lb.text || 'Label').split('\n')[0]) + '</div></div>' + mtStyleBar('label', lb);
   html += '<div class="rs"><div class="st">Text</div><div class="f"><textarea data-lbk="text" rows="2" style="min-height:44px">' + h(lb.text || '') + '</textarea></div>'
     + '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:-2px 0 10px">On the map: drag the label to move it, drag its corner to resize, double-click to type. Shift+Enter adds a line.</div>'
     + rng('Size', 'size', 10, 160, 1, +lb.size || 30, 'px')
@@ -7566,11 +7668,11 @@ function mtInit() {
   // The browser's own right-click (Mapbox doesn't always report one when right-drag rotation is on).
   pMap.getCanvasContainer().addEventListener('contextmenu', function(ev) {
     if (mainTab !== 'editor' || (pPen && pPen.drawing && pPen.drawing()) || drawTargetType) return;
-    var r = cv.getBoundingClientRect(), hit = mtHit({ x: ev.clientX - r.left, y: ev.clientY - r.top });
-    if (!hit) return;
+    var r = cv.getBoundingClientRect(), pt = { x: ev.clientX - r.left, y: ev.clientY - r.top }, hit = mtHit(pt), lockedHere = mtLockedAt(pt);
+    if (!hit && !lockedHere.length) return;
     ev.preventDefault();
-    mtOpen(hit);
-    mtMenu(hit, ev.clientX, ev.clientY);
+    if (hit) mtOpen(hit);
+    mtMenu(hit, ev.clientX, ev.clientY, lockedHere);
   });
   var hov = 0;
   pMap.on('mousemove', function(e) {
@@ -7621,7 +7723,8 @@ function mtBindUI() {
     bar.innerHTML = '<button type="button" class="btn btn-g btn-ic mt-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>' + lucideSVG('undo-2', 13, 'currentColor') + '</button>'
       + '<button type="button" class="btn btn-g btn-ic mt-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>' + lucideSVG('redo-2', 13, 'currentColor') + '</button><span class="mt-sep"></span>'
       + '<label title="Snap what you drag to a grid, lined up on the site centre">' + lucideSVG('magnet', 13, 'currentColor') + '<select id="mt-snap" aria-label="Snap to grid">'
-      + [[0, 'No snap'], [1, '1 m grid'], [5, '5 m grid'], [10, '10 m grid'], [25, '25 m grid'], [50, '50 m grid'], [100, '100 m grid'], [250, '250 m grid']].map(function(o) { return '<option value="' + o[0] + '"' + (MT.snap === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>';
+      + [[0, 'No snap'], [1, '1 m grid'], [5, '5 m grid'], [10, '10 m grid'], [25, '25 m grid'], [50, '50 m grid'], [100, '100 m grid'], [250, '250 m grid']].map(function(o) { return '<option value="' + o[0] + '"' + (MT.snap === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></label>'
+      + '<button type="button" class="btn btn-g btn-ic mt-unlock" title="Unlock everything that\u2019s locked">' + lucideSVG('lock', 13, 'currentColor') + '<span>0 locked</span></button>';
     mp.appendChild(bar);
     var al = document.createElement('div');
     al.id = 'mt-align';
@@ -7636,6 +7739,15 @@ function mtBindUI() {
       if (b.dataset.al === 'clear') { MT.sel = AM != null && P.markers[AM] ? [mtMid(AM)] : []; renderMarkers(); updateCtxMarkerSelection(); mtAlignBar(); return; }
       mtAlign(b.dataset.al);
     });
+    bar.querySelector('.mt-unlock').onclick = function() { var l = mtAllLocked(); if (!l.length) return; mtSetLock(l, false); mtToast('Unlocked ' + l.length + (l.length === 1 ? ' item' : ' items')); };
+    // Lock buttons in the left-hand lists (caught before the row's own click opens the item).
+    document.addEventListener('click', function(e) {
+      var b = e.target.closest && e.target.closest('[data-mtlock]'); if (!b) return;
+      e.stopPropagation(); e.preventDefault();
+      var u = b.dataset.mtlock.split(':'), on = !mtLocked(u[0], +u[1]);
+      mtSetLock([{ kind: u[0], i: +u[1] }], on);
+      mtToast(on ? 'Locked. Clicks on the map now pass through it.' : 'Unlocked');
+    }, true);
     el('mt-snap').onchange = function() { mtSetSnap(this.value); mtToast(MT.snap ? 'Snapping to a ' + MT.snap + ' m grid' : 'Snapping off'); };
   }
   // The landing page and style previews get the same two buttons beside Desktop / Phone.
@@ -7651,6 +7763,7 @@ function mtBindUI() {
   });
   setTimeout(histCommit, 0);
   histButtons();
+  setTimeout(mtLockBar, 0);
 }
 /** Keyboard: Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo; Ctrl+Alt+C / V copy and paste style. */
 function mtKeys(e) {
@@ -7660,6 +7773,10 @@ function mtKeys(e) {
   if ((k === 'z' || k === 'y') && !e.altKey) {
     if (typing) return false;
     e.preventDefault(); histStep(k === 'y' || e.shiftKey ? 1 : -1); return true;
+  }
+  if (e.shiftKey && !e.altKey && (k === 'l' || e.code === 'KeyL') && !typing) {
+    var cl = mtCurrent(); if (!cl) return false;
+    e.preventDefault(); mtAct(cl, 'lock'); return true;
   }
   if (e.altKey && (k === 'c' || k === 'v' || e.code === 'KeyC' || e.code === 'KeyV')) {
     var cur = mtCurrent(); if (!cur) return false;
@@ -7821,9 +7938,9 @@ function penSync() {
   var list = [];
   var tabOn = function(t) { var e = el('tab-' + t); return e && e.classList.contains('on'); };
   if (mainTab === 'editor') {
-    if (tabOn('zn') && AZ != null && P.zones[AZ] && !P.zones[AZ].circle && P.zones[AZ].coordinates && P.zones[AZ].coordinates.length > 2)
+    if (tabOn('zn') && AZ != null && P.zones[AZ] && !P.zones[AZ].locked && !P.zones[AZ].circle && P.zones[AZ].coordinates && P.zones[AZ].coordinates.length > 2)
       list.push({ id: 'zone:' + P.zones[AZ].id, nodes: zoneNodes(P.zones[AZ]), closed: true, handles: true, kind: 'zone', minNodes: 3 });
-    if (tabOn('ln') && ALN != null && P.lines[ALN]) { var ns = lineNodes(P.lines[ALN]); if (ns && ns.length > 1) list.push({ id: 'line:' + P.lines[ALN].id, nodes: ns, closed: false, handles: true, kind: 'line', minNodes: 2 }); }
+    if (tabOn('ln') && ALN != null && P.lines[ALN] && !P.lines[ALN].locked) { var ns = lineNodes(P.lines[ALN]); if (ns && ns.length > 1) list.push({ id: 'line:' + P.lines[ALN].id, nodes: ns, closed: false, handles: true, kind: 'line', minNodes: 2 }); }
   }
   pPen.setEditables(list);
   // Outline of what's being edited, and the pen's own layers kept above everything added since.
@@ -7989,7 +8106,7 @@ function refreshMK() {
   P.markers.forEach(function(mk, mi) {
     var el = mk.style === 'label' ? makeCtxLabelEl(mk) : makeCtxMarkerEl(mk.color, mk.icon);
     if (!mk.id) mk.id = 'mk' + Date.now() + mi;
-    var marker = new mapboxgl.Marker({element:el, anchor: mk.style === 'label' ? 'center' : 'bottom', draggable: true})
+    var marker = new mapboxgl.Marker({element:el, anchor: mk.style === 'label' ? 'center' : 'bottom', draggable: !mk.locked})
       .setLngLat(mk.coords)
       .addTo(pMap);
     mtMarkerDrag(marker, mi);
@@ -8010,6 +8127,7 @@ function refreshMK() {
     });
     el.querySelector('.ctx-marker').classList.toggle('ctx-marker-selected', AM === mi);
     el.querySelector('.ctx-marker').classList.toggle('mt-multi', MT.sel.length > 1 && MT.sel.indexOf(mk.id) >= 0);
+    el.classList.toggle('mt-locked', !!mk.locked);
     pCtxMarkers.push(marker);
   });
   // Reapply per-marker scene-visibility now that pCtxMarkers is rebuilt in the current P.markers order
