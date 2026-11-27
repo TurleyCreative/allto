@@ -22,7 +22,8 @@
     slot.style.cssText = 'display:flex;align-items:center;margin:0 6px 0 4px';
     if (brand && brand.parentNode) brand.parentNode.insertBefore(slot, brand.nextSibling);
     var dark = function () { return document.documentElement.getAttribute('data-theme') !== 'light'; };
-    var nav = A.mountSwitcher(slot, { active: PRODUCT, theme: dark() ? 'dark' : 'light', logo: false });
+    // The editor has its own Open / Save buttons, which read and write the whole .allto project.
+    var nav = A.mountSwitcher(slot, { active: PRODUCT, theme: dark() ? 'dark' : 'light', logo: false, file: false });
     var right = topbar.lastElementChild;
     var chipSlot = document.createElement('span');
     chipSlot.style.cssText = 'display:flex;align-items:center;margin-right:6px';
@@ -35,6 +36,9 @@
       if (chip) chip.classList.toggle('allto-chip--dark', d);
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   }
+
+  // ---- the .allto project file stores the editor's latest state
+  if (A.beforeSave) A.beforeSave(function () { try { localStorage.setItem('consultation_builder_project', JSON.stringify(E.P)); } catch (e) { /* storage full */ } });
 
   // ---- take in changes made elsewhere
   function ringOf(p) {

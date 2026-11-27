@@ -315,7 +315,7 @@ input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:2
     <span id="save-status" class="tb-status" role="status" aria-live="polite"><span id="dirty-dot" style="display:none"></span><span id="save-status-text"></span></span>
     <div class="badge"><div class="bdot"></div>Live Preview</div>
     <button class="btn btn-g" id="btn-theme-toggle" title="Switch to light mode" aria-label="Switch to light mode" aria-pressed="false"><div class="tt-icon-wrap"><svg class="tt-moon-body" viewBox="50 50 52 52" aria-hidden="true"><path d="M76 51C76.3182 51 76.6349 51.0068 76.9502 51.0186C76.3342 52.8909 76 54.8912 76 56.9697C76 67.4796 84.5204 76 95.0303 76C97.1085 76 99.1083 75.6647 100.98 75.0488C100.992 75.3644 101 75.6815 101 76C101 89.8071 89.8071 101 76 101C62.1929 101 51 89.8071 51 76C51 62.1929 62.1929 51 76 51Z"/></svg><svg class="tt-sun-body" viewBox="50 50 52 52" aria-hidden="true"><circle cx="76" cy="76" r="11"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="54" cy="76" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="76" cy="55" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="98" cy="76" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="76" cy="97" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="60.9" cy="91.6" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="60.9" cy="61.4" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="91.1" cy="60.4" r="4"/></svg><svg class="tt-ray" viewBox="50 50 52 52" aria-hidden="true"><circle cx="91.1" cy="90.6" r="4"/></svg></div></button>
-    <label class="btn btn-g btn-ic" id="btn-open-proj" title="Open project file" style="cursor:pointer"><span class="ico-h" data-icon="folder-open" data-icon-size="13"></span>Open<input type="file" id="open-proj-file" accept=".json" style="display:none"/></label>
+    <label class="btn btn-g btn-ic" id="btn-open-proj" title="Open project file" style="cursor:pointer"><span class="ico-h" data-icon="folder-open" data-icon-size="13"></span>Open<input type="file" id="open-proj-file" accept=".allto,.json,application/json" style="display:none"/></label>
     <button class="btn btn-g btn-ic" id="btn-save-proj" title="Save project file"><span class="ico-h" data-icon="save" data-icon-size="13"></span>Save</button>
     <div style="width:1px;height:18px;background:var(--border2);margin:0 2px"></div>
     <button class="btn btn-g btn-ic" id="btn-preview" onclick="previewInNewTab()"><span class="ico-h" data-icon="play" data-icon-size="13"></span>Preview</button>
@@ -2750,6 +2750,12 @@ function bindExportModal() {
   // Save project
   var btnSave = el('btn-save-proj');
   if(btnSave) btnSave.addEventListener('click', function() {
+    // The whole allto project (this consultation, plus Present and Ultrahand) as one .allto file.
+    if (window.Allto && Allto.saveFile) {
+      try { localStorage.setItem(autoSaveKey, JSON.stringify(P)); } catch(e) {}
+      Allto.saveFile().then(function(n) { el('save-status-text').textContent = 'Saved ' + n; setTimeout(function(){ el('save-status-text').textContent = ''; }, 3000); });
+      return;
+    }
     var name = (P.siteTitle||P.name||'project').toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
     var blob = new Blob([JSON.stringify(P, null, 2)], {type:'application/json'});
     var url = URL.createObjectURL(blob);
@@ -2764,6 +2770,11 @@ function bindExportModal() {
   var openF = el('open-proj-file');
   if(openF) openF.addEventListener('change', function() {
     var file = this.files[0]; if(!file) return;
+    if (window.Allto && Allto.openFile && /\.allto$/i.test(file.name)) {
+      Allto.openFile(file).catch(function(e) { alert('Could not open the file: ' + (e && e.message || e)); });
+      this.value = '';
+      return;
+    }
     var reader = new FileReader();
     reader.onload = function(ev) {
       try {

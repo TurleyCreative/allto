@@ -45,6 +45,7 @@ interface AlltoApi {
   mountSwitcher(host: HTMLElement | null, opts: { active?: string; theme?: string; logo?: boolean }): HTMLElement | null;
   mountProjectChip(host: HTMLElement | null, opts?: { theme?: string }): HTMLElement | null;
   notify(msg: string): void;
+  beforeSave?(fn: () => void): void;
 }
 const Allto = (window as any).Allto as AlltoApi | undefined;
 const PRODUCT = 'ultrahand';
@@ -3347,6 +3348,8 @@ function takeInShared(opening: boolean): boolean {
   return true;
 }
 Allto?.onChange(() => map.isStyleLoaded() && takeInShared(false));
+// The .allto project file stores the latest site, masterplan and assumptions.
+Allto?.beforeSave?.(saveProject);
 window.addEventListener('focus', () => map.isStyleLoaded() && takeInShared(false));
 
 renderLayerList();

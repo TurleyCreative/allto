@@ -12,9 +12,14 @@ export interface AlltoApi {
   markSeen(product: string): void;
   onChange(fn: (p: AlltoProject) => void): void;
   productLabel(id: string): string;
-  mountSwitcher(host: HTMLElement | null, opts: { active?: string; theme?: string; logo?: boolean }): HTMLElement | null;
+  mountSwitcher(host: HTMLElement | null, opts: { active?: string; theme?: string; logo?: boolean; file?: boolean }): HTMLElement | null;
   mountProjectChip(host: HTMLElement | null, opts?: { theme?: string }): HTMLElement | null;
   notify(msg: string): void;
+  FILE_FORMAT: string;
+  beforeSave(fn: () => void): void;
+  saveFile(): Promise<string>;
+  openFile(file: File): Promise<unknown>;
+  pickFile(): void;
   playIntro(opts?: { force?: boolean }): void;
 }
 export const Allto = (window as any).Allto as AlltoApi;
