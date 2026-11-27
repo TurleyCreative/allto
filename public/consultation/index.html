@@ -3743,9 +3743,20 @@ function renderRightPanel() {
 // ═══════════════════════════════════════════════════
 //  RIGHT PANEL — MARKER EDITOR
 // ═══════════════════════════════════════════════════
+/** A story page built with blocks: its image and body text become the first blocks, so everything can be reordered. */
+function ppToBlocks(lb) {
+  if (!lb || lb.layout !== 'story' || !(lb.blocks || []).length) return false;
+  var pre = [], stamp = Date.now();
+  if (lb.img) pre.push({ id: 'blk' + stamp + 'i', type: 'image', url: lb.img, caption: lb.imgCaption || '', alt: '' });
+  if (lb.body && String(lb.body).replace(/<[^>]*>/g, '').trim()) pre.push({ id: 'blk' + stamp + 'p', type: 'paragraph', html: lb.body });
+  if (!pre.length) return false;
+  lb.blocks = pre.concat(lb.blocks); lb.img = ''; lb.imgCaption = ''; lb.body = '';
+  return true;
+}
 function renderMarkerEditor(i) {
   var m = P.markers[i];
   if (!m) { setHTML('rpc','<div class="es">Select a marker to edit</div>'); return; }
+  if (m.lightbox && ppToBlocks(m.lightbox)) markDirty();
   var lb = m.lightbox || {enabled:false,heading:'',body:'',img:''};
 
   var html = '<div class="rh"><div class="re">Marker</div><div class="rt">'+h(m.name||'Unnamed')+'</div></div>' + mtStyleBar('marker', m);
@@ -3879,7 +3890,8 @@ function renderMarkerEditor(i) {
       html += '<div class="f"><label class="fl">Heading</label><input type="text" id="mk-lb-head" value="'+h(lb.heading||'')+'" placeholder="Main heading"/></div>';
       html += '<div class="f"><label class="fl">Subheading</label><input type="text" id="mk-lb-subhead" value="'+h(lb.subheading||'')+'" placeholder="Optional subheading"/></div>';
     }
-    if(lbLy !== 'blocks') {
+    var ppBlk = lbLy === 'story' && (lb.blocks||[]).length > 0;
+    if(lbLy !== 'blocks' && !ppBlk) {
       html += '<div class="f"><label class="fl">Body text <span style="font-size:9px;color:var(--ghost);font-family:var(--mono);font-weight:400;margin-left:4px">supports HTML</span></label>';
       html += '<div id="mk-lb-toolbar" style="display:flex;gap:3px;margin-bottom:5px;flex-wrap:wrap">';
       var tbBtns = [
@@ -3910,13 +3922,18 @@ function renderMarkerEditor(i) {
       html += '<div class="f"><label class="fl">Map while this page is open</label><select id="mk-lb-pm"><option value=""'+(pm.mode!=='pick'?' selected':'')+'>Same as the scene</option><option value="pick"'+(pm.mode==='pick'?' selected':'')+'>Show only what I pick</option></select></div>';
       if(pm.mode==='pick') html += '<button type="button" class="btn btn-g btn-ic" id="mk-pm-prev" style="width:100%;justify-content:center;margin:-2px 0 12px">'+(PP_PREVIEW && PP_PREVIEW.m===m ? 'Stop preview' : 'Preview on map')+'</button>' + ppPickHTML(pm, m);
     }
-    if(lbLy === 'image-text' || lbLy === 'story') {
+    if(lbLy === 'image-text' || (lbLy === 'story' && !ppBlk)) {
       html += '<div class="f"><label class="fl">Image URL'+infoBtn('Image is clickable to expand fullscreen.')+'</label>';
       html += '<input type="text" id="mk-lb-img" value="'+h(lb.img||'')+'" placeholder="https://..."/>' + imageUploadRowHTML('mk-lb-img') + '</div>';
       html += '<div class="f"><label class="fl">Image caption (optional)</label>';
       html += '<input type="text" id="mk-lb-imgcap" value="'+h(lb.imgCaption||'')+'" placeholder="Caption"/></div>';
     }
-    if(lbLy === 'blocks') {
+    if(lbLy === 'story') {
+      html += '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:4px 0 8px">'+(ppBlk
+        ? 'The page is built from the blocks below, under the heading and subheading. Use the arrows to put images, buttons and text in any order.'
+        : 'Add blocks to lay the page out your way: images, buttons, stats, a timeline and more. The image and body text above become the first blocks, so you can reorder everything.')+'</div>';
+    }
+    if(lbLy === 'blocks' || lbLy === 'story') {
       html += blocksEditorHTML(lb.blocks||[], 'mk-blk');
     }
   }
@@ -4155,8 +4172,8 @@ function renderMarkerEditor(i) {
       P.markers[i].lightbox.images = this.value.split('\n').map(function(s){return s.trim();}).filter(Boolean);
       markDirty();
     });
-    if(lbLy === 'blocks') {
-      bindBlocksEditor('mk-blk', function(){ return P.markers[i].lightbox; }, function(){ renderMarkerEditor(i); });
+    if(lbLy === 'blocks' || lbLy === 'story') {
+      bindBlocksEditor('mk-blk', function(){ return P.markers[i].lightbox; }, function(){ ppToBlocks(P.markers[i].lightbox); renderMarkerEditor(i); });
     }
   }
   // Click-to-place only when button pressed
@@ -11020,7 +11037,10 @@ function buildJS() {
 '  if(p.lightboxSubheading){var h2=document.createElement("h2");h2.innerHTML=p.lightboxSubheading;wrap.appendChild(h2);}',
 '  if(p.lightboxImg){var fg=document.createElement("figure");fg.className="pp-fig";var im=document.createElement("img");im.src=p.lightboxImg;im.alt="";fg.appendChild(im);if(p.lightboxImgCaption){var fc=document.createElement("figcaption");fc.textContent=p.lightboxImgCaption;fg.appendChild(fc);}wrap.appendChild(fg);}',
 '  if(p.lightboxBody){var bd=document.createElement("div");bd.className="lead";bd.innerHTML=p.lightboxBody;wrap.appendChild(bd);}',
-'  pg.innerHTML="";pg.appendChild(wrap);pg.setAttribute("aria-label",p.name||"Details");pg.scrollTop=0;',
+'  var blks=[];try{blks=JSON.parse(p.lightboxBlocks||"[]");}catch(e){}',
+'  if(blks.length){var bw=document.createElement("div");bw.className="lb-blocks-wrap pp-blocks";bw.innerHTML=blks.map(lbBlockHTML).join("");wrap.appendChild(bw);}',
+'  pg.innerHTML="";pg.appendChild(wrap);if(blks.length)try{bindHotspotImages(pg);}catch(e){}',
+'  pg.setAttribute("aria-label",p.name||"Details");pg.scrollTop=0;',
 '  document.body.classList.add("pp-open");',
 '  requestAnimationFrame(function(){pg.classList.add("open");try{pg.focus({preventScroll:true});}catch(e){}});',
 '  if(p.coords){',
@@ -12192,6 +12212,7 @@ function buildCSS() {
 + '#prose-page .pp{min-height:100%;justify-content:flex-start;padding-top:48px;scroll-snap-align:none}'
 + '.pp-back{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:none;border:1px solid var(--mid);border-radius:999px;padding:8px 15px 8px 11px;font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;margin-bottom:40px;transition:background .2s,border-color .2s}'
 + '.pp-back:hover{background:var(--mid)}.pp-back:focus-visible{outline:2px solid var(--accent);outline-offset:2px}.pp-back svg{transition:transform .25s var(--ease)}.pp-back:hover svg{transform:translateX(-3px)}'
++ '#prose-page .pp-blocks{margin-top:6px;width:100%}#prose-page .pp-blocks .lbk-para,#prose-page .pp-blocks .lbk-para p{font-size:15px;line-height:1.8;color:#3a3733}#prose-page .lbk-btn{align-self:flex-start}'
 + '.pp-fig{margin:6px 0 24px}.pp-fig img{width:100%;border-radius:10px;display:block}.pp-fig figcaption{font-size:11.5px;color:var(--ghost);margin-top:8px}'
 + '@media(max-width:768px){#prose-page{left:0;right:0;width:auto;top:36dvh;border-right:0;border-radius:16px 16px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.18);transform:translate3d(0,24px,0);z-index:160}#prose-page .pp{padding:22px 20px 48px;min-height:0}.pp-back{margin-bottom:22px}}'
 + '#navbar{width:var(--nav-w);min-width:var(--nav-w);height:100vh;height:100dvh;background:#0f0e0d;display:flex;flex-direction:column;align-items:center;padding:18px 0;z-index:100}'
