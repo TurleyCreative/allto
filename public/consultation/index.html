@@ -1292,8 +1292,9 @@ function renderLineEditor(i) {
 
   // Entrance animation override
   html += '<div class="rs"><div class="st">'+lucideSVG('play',14,'currentColor')+' Entrance Animation'+(ln.animOverride?infoBtn('Only applies while Settings > Entrance Animations is switched on.'):'')+'</div>';
-  html += '<div class="lr"><span class="ll">Override default duration/easing/delay</span><button class="tg'+(ln.animOverride?' on':'')+'" id="ln-anim-tog"></button></div>';
-  if(ln.animOverride) {
+  html += '<div class="lr"><span class="ll">Animate this line'+infoBtn('Draws the line on when a scene brings it into view. Turn off to have it simply appear.')+'</span><button class="tg'+(ln.animOff?'':' on')+'" id="ln-animoff-tog"></button></div>';
+  if(!ln.animOff) html += '<div class="lr"><span class="ll">Override default duration/easing/delay</span><button class="tg'+(ln.animOverride?' on':'')+'" id="ln-anim-tog"></button></div>';
+  if(ln.animOverride && !ln.animOff) {
     html += animControlsHTML('ln-anim', ln.animDuration, ln.animEasing, ln.animDelay, ln.animEasingCurve);
   }
   html += '</div>';
@@ -1351,6 +1352,8 @@ function renderLineEditor(i) {
 
   var animTog=el('ln-anim-tog');
   if(animTog) animTog.addEventListener('click',function(){ P.lines[i].animOverride=!P.lines[i].animOverride; markDirty(); renderLineEditor(i); });
+  var animOffTog=el('ln-animoff-tog');
+  if(animOffTog) animOffTog.addEventListener('click',function(){ P.lines[i].animOff=!P.lines[i].animOff; markDirty(); renderLineEditor(i); });
   bindAnimControls('ln-anim',
     function(v){ P.lines[i].animDuration=v; },
     function(v){ P.lines[i].animEasing=v; },
@@ -3767,6 +3770,8 @@ function renderMarkerEditor(i) {
   // Accessibility drawer visibility
   html += '<div class="rs"><div class="lr"><span class="ll">Show in accessibility drawer'+infoBtn('Lists this marker in the keyboard/screen-reader “Map Contents” panel. Turn off for markers that don’t need a text-based entry, e.g. purely decorative pins.')+'</span>'
     + '<button class="tg'+(m.showInDrawer!==false?' on':'')+'" id="mk-showdrawer-tog"></button></div>';
+  html += '<div class="lr"><span class="ll">Animate this marker'+infoBtn('Drops the marker in when a scene brings it into view. Turn off to have it simply appear. Only applies while Settings > Entrance Animations is on.')+'</span>'
+    + '<button class="tg'+(m.animOff?'':' on')+'" id="mk-animoff-tog"></button></div>';
   html += '</div>';
 
   // Colour section
@@ -3974,6 +3979,8 @@ function renderMarkerEditor(i) {
     P.markers[i].flyCamera=!P.markers[i].flyCamera;
     markDirty(); renderMarkerEditor(i);
   });
+  var mkAnimOffTog=el('mk-animoff-tog');
+  if(mkAnimOffTog) mkAnimOffTog.addEventListener('click',function(){ P.markers[i].animOff=!P.markers[i].animOff; markDirty(); renderMarkerEditor(i); });
   var showDrawerTog=el('mk-showdrawer-tog');
   if(showDrawerTog) showDrawerTog.addEventListener('click',function(){
     P.markers[i].showInDrawer = P.markers[i].showInDrawer===false ? true : false;
@@ -5366,7 +5373,7 @@ function renderSettings() {
     + '</div></div>';
   html += '</div>';
   html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('play',14,'currentColor')+'Entrance Animations</span></div>';
-  html += '<div class="lr"><span class="ll">Animate markers &amp; lines on entry'+infoBtn('Markers drop in and lines draw on progressively whenever a scene brings them into view.')+'</span>'
+  html += '<div class="lr"><span class="ll">Animate markers &amp; lines on entry'+infoBtn('Markers drop in and lines draw on progressively whenever a scene brings them into view. To stop one line or marker animating, switch off Animate this line / marker in its panel, or right-click it on the map.')+'</span>'
     + '<button class="tg'+(P.animateEntrances!==false?' on':'')+'" id="cfg-anim-tog"></button></div>';
   if(P.animateEntrances!==false) {
     html += animControlsHTML('cfg-anim', P.animDuration, P.animEasing, P.animDelay, P.animEasingCurve);
@@ -7000,6 +7007,7 @@ function refreshLines() {
 // then line them up or spread them out. A selected circle zone shows handles for its centre and edge; other
 // zones and lines show a move handle. An optional grid (metres, from the site centre) snaps what you drag.
 var MT_ICONS = {
+  'pause': '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>',
   'undo-2': '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
   'redo-2': '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
   'move': '<path d="M12 2v20M2 12h20"/><path d="m15 19-3 3-3-3M19 9l3 3-3 3M5 9l-3 3 3 3M9 5l3-3 3 3"/>',
@@ -7199,6 +7207,10 @@ function mtMenu(hit, x, y) {
   if (!it) return;
   var shape = hit.kind === 'zone' || hit.kind === 'line', rows = [['edit', 'pencil', 'Edit'], ['dup', 'copy', 'Duplicate']];
   if (shape) rows.push('-', ['front', 'arrow-up-to-line', 'Bring to front'], ['fwd', 'chevron-up', 'Bring forward'], ['back', 'chevron-down', 'Send backward'], ['bottom', 'arrow-down-to-line', 'Send to back']);
+  if (hit.kind === 'line' || hit.kind === 'marker') {
+    var many = hit.kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0;
+    rows.push('-', it.animOff ? ['anim', 'play', many ? 'Animate these markers' : 'Animate on entry'] : ['anim', 'pause', many ? 'Don\u2019t animate these markers' : 'Don\u2019t animate on entry']);
+  }
   rows.push('-', ['copy', 'paintbrush', 'Copy style'], ['paste', 'clipboard-paste', 'Paste style'], '-', ['del', 'trash-2', 'Delete']);
   var m = document.createElement('div');
   m.id = 'mt-menu'; m.setAttribute('role', 'menu');
@@ -7230,6 +7242,14 @@ function mtAct(hit, act) {
   var kind = hit.kind, arr = mtArr(kind), it = arr[hit.i];
   if (!it) return;
   if (act === 'edit') return mtOpen(hit);
+  if (act === 'anim') {
+    var off = !it.animOff, list = [it];
+    if (kind === 'marker' && MT.sel.length > 1 && MT.sel.indexOf(it.id) >= 0) list = mtSelMarkers();
+    list.forEach(function(x) { x.animOff = off; });
+    markDirty(); mtRefresh(kind);
+    mtToast(off ? (list.length > 1 ? list.length + ' markers will appear without animating.' : 'This ' + MT_KIND_NAME[kind] + ' will appear without animating.') : 'Entrance animation back on.');
+    return;
+  }
   if (act === 'copy') {
     var o = {};
     MT_STYLE_KEYS[kind].forEach(function(k) { if (it[k] !== undefined) o[k] = JSON.parse(JSON.stringify(it[k])); });
@@ -9474,7 +9494,7 @@ function buildCfg() {
       labelSize:ln.labelSize||12, labelColor:ln.labelColor||'#fff',
       scenes:sceneIdxs,
       geojson:ln.geojson||'', z:+ln.layer||0,
-      animOverride:!!ln.animOverride, animDuration:ln.animDuration||800, animEasing:ln.animEasing||'easeOut', animDelay:ln.animDelay||0, animEasingCurve:ln.animEasingCurve||[0.42,0,0.58,1]
+      animOff:!!ln.animOff, animOverride:!!ln.animOverride, animDuration:ln.animDuration||800, animEasing:ln.animEasing||'easeOut', animDelay:ln.animDelay||0, animEasingCurve:ln.animEasingCurve||[0.42,0,0.58,1]
     });
   });
 
@@ -9501,7 +9521,7 @@ function buildCfg() {
 
   var labels = P.scenes.map(function(sc){return JSON.stringify(sc.label||'Scene');}).join(',');
 
-  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false}};})};
+  var markers = {type:'FeatureCollection',features:P.markers.map(function(m){return{type:'Feature',geometry:{type:'Point',coordinates:m.coords},properties:{name:m.name,desc:m.desc,icon:m.icon||'',color:m.color,mkStyle:m.style||'pin',labelSide:m.labelSide||'right',labelBg:m.labelBg||'',flyCamera:!!m.flyCamera,camZoom:m.camZoom||15,camPitch:m.camPitch||45,camBearing:m.camBearing||0,lightboxEnabled:!!(m.lightbox&&m.lightbox.enabled),lightboxLayout:(m.lightbox&&m.lightbox.layout)||'card',lightboxHeading:(m.lightbox&&m.lightbox.heading)||'',lightboxSubheading:(m.lightbox&&m.lightbox.subheading)||'',lightboxBody:(m.lightbox&&m.lightbox.body)||'',lightboxImg:(m.lightbox&&m.lightbox.img)||'',lightboxImgCaption:(m.lightbox&&m.lightbox.imgCaption)||'',lightboxImages:JSON.stringify((m.lightbox&&m.lightbox.images)||[]),lightboxEmbedUrl:(m.lightbox&&m.lightbox.embedUrl)||'',lightboxEmbedRatio:(m.lightbox&&m.lightbox.embedRatio)||'16:9',lightboxEmbedBg:(m.lightbox&&m.lightbox.embedBg)||'#111111',lightboxBlocks:JSON.stringify((m.lightbox&&m.lightbox.blocks)||[]),scenes:(m.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),showInDrawer:m.showInDrawer!==false,animOff:!!m.animOff}};})};
 
   var constraints = {type:'FeatureCollection',features:zonesForMap().map(function(z){var zco=z.smoothRadius>0.01?smoothPolygon(z.coordinates,z.smoothRadius):z.coordinates;var zlb=z.lightbox||{};return{type:'Feature',geometry:{type:'Polygon',coordinates:[zco]},properties:{z:+z.layer||0,id:z.id||z.name,name:z.name,color:z.color,opacity:z.opacity,scenes:(z.scenes||[]).map(function(sid){var si=P.scenes.findIndex(function(s){return s.id===sid;});return si>=0?si:-1;}).filter(function(si){return si>=0;}).join(','),interactive:z.interactive!==false,extrude:!!z.extrude,extrudeHeight:z.extrudeHeight||20,render3d:!!z.render3d,height3d:z.height3d||20,base3d:z.base3d||0,clipMap:!!z.clipMap,lightboxEnabled:!!zlb.enabled,lightboxLayout:zlb.layout||'popover',lightboxHeading:zlb.heading||'',lightboxSubheading:zlb.subheading||'',lightboxBody:zlb.body||'',lightboxImg:zlb.img||'',lightboxImgCaption:zlb.imgCaption||'',lightboxEmbedUrl:zlb.embedUrl||'',lightboxEmbedRatio:zlb.embedRatio||'16:9',lightboxEmbedBg:zlb.embedBg||'#111111',lightboxBlocks:JSON.stringify(zlb.blocks||[]),showInDrawer:z.showInDrawer!==false,codesignGroupId:z.codesignGroupId||'',cdAllowed:(z.cdAllowed||[]).join(','),baseColor:z.color}};})};
 
@@ -9967,6 +9987,7 @@ function buildJS() {
 '      .setLngLat(f.geometry.coordinates).addTo(map);',
 '    mk.getElement().style.display="none";',
 '    mk._sceneIds = p.scenes ? p.scenes.split(",").filter(Boolean).map(Number) : [];',
+'    mk._animOff = !!p.animOff;',
 '    ctxMarkers.push(mk);',
 '  });',
 '}',
@@ -10077,7 +10098,7 @@ function buildJS() {
 '    var show=ln.scenes.length===0||ln.scenes.indexOf(idx)>=0;',
 '    if(!show||!ln.geojson) return;',
 '    curVis[li]=true;',
-'    var isNew=ANIMATE_ENTRANCES&&anim&&!prevVisLines[li];',
+'    var isNew=ANIMATE_ENTRANCES&&anim&&!ln.animOff&&!prevVisLines[li];',
 '    var lnDur=ln.animOverride?(ln.animDuration||800):ANIM_DURATION;',
 '    var lnEase=ln.animOverride?(ln.animEasing||"easeOut"):ANIM_EASING;',
 '    var lnDelay=ln.animOverride?(ln.animDelay||0):ANIM_DELAY;',
@@ -10902,7 +10923,7 @@ function buildJS() {
 '    var vis = L.context && (idxs.length===0 || idxs.indexOf(idx) >= 0);',
 '    var mkEl=mk.getElement();',
 '    var wasVis=mkEl.style.display!=="none";',
-'    if(vis&&!wasVis&&ANIMATE_ENTRANCES&&anim){',
+'    if(vis&&!wasVis&&ANIMATE_ENTRANCES&&anim&&!mk._animOff){',
 '      mkEl.style.display="";',
 '      mkEl.classList.remove("mk-drop");',
 '      void mkEl.offsetWidth;',
@@ -12208,7 +12229,7 @@ function buildLbCSS() {
   ].join('\n');
 }
 // allto: expose what the shared project bridge needs (see shared/consultation-bridge.js).
-window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, refreshAll: function() { refreshMK(); refreshZN(); refreshLines(); refreshLB(); }, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, buildLandingPreviewHTML: buildLandingPreviewHTML, ldNewBlock: ldNewBlock, switchMain: switchMain, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
+window.alltoEditor = { get P() { return P; }, get map() { return pMap; }, refreshRL: refreshRL, refreshAll: function() { refreshMK(); refreshZN(); refreshLines(); refreshLB(); }, renderAll: renderAll, markDirty: markDirty, feedbackScenes: function() { return feedbackSceneIndexes(); }, buildPollHTML: buildPollHTML, buildOutputHTML: buildOutputHTML, protectHTML: protectHTML, buildLandingPreviewHTML: buildLandingPreviewHTML, ldNewBlock: ldNewBlock, switchMain: switchMain, cdParsePaste: cdParsePaste, renderZoneEditor: renderZoneEditor };
 })(); // end IIFE
 </script>
 <script src="../shared/allto.js"></script>
