@@ -5493,6 +5493,9 @@ function renderSettings() {
     + '<button class="btn btn-g btn-ic" id="btn-cm-add-builtin" style="white-space:nowrap">'+lucideSVG('plus',13,'currentColor')+'Add</button>'
     + '</div></div>';
   html += '</div>';
+  html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('text',14,'currentColor')+'Narrative</span></div>';
+  html += '<div class="lr"><span class="ll">Show scene tags above headings'+infoBtn('The small coloured dot and label (like \u201cWider context\u201d) above each scene\u2019s heading in the text column, and above the name on marker story pages.')+'</span><button class="tg'+(P.showSceneTags!==false?' on':'')+'" id="cfg-scenetags"></button></div>';
+  html += '</div>';
   html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('move',14,'currentColor')+'Scene Transitions</span></div>';
   html += '<div class="f"><label class="fl">Camera movement'+infoBtn('How the map moves from one scene to the next. Fly lifts up and comes back down on the way, which can feel dramatic over long distances. Glide moves straight there, which feels calmer.')+'</label><select id="cfg-tr-style">'
     + '<option value="fly"'+(P.sceneTransStyle!=='glide'?' selected':'')+'>Fly (zooms out and back in)</option>'
@@ -5582,6 +5585,7 @@ function renderSettings() {
   [['cfg-anim-ln', 'animLineStyle'], ['cfg-anim-mk', 'animMarkerStyle'], ['cfg-anim-zn', 'animZoneStyle']].forEach(function(p) {
     var s0 = el(p[0]); if (s0) s0.addEventListener('change', function() { P[p[1]] = s0.value; markDirty(); });
   });
+  var stTog = el('cfg-scenetags'); if (stTog) stTog.addEventListener('click', function() { P.showSceneTags = P.showSceneTags === false; markDirty(); renderSettings(); });
   var trSel = el('cfg-tr-style'); if (trSel) trSel.addEventListener('change', function() { P.sceneTransStyle = trSel.value; markDirty(); });
   bindRng('cfg-tr-dur', function(v) { P.sceneTransDur = +v || 2000; markDirty(); });
   var animTog = el('cfg-anim-tog');
@@ -12277,6 +12281,7 @@ function buildCSS() {
 + '.scene-tag{display:inline-flex;align-items:center;gap:10px;font-size:9px;letter-spacing:.24em;text-transform:uppercase;margin-bottom:20px}'
 + '.scene-tag-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}'
 + '.scene-tag span{opacity:.7}'
++ (P.showSceneTags === false ? '.chapter .scene-tag{display:none}' : '')
 + '.chapter h1{font-family:var(--f-body);font-size:clamp(26px,3vw,36px);font-weight:700;line-height:1.1;margin-bottom:16px;color:#0f0e0d}'
 + '.chapter h2{font-family:var(--f-body);font-size:clamp(21px,2.4vw,30px);font-weight:400;line-height:1.3;margin-bottom:18px;color:#0f0e0d}'
 + '.chapter .lead{font-size:15px;line-height:1.8;color:#3a3733;margin-bottom:14px;font-weight:400}'
