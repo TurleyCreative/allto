@@ -9793,13 +9793,14 @@ function buildQuestionItem(sc, i, q, qi) {
     + '      </div>\n';
 }
 // ═══════════════════════════════════════════════════
-//  MASTERPLAN FROM ULTRAHAND
+//  MASTERPLANS FROM ULTRAHAND
 // ═══════════════════════════════════════════════════
-// Ultrahand keeps its site in this browser ("ultrahand:last"). Its masterplan comes in as ordinary,
-// grouped consultation items tagged mp:true: massing blocks and open space as zones (blocks in 3D),
-// homes as 3D custom buildings (one per house type), streets as lines, trees as tree props, and the
-// areas cleared of what exists as clip zones. They can then be shown on any scene, updated after
-// changes in Ultrahand, or removed in one go.
+// Ultrahand can hold several sites ("ultrahand:sites", each in "ultrahand:site:<id>"; the open one is
+// also "ultrahand:last"). Any of them comes in as ordinary, grouped consultation items tagged with
+// its site id (mp: '<site id>'): massing blocks and open space as zones (blocks in 3D), homes as 3D
+// custom buildings with their roofs, streets as lines, trees as tree props, cleared areas as clip
+// zones, and optionally Ultrahand's sketch. Each site can be shown on any scenes, updated after
+// changes in Ultrahand, or removed, on its own.
 var MP_KEY = 'ultrahand:last';
 var MP_STREET = { primary: [6, '#ffffff', 'solid'], residential: [4.5, '#ffffff', 'solid'], shared: [3.5, '#f3efe6', 'solid'], mews: [3, '#f3efe6', 'solid'], path: [2, '#e8dcc2', 'dashed'] };
 var MP_OPEN = { park: ['Park or garden', '#7fb86c'], amenity: ['Amenity green space', '#b3d69c'], natural: ['Natural and semi-natural', '#5f9150'], play: ['Equipped play', '#e3c35a'], suds: ['SuDS and attenuation', '#93c1e3'], allotment: ['Allotments and growing', '#c7ad72'] };
@@ -9808,63 +9809,87 @@ var MP_USE = { residential: ['Residential', '#e6262e', 3.15], office: ['Workspac
 var MP_HOUSE = { terrace2: ['Terrace, 2 bed', '#f07d6e', 2, 8.5], terrace: ['Terrace, 3 bed', '#e6262e', 2, 9], semi: ['Semi-detached pair, 3 bed', '#ef5f5f', 2, 9], detached: ['Detached, 4 bed', '#c43a3f', 2, 9.5], townhouse: ['Townhouse, 4 bed', '#9c1c22', 3, 10], bungalow: ['Bungalow, 2 bed', '#f7b6b6', 1, 8] };
 var MP_TREE = { small: 8, medium: 13, large: 20, columnar: 12, conifer: 15, fruit: 5 };
 var MP_PARTS = [['blocks', 'Massing blocks (3D)'], ['homes', 'Homes (3D, with roofs)'], ['open', 'Open spaces'], ['streets', 'Streets'], ['trees', 'Trees'], ['clear', 'Hide existing buildings where cleared'], ['sketch', 'Sketch style: pencil lines, hatching and soft colours']];
+var MP_DEFAULT_PARTS = { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true, sketch: false };
 var MP_EXPORT_KEY = 'ultrahand:mp-export';
-function mpExport() { try { return JSON.parse(localStorage.getItem(MP_EXPORT_KEY) || 'null'); } catch (e) { return null; } }
 function mpWash(hex, t) { t = t == null ? 0.45 : t; hex = String(hex || '#888888'); return '#' + [1, 3, 5].map(function(i) { var v = parseInt(hex.slice(i, i + 2), 16) || 0; return Math.round(v + (255 - v) * t).toString(16).padStart(2, '0'); }).join(''); }
-var MP_GROUPS = { zoneGroups: [['grp-mp-build', 'Masterplan · buildings'], ['grp-mp-open', 'Masterplan · open space'], ['grp-mp-clear', 'Masterplan · cleared areas'], ['grp-mp-paper', 'Masterplan · sketch paper']], lineGroups: [['grp-mp-streets', 'Masterplan · streets'], ['grp-mp-sketch', 'Masterplan · sketch']], propGroups: [['grp-mp-trees', 'Masterplan · trees']] };
+function mpJSON(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
 
-function mpRead() {
-  var j = null;
-  try { j = JSON.parse(localStorage.getItem(MP_KEY) || 'null'); } catch (e) { return null; }
-  if (!j) return null;
+/** The sites in Ultrahand: [{ id, name, current }]. */
+function mpSites() {
+  var ix = mpJSON('ultrahand:sites');
+  if (ix && ix.list && ix.list.length) return ix.list.map(function(s, i) { return { id: s.id, name: s.name || 'Site ' + (i + 1), current: s.id === ix.current }; });
+  var j = mpJSON(MP_KEY);
+  return j ? [{ id: '_site', name: String(j.place || 'Ultrahand site').split(',')[0], current: true }] : [];
+}
+function mpSite(id) { return mpSites().filter(function(s) { return s.id === id; })[0] || null; }
+function mpRaw(id) { var s = mpSite(id); if (!s) return null; return (s.current && mpJSON(MP_KEY)) || mpJSON('ultrahand:site:' + id); }
+function mpExport(id) { var s = mpSite(id); if (!s) return null; return (s.current && mpJSON(MP_EXPORT_KEY)) || mpJSON(MP_EXPORT_KEY + ':' + id); }
+function mpRead(id) {
+  var j = mpRaw(id); if (!j) return null;
   var pl = j.plan || {}, red = j.red && j.red.geometry ? j.red.geometry.coordinates[0] : null;
   return { blocks: j.blocks || [], streets: pl.streets || [], open: pl.open || [], homes: pl.homes || [], trees: pl.trees || [],
     clear: (pl.clear || []).map(function(c) { return c.shape && c.shape.geometry ? c.shape.geometry.coordinates[0] : null; }).filter(Boolean).concat(pl.clearRed && red ? [red] : []) };
 }
-function mpCount(d) {
-  var ex = mpExport(), sk = ex && ex.sketch ? (ex.sketch.lines || []).length + (ex.sketch.hatches || []).length : 0;
-  return d ? { blocks: d.blocks.length, homes: d.homes.length, open: d.open.length, streets: d.streets.length, trees: d.trees.length, clear: d.clear.length, sketch: sk ? 1 : 0 } : {};
+function mpCount(d) { return d ? { blocks: d.blocks.length, homes: d.homes.length, open: d.open.length, streets: d.streets.length, trees: d.trees.length } : {}; }
+function mpSummary(c) {
+  return [[c.blocks, 'massing block'], [c.homes, 'home'], [c.open, 'open space'], [c.streets, 'street'], [c.trees, 'tree']].filter(function(x) { return x[0]; })
+    .map(function(x) { return x[0] + ' ' + x[1] + (x[0] === 1 ? '' : 's'); }).join(' · ');
 }
-function mpItems() {
-  var f = function(a) { return (a || []).filter(function(x) { return x && x.mp; }); };
+/** Imports from before sites (mp: true) belong to the first site. */
+function mpNorm() {
+  P.mpImports = P.mpImports || {};
+  var owner = (mpSites()[0] || { id: '_site' }).id, any = false;
+  ['zones', 'lines', 'buildings', 'props'].forEach(function(k) { (P[k] || []).forEach(function(x) { if (x && x.mp === true) { x.mp = owner; any = true; } }); });
+  if (P.mpImport) { if (any || !P.mpImports[owner]) P.mpImports[owner] = P.mpImport; delete P.mpImport; }
+}
+function mpItems(id) {
+  var f = function(a) { return (a || []).filter(function(x) { return x && x.mp && (id == null || x.mp === id); }); };
   var o = { zones: f(P.zones), lines: f(P.lines), buildings: f(P.buildings), props: f(P.props) };
   o.all = o.zones.concat(o.lines, o.buildings, o.props);
   return o;
 }
-function mpRemove() {
-  ['zones', 'lines', 'buildings', 'props'].forEach(function(k) { if (P[k]) P[k] = P[k].filter(function(x) { return !x.mp; }); });
-  Object.keys(MP_GROUPS).forEach(function(k) { if (P[k]) P[k] = P[k].filter(function(g) { return String(g.id).indexOf('grp-mp-') !== 0; }); });
+var MP_GROUP_LISTS = ['zoneGroups', 'lineGroups', 'propGroups'];
+function mpRemove(id) {
+  ['zones', 'lines', 'buildings', 'props'].forEach(function(k) { if (P[k]) P[k] = P[k].filter(function(x) { return !(x && x.mp && x.mp === id); }); });
+  // Masterplan groups nothing belongs to any more.
+  var inUse = {};
+  ['zones', 'lines', 'props'].forEach(function(k) { (P[k] || []).forEach(function(x) { if (x && x.groupId) inUse[x.groupId] = 1; }); });
+  MP_GROUP_LISTS.forEach(function(k) { if (P[k]) P[k] = P[k].filter(function(g) { return String(g.id).indexOf('grp-mp-') !== 0 || inUse[g.id]; }); });
 }
 function mpRing(r) { return (r || []).map(function(c) { return [+(+c[0]).toFixed(7), +(+c[1]).toFixed(7)]; }); }
-function mpImport(sceneIds, parts) {
-  var d = mpRead(); if (!d) return 0;
-  mpRemove();
+function mpImport(id, sceneIds, parts) {
+  var d = mpRead(id), site = mpSite(id); if (!d || !site) return 0;
+  mpRemove(id);
   P.zones = P.zones || []; P.lines = P.lines || []; P.buildings = P.buildings || []; P.props = P.props || [];
+  var key = String(id).replace(/[^a-z0-9]/gi, '').slice(-7) || 's', nm = site.name;
+  var gid = function(part) { return 'grp-mp-' + key + '-' + part; };
+  var iid = function(part, x) { return 'mp-' + key + '-' + part + '-' + x; };
+  var groups = { zoneGroups: [['build', 'buildings'], ['open', 'open space'], ['clear', 'cleared areas'], ['paper', 'sketch paper']], lineGroups: [['streets', 'streets'], ['sketch', 'sketch']], propGroups: [['trees', 'trees']] };
   var sc = function() { return sceneIds.slice(); }, n = 0, used = {};
   var zone = function(o) {
     used[o.groupId] = 1; n++;
     P.zones.push(Object.assign({ popup: '', opacity: 0.6, smoothRadius: 0, render3d: false, height3d: 20, base3d: 0, interactive: true, clipMap: false, codesignGroupId: null,
-      lightbox: { enabled: false, layout: 'popover', heading: '', subheading: '', body: '', img: '', imgCaption: '', embedUrl: '' }, scenes: sc(), layer: 0, mp: true, showInDrawer: false }, o));
+      lightbox: { enabled: false, layout: 'popover', heading: '', subheading: '', body: '', img: '', imgCaption: '', embedUrl: '' }, scenes: sc(), layer: 0, mp: id, showInDrawer: false }, o));
   };
   // Sketch style: Ultrahand's paper wash over the base map, under everything else.
-  if (parts.sketch) zone({ id: 'mp-paper', name: 'Sketch paper', color: '#f8f4eb', opacity: 0.62, interactive: false, layer: -9, groupId: 'grp-mp-paper', coordinates: [[-179, -85], [179, -85], [179, 85], [-179, 85], [-179, -85]] });
-  if (parts.clear) d.clear.forEach(function(r, i) { zone({ id: 'mp-clear-' + i, name: 'Cleared area ' + (i + 1), color: '#000000', opacity: 0, interactive: false, clipMap: true, coordinates: mpRing(r), groupId: 'grp-mp-clear' }); });
+  if (parts.sketch) zone({ id: iid('paper', 0), name: nm + ' · sketch paper', color: '#f8f4eb', opacity: 0.62, interactive: false, layer: -9, groupId: gid('paper'), coordinates: [[-179, -85], [179, -85], [179, 85], [-179, 85], [-179, -85]] });
+  if (parts.clear) d.clear.forEach(function(r, i) { zone({ id: iid('clear', i), name: 'Cleared area ' + (i + 1), color: '#000000', opacity: 0, interactive: false, clipMap: true, coordinates: mpRing(r), groupId: gid('clear') }); });
   if (parts.open) d.open.forEach(function(o) {
     var t = MP_OPEN[o.type] || MP_OPEN.park;
-    if (o.shape && o.shape.geometry) zone({ id: 'mp-open-' + o.id, name: o.name || t[0], popup: t[0], color: t[1], opacity: parts.sketch ? 0.42 : 0.6, coordinates: mpRing(o.shape.geometry.coordinates[0]), groupId: 'grp-mp-open' });
+    if (o.shape && o.shape.geometry) zone({ id: iid('open', o.id), name: o.name || t[0], popup: t[0], color: t[1], opacity: parts.sketch ? 0.42 : 0.6, coordinates: mpRing(o.shape.geometry.coordinates[0]), groupId: gid('open') });
   });
   if (parts.blocks) d.blocks.forEach(function(b) {
     var u = MP_USE[b.use] || MP_USE.other, base = +b.baseM || 0, top = base + (+b.storeys || 1) * u[2];
-    if (b.shape && b.shape.geometry) zone({ id: 'mp-blk-' + b.id, name: b.name || u[0], popup: u[0] + ', ' + (b.storeys || 1) + ' storeys', color: parts.sketch ? mpWash(u[1]) : u[1], opacity: 0.85, render3d: true, base3d: +base.toFixed(1), height3d: +top.toFixed(1), coordinates: mpRing(b.shape.geometry.coordinates[0]), groupId: 'grp-mp-build', layer: 1 });
+    if (b.shape && b.shape.geometry) zone({ id: iid('blk', b.id), name: b.name || u[0], popup: u[0] + ', ' + (b.storeys || 1) + ' storeys', color: parts.sketch ? mpWash(u[1]) : u[1], opacity: 0.85, render3d: true, base3d: +base.toFixed(1), height3d: +top.toFixed(1), coordinates: mpRing(b.shape.geometry.coordinates[0]), groupId: gid('build'), layer: 1 });
   });
-  var ex = mpExport();
+  var ex = mpExport(id);
   if (parts.homes && ex && ex.homes && ex.homes.length) {
     var byT = {}, cnt = {};
     d.homes.forEach(function(hm) { cnt[hm.type] = (cnt[hm.type] || 0) + 1; });
     ex.homes.forEach(function(f) { (byT[f.properties.type] = byT[f.properties.type] || []).push(f); });
     Object.keys(byT).forEach(function(k) {
       var t = MP_HOUSE[k] || MP_HOUSE.terrace; n++;
-      P.buildings.push({ id: 'mp-homes-' + k, name: 'Masterplan \u00b7 ' + t[0] + ' (' + (cnt[k] || byT[k].length) + ')', color: t[1], height: Math.max.apply(null, byT[k].map(function(f) { return +f.properties.top || 0; })), opacity: 0.92, scenes: sc(), mp: true,
+      P.buildings.push({ id: iid('homes', k), name: nm + ' · ' + t[0] + ' (' + (cnt[k] || byT[k].length) + ')', color: t[1], height: Math.max.apply(null, byT[k].map(function(f) { return +f.properties.top || 0; })), opacity: 0.92, scenes: sc(), mp: id,
         geojson: JSON.stringify({ type: 'FeatureCollection', features: byT[k].map(function(f) { return { type: 'Feature', geometry: f.geometry, properties: { base: f.properties.base, top: f.properties.top, color: parts.sketch ? (f.properties.wash || mpWash(f.properties.colour)) : f.properties.colour } }; }) }) });
     });
   } else if (parts.homes) {
@@ -9873,41 +9898,42 @@ function mpImport(sceneIds, parts) {
     Object.keys(byType).forEach(function(k) {
       var t = MP_HOUSE[k] || MP_HOUSE.terrace, hgt = t[2] * 2.5 + 0.3 + (t[3] / 2) * Math.tan(35 * Math.PI / 180) / 2;
       n++;
-      P.buildings.push({ id: 'mp-homes-' + k, name: 'Masterplan · ' + t[0] + ' (' + byType[k].length + ')', color: t[1], height: +hgt.toFixed(1), opacity: 0.92, scenes: sc(), mp: true,
+      P.buildings.push({ id: iid('homes', k), name: nm + ' · ' + t[0] + ' (' + byType[k].length + ')', color: t[1], height: +hgt.toFixed(1), opacity: 0.92, scenes: sc(), mp: id,
         geojson: JSON.stringify({ type: 'FeatureCollection', features: byType[k].map(function(hm) { return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [mpRing(hm.shape.geometry.coordinates[0])] } }; }) }) });
     });
   }
   if (parts.streets) d.streets.forEach(function(st) {
     var t = MP_STREET[st.type] || MP_STREET.residential;
     if (!st.line || !st.line.geometry) return;
-    used['grp-mp-streets'] = 1; n++;
-    P.lines.push({ id: 'mp-st-' + st.id, name: st.name || 'Street', color: t[1], width: t[0], opacity: 0.95, dash: t[2], scenes: sc(), layer: 0, groupId: 'grp-mp-streets', mp: true,
+    used[gid('streets')] = 1; n++;
+    P.lines.push({ id: iid('st', st.id), name: st.name || 'Street', color: t[1], width: t[0], opacity: 0.95, dash: t[2], scenes: sc(), layer: 0, groupId: gid('streets'), mp: id,
       geojson: JSON.stringify({ type: 'LineString', coordinates: mpRing(st.line.geometry.coordinates) }) });
   });
   if (parts.sketch && ex && ex.sketch) {
     // Ultrahand's pencil: one line per colour, weight and strength, so they draw as one sketch.
     var combos = {};
     (ex.sketch.lines || []).concat(ex.sketch.hatches || []).forEach(function(f) {
-      var p = f.properties || {}, key = (p.c || '#2b2a27') + '|' + (+p.w || 1) + '|' + (+p.o || 0.8);
-      (combos[key] = combos[key] || []).push({ type: 'Feature', properties: {}, geometry: f.geometry });
+      var p = f.properties || {}, k = (p.c || '#2b2a27') + '|' + (+p.w || 1) + '|' + (+p.o || 0.8);
+      (combos[k] = combos[k] || []).push({ type: 'Feature', properties: {}, geometry: f.geometry });
     });
-    Object.keys(combos).forEach(function(key, ki) {
-      var k = key.split('|'), pencil = k[0].toLowerCase() === '#2b2a27';
-      used['grp-mp-sketch'] = 1; n++;
-      P.lines.push({ id: 'mp-sk-' + ki, name: 'Sketch \u00b7 ' + (pencil ? 'pencil' : 'hatching') + (+k[2] < 0.5 ? ', light' : ''), color: k[0], width: Math.max(0.5, +(+k[1] * 1.3).toFixed(2)), opacity: +k[2], dash: 'solid', scenes: sc(), layer: 2, groupId: 'grp-mp-sketch', mp: true,
-        geojson: JSON.stringify({ type: 'FeatureCollection', features: combos[key] }) });
+    Object.keys(combos).forEach(function(k0, ki) {
+      var k = k0.split('|'), pencil = k[0].toLowerCase() === '#2b2a27';
+      used[gid('sketch')] = 1; n++;
+      P.lines.push({ id: iid('sk', ki), name: 'Sketch · ' + (pencil ? 'pencil' : 'hatching') + (+k[2] < 0.5 ? ', light' : ''), color: k[0], width: Math.max(0.5, +(+k[1] * 1.3).toFixed(2)), opacity: +k[2], dash: 'solid', scenes: sc(), layer: 2, groupId: gid('sketch'), mp: id,
+        geojson: JSON.stringify({ type: 'FeatureCollection', features: combos[k0] }) });
     });
   }
   if (parts.trees) d.trees.forEach(function(tr) {
     if (!tr.p) return;
     var hgt = (MP_TREE[tr.type] || 13) * (+tr.scale || 1), pine = tr.type === 'conifer';
-    used['grp-mp-trees'] = 1; n++;
-    P.props.push({ id: 'mp-tr-' + tr.id, name: 'Tree', type: pine ? 'pine' : 'realistic_tree', modelId: null, coords: mpRing([tr.p])[0], rotation: Math.round(Math.random() * 360), scale: +(hgt / (pine ? 6.5 : 9.7)).toFixed(2), color: '', scenes: sc(), groupId: 'grp-mp-trees', mp: true });
+    used[gid('trees')] = 1; n++;
+    P.props.push({ id: iid('tr', tr.id), name: 'Tree', type: pine ? 'pine' : 'realistic_tree', modelId: null, coords: mpRing([tr.p])[0], rotation: Math.round(Math.random() * 360), scale: +(hgt / (pine ? 6.5 : 9.7)).toFixed(2), color: '', scenes: sc(), groupId: gid('trees'), mp: id });
   });
-  Object.keys(MP_GROUPS).forEach(function(k) {
-    MP_GROUPS[k].forEach(function(g) { if (used[g[0]]) grpArr(k).push({ id: g[0], name: g[1], collapsed: true }); });
+  Object.keys(groups).forEach(function(k) {
+    groups[k].forEach(function(g) { if (used[gid(g[0])]) grpArr(k).push({ id: gid(g[0]), name: nm + ' · ' + g[1], collapsed: true }); });
   });
-  P.mpImport = { parts: parts, at: Date.now() };
+  P.mpImports = P.mpImports || {};
+  P.mpImports[id] = { parts: parts, at: Date.now(), name: nm };
   return n;
 }
 function mpRefreshAll() {
@@ -9916,65 +9942,65 @@ function mpRefreshAll() {
   renderAll();
   window._pNoFly = true; try { updatePreview(); } catch (e) {} window._pNoFly = false;
 }
+function mpSceneLayers(sc, parts) { sc.layers.constraints = true; if (parts.trees || parts.clear) sc.layers.buildings3d = true; }
 function mpSectionHTML(sc) {
-  var d = mpRead(), c = mpCount(d), items = mpItems(), has = items.all.length > 0;
-  var total = d ? c.blocks + c.homes + c.open + c.streets + c.trees : 0;
-  var html = '<div class="rs"><div class="st">Masterplan from Ultrahand' + infoBtn('Brings in the masterplan drawn in Ultrahand (in this browser) as grouped items: massing blocks and homes in 3D, open space, streets and trees. Show it on any scene, update it after changing it in Ultrahand, or remove it.') + '</div>';
-  var sum = d ? [[c.blocks, 'massing block'], [c.homes, 'home'], [c.open, 'open space'], [c.streets, 'street'], [c.trees, 'tree']].filter(function(x) { return x[0]; }).map(function(x) { return x[0] + ' ' + x[1] + (x[0] === 1 ? '' : (x[1] === 'open space' ? 's' : 's')); }).join(' · ') : '';
-  if (!total && !has) {
+  mpNorm();
+  var sites = mpSites(), imports = P.mpImports || {}, ids = sites.map(function(s) { return s.id; });
+  Object.keys(imports).forEach(function(id) { if (ids.indexOf(id) < 0 && mpItems(id).all.length) ids.push(id); });
+  var html = '<div class="rs"><div class="st">Masterplans from Ultrahand' + infoBtn('Brings in masterplans drawn in Ultrahand (in this browser) as grouped items: massing blocks and homes in 3D with their roofs, open space, streets and trees. Each Ultrahand site comes in on its own, so one consultation can show several locations. Show each on any scenes, update it after changing it in Ultrahand, or remove it.') + '</div>';
+  if (!ids.length) {
     return html + '<div style="font-size:11px;line-height:1.55;color:var(--ghost)">No masterplan in Ultrahand yet. Draw massing blocks, streets, homes, open space or trees there, then come back to this scene.</div><a class="btn btn-g btn-ic" href="../ultrahand/index.html" style="margin-top:10px;display:inline-flex">' + lucideSVG('pen-tool', 12, 'currentColor') + 'Open Ultrahand</a></div>';
   }
-  if (sum) html += '<div style="font-size:11px;line-height:1.55;color:var(--ghost);margin-bottom:10px">In Ultrahand: ' + sum + '.</div>';
-  if (!has) {
-    var pr = (P.mpImport && P.mpImport.parts) || { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true, sketch: false };
-    MP_PARTS.forEach(function(p) {
-      var cnt = c[p[0]] || 0;
-      html += '<div class="lr" style="margin-bottom:6px' + (cnt ? '' : ';opacity:.45') + '"><span class="ll">' + p[1] + (cnt ? ' <span style="color:var(--ghost)">(' + cnt + ')</span>' : '') + '</span><button type="button" class="tg' + (pr[p[0]] && cnt ? ' on' : '') + '" data-mppart="' + p[0] + '"' + (cnt ? '' : ' disabled') + '></button></div>';
-    });
-    html += '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:6px 0 0">Adding it also turns on Constraint Zones for this scene, and 3D Buildings when trees or cleared areas come in.</div>';
-    html += '<button type="button" class="btn btn-ic" id="mp-add" style="width:100%;justify-content:center;margin-top:8px">' + lucideSVG('plus', 12, 'currentColor') + 'Add masterplan to this scene</button>';
-  } else {
-    var on = items.all.some(function(x) { return (x.scenes || []).indexOf(sc.id) >= 0; });
-    html += '<div class="lr" style="margin-bottom:8px"><span class="ll">Show on this scene</span><button type="button" class="tg' + (on ? ' on' : '') + '" id="mp-show"></button></div>';
-    html += '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin-bottom:10px">' + items.all.length + ' items, grouped as “Masterplan” in the Zones, Lines, Props and Buildings lists. Brought in ' + new Date((P.mpImport && P.mpImport.at) || Date.now()).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + '.</div>';
-    html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><button type="button" class="btn btn-g btn-ic" id="mp-update" style="justify-content:center"' + (total ? '' : ' disabled') + '>' + lucideSVG('refresh-cw', 12, 'currentColor') + 'Update from Ultrahand</button>'
-      + '<button type="button" class="btn btn-g btn-ic" id="mp-remove" style="justify-content:center;color:var(--red)">' + lucideSVG('trash-2', 12, 'currentColor') + 'Remove</button></div>';
-  }
+  ids.forEach(function(id) {
+    var s = mpSite(id), d = s ? mpRead(id) : null, c = mpCount(d), items = mpItems(id), has = items.all.length > 0, sum = d ? mpSummary(c) : '';
+    var name = s ? s.name : ((imports[id] && imports[id].name) || 'Removed site');
+    html += '<div class="mp-site" data-mpsite="' + h(id) + '" style="border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:' + (sum || !s ? '3px' : '8px') + '"><b style="font-size:12.5px">' + h(name) + '</b>' + (has ? '<span style="font-size:10px;color:var(--ghost);margin-left:auto">' + items.all.length + ' items in</span>' : '') + '</div>'
+      + (s ? (sum ? '<div style="font-size:10.5px;line-height:1.5;color:var(--ghost);margin-bottom:8px">' + sum + '</div>' : '<div style="font-size:10.5px;color:var(--ghost);margin-bottom:8px">Nothing drawn on this site yet.</div>')
+           : '<div style="font-size:10.5px;color:var(--ghost);margin-bottom:8px">No longer in Ultrahand. Its items stay until you remove them.</div>');
+    if (!has) {
+      html += '<button type="button" class="btn btn-g btn-ic" data-mpa="add" style="width:100%;justify-content:center"' + (sum ? '' : ' disabled') + '>' + lucideSVG('plus', 12, 'currentColor') + 'Add to this scene</button>';
+    } else {
+      var on = items.all.some(function(x) { return (x.scenes || []).indexOf(sc.id) >= 0; });
+      html += '<div class="lr" style="margin-bottom:8px"><span class="ll">Show on this scene</span><button type="button" class="tg' + (on ? ' on' : '') + '" data-mpa="show"></button></div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px"><button type="button" class="btn btn-g btn-ic" data-mpa="update" style="justify-content:center"' + (sum ? '' : ' disabled') + '>' + lucideSVG('refresh-cw', 12, 'currentColor') + 'Update</button>'
+        + '<button type="button" class="btn btn-g btn-ic" data-mpa="remove" style="justify-content:center;color:var(--red)">' + lucideSVG('trash-2', 12, 'currentColor') + 'Remove</button></div>';
+    }
+    html += '</div>';
+  });
+  var pr = P.mpParts || MP_DEFAULT_PARTS;
+  html += '<details style="margin-top:4px"' + (Object.keys(imports).length ? '' : ' open') + '><summary style="font-size:11px;color:var(--ghost);cursor:pointer;margin-bottom:8px">What to bring in</summary>';
+  MP_PARTS.forEach(function(p) { html += '<div class="lr" style="margin-bottom:6px"><span class="ll">' + p[1] + '</span><button type="button" class="tg' + (pr[p[0]] ? ' on' : '') + '" data-mppart="' + p[0] + '"></button></div>'; });
+  html += '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin:6px 0 0">Used when you add or update a site. Adding one also turns on Constraint Zones for the scene, and 3D Buildings when trees or cleared areas come in.</div></details>';
   return html + '</div>';
 }
 function mpBind(sc) {
-  var parts = Object.assign({}, (P.mpImport && P.mpImport.parts) || { blocks: true, homes: true, open: true, streets: true, trees: true, clear: true, sketch: false });
   document.querySelectorAll('#rpc [data-mppart]').forEach(function(b) {
-    b.addEventListener('click', function() { var k = b.dataset.mppart; parts[k] = !b.classList.contains('on'); b.classList.toggle('on', parts[k]); });
+    b.addEventListener('click', function() { P.mpParts = Object.assign({}, MP_DEFAULT_PARTS, P.mpParts || {}); var k = b.dataset.mppart; P.mpParts[k] = !b.classList.contains('on'); b.classList.toggle('on', P.mpParts[k]); markDirty(); });
   });
-  var add = el('mp-add');
-  if (add) add.addEventListener('click', function() {
-    var c = mpCount(mpRead()), use = {};
-    MP_PARTS.forEach(function(p) { use[p[0]] = !!(parts[p[0]] && c[p[0]]); });
-    var n = mpImport([sc.id], use);
-    sc.layers.constraints = true; if (use.trees || use.clear) sc.layers.buildings3d = true;
-    mpRefreshAll(); mtToast(n ? 'Masterplan added to this scene (' + n + ' items).' : 'Nothing to bring in.');
-  });
-  var show = el('mp-show');
-  if (show) show.addEventListener('click', function() {
-    var on = !show.classList.contains('on');
-    mpItems().all.forEach(function(x) {
-      x.scenes = (x.scenes || []).filter(function(id) { return id !== sc.id; });
-      if (on) x.scenes.push(sc.id);
+  document.querySelectorAll('#rpc [data-mpsite]').forEach(function(card) {
+    var id = card.dataset.mpsite, site = mpSite(id), nm = site ? site.name : 'This site';
+    card.addEventListener('click', function(e) {
+      var b = e.target.closest('[data-mpa]'); if (!b || b.disabled) return;
+      var act = b.dataset.mpa, parts = Object.assign({}, MP_DEFAULT_PARTS, P.mpParts || {});
+      if (act === 'add') {
+        var n = mpImport(id, [sc.id], parts); mpSceneLayers(sc, parts);
+        mpRefreshAll(); mtToast(n ? nm + ' added to this scene (' + n + ' items).' : 'Nothing to bring in.');
+      } else if (act === 'show') {
+        var on = !b.classList.contains('on'), items = mpItems(id);
+        items.all.forEach(function(x) { x.scenes = (x.scenes || []).filter(function(s2) { return s2 !== sc.id; }); if (on) x.scenes.push(sc.id); });
+        if (on) mpSceneLayers(sc, { trees: items.props.length, clear: items.zones.some(function(z) { return z.clipMap; }) });
+        mpRefreshAll(); mtToast(nm + (on ? ' shown on this scene.' : ' hidden on this scene.'));
+      } else if (act === 'update') {
+        var scenes = {}; mpItems(id).all.forEach(function(x) { (x.scenes || []).forEach(function(s2) { scenes[s2] = 1; }); });
+        var n2 = mpImport(id, Object.keys(scenes), parts);
+        mpRefreshAll(); mtToast(nm + ' updated from Ultrahand (' + n2 + ' items).');
+      } else if (act === 'remove') {
+        if (!confirm('Remove ' + nm + '’s masterplan from every scene? Undo brings it back.')) return;
+        mpRemove(id); if (P.mpImports) delete P.mpImports[id];
+        mpRefreshAll(); mtToast(nm + ' removed.');
+      }
     });
-    if (on) { sc.layers.constraints = true; if (mpItems().props.length || mpItems().zones.some(function(z) { return z.clipMap; })) sc.layers.buildings3d = true; }
-    mpRefreshAll(); mtToast(on ? 'Masterplan shown on this scene.' : 'Masterplan hidden on this scene.');
-  });
-  var upd = el('mp-update');
-  if (upd) upd.addEventListener('click', function() {
-    var scenes = {}; mpItems().all.forEach(function(x) { (x.scenes || []).forEach(function(id) { scenes[id] = 1; }); });
-    var n = mpImport(Object.keys(scenes), (P.mpImport && P.mpImport.parts) || parts);
-    mpRefreshAll(); mtToast('Masterplan updated from Ultrahand (' + n + ' items).');
-  });
-  var rm = el('mp-remove');
-  if (rm) rm.addEventListener('click', function() {
-    if (!confirm('Remove the Ultrahand masterplan from every scene? Undo brings it back.')) return;
-    mpRemove(); mpRefreshAll(); mtToast('Masterplan removed.');
   });
 }
 // ── Story pages that set their own map: each gets a hidden "scene" number after the real scenes, and
