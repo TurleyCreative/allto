@@ -43,6 +43,12 @@ button:disabled { opacity: 0.35; cursor: default; }
 .intro { padding: 22px 0 14px; }
 .intro h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 6px; }
 .intro p { margin: 0; color: #3b3a37; font-size: 14.5px; }
+.sites { display: flex; align-items: center; gap: 10px; margin: 16px 0 6px; }
+.sites label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.sites select { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; font-weight: 600; }
+.sites-acts { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; }
+.sites-acts .link { color: var(--muted); }
+.sites-acts .link:hover { color: #141414; }
 .step { padding: 16px 0; border-top: 1px solid var(--line); }
 .step h3, .sub-h, h4, .label { font-size: 12.5px; font-weight: 600; letter-spacing: var(--track); color: var(--muted); margin: 0 0 10px; }
 .sub-h { margin-top: 14px; color: var(--ink); }

@@ -637,7 +637,7 @@ $<HTMLInputElement>('#importRed').onchange = async (e) => {
 
 function setRed(f: PolyF | null) {
   S.red = f;
-  if (f && Allto && !takingIn) {
+  if (f && Allto && !takingIn && isPrimarySite()) {
     const ring = f.geometry.type === 'Polygon' ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
     Allto.update({ redLine: ring }, PRODUCT);
   }
@@ -1833,7 +1833,7 @@ async function analyse() {
     S.lpa = await lpaP;
     const pl = await placeP;
     if (pl) S.place = [pl.street, pl.place].filter(Boolean).join(', ');
-    if (S.place) Allto?.update({ place: S.place, ...(Allto.project().name ? {} : { name: S.place }) }, PRODUCT);
+    if (S.place && isPrimarySite()) Allto?.update({ place: S.place, ...(Allto.project().name ? {} : { name: S.place }) }, PRODUCT);
     if (seq !== analyseSeq) return;
 
     map.setLayoutProperty('context-3d', 'visibility', 'none');
@@ -3295,13 +3295,114 @@ try {
  * (pencil outlines, ridges, hatching). Written a moment after each change, and before a project file is saved.
  */
 const MP_EXPORT_KEY = 'ultrahand:mp-export';
+
+// ---------------------------------------------------------------- sites
+// Several sites (e.g. three locations in one consultation). Each keeps its own red line, masterplan,
+// massing, assumptions and targets in "ultrahand:site:<id>"; the one open is also the working copy
+// in KEY, so everything else here is unchanged. Switching saves, swaps the working copy and reloads.
+// Only the first site shares its red line and place with the rest of allto.
+const SITES_KEY = 'ultrahand:sites';
+interface SiteRef { id: string; name: string; updatedAt: number }
+interface SitesIdx { current: string; list: SiteRef[] }
+const siteKey = (id: string) => 'ultrahand:site:' + id;
+const newSiteId = () => 'site' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+function sitesIdx(): SitesIdx {
+  let ix: SitesIdx | null = null;
+  try { ix = JSON.parse(localStorage.getItem(SITES_KEY) ?? 'null'); } catch { /* none yet */ }
+  if (ix && ix.list?.length && ix.list.some((s) => s.id === ix!.current)) return ix;
+  // First run: the site already here becomes site 1.
+  const id = newSiteId();
+  let name = 'Site 1';
+  try {
+    const j = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    if (j?.place) name = String(j.place).split(',')[0].trim() || name;
+  } catch { /* nothing saved */ }
+  ix = { current: id, list: [{ id, name, updatedAt: Date.now() }] };
+  try {
+    localStorage.setItem(SITES_KEY, JSON.stringify(ix));
+    const cur = localStorage.getItem(KEY);
+    if (cur) localStorage.setItem(siteKey(id), cur);
+    const ex = localStorage.getItem(MP_EXPORT_KEY);
+    if (ex) localStorage.setItem(MP_EXPORT_KEY + ':' + id, ex);
+  } catch { /* storage blocked */ }
+  return ix;
+}
+function writeSitesIdx(ix: SitesIdx) { try { localStorage.setItem(SITES_KEY, JSON.stringify(ix)); } catch { /* storage blocked */ } }
+function isPrimarySite() { const ix = sitesIdx(); return ix.list[0]?.id === ix.current; }
+function currentSite() { const ix = sitesIdx(); return ix.list.find((s) => s.id === ix.current)!; }
+function renderSites() {
+  const ix = sitesIdx(), sel = $<HTMLSelectElement>('#siteSel');
+  if (!sel) return;
+  sel.innerHTML = ix.list.map((s, i) => `<option value="${s.id}"${s.id === ix.current ? ' selected' : ''}>${esc(s.name)}${i === 0 && ix.list.length > 1 ? ' (main)' : ''}</option>`).join('');
+  $<HTMLButtonElement>('#siteDel').disabled = false;
+}
+/** Save the open site, make `id` the working copy and reload into it. */
+function openSite(id: string) {
+  saveProject();
+  writeMpExport();
+  loadSite(id);
+}
+/** Make `id` the working copy and reload into it (without saving the site open now). */
+function loadSite(id: string) {
+  const ix = sitesIdx();
+  ix.current = id;
+  writeSitesIdx(ix);
+  try {
+    const d = localStorage.getItem(siteKey(id)), ex = localStorage.getItem(MP_EXPORT_KEY + ':' + id);
+    if (d) localStorage.setItem(KEY, d); else localStorage.removeItem(KEY);
+    if (ex) localStorage.setItem(MP_EXPORT_KEY, ex); else localStorage.removeItem(MP_EXPORT_KEY);
+  } catch { /* storage blocked */ }
+  Allto?.markSeen(PRODUCT); // open the site as saved, not the red line shared from elsewhere
+  location.reload();
+}
+function siteName(prompted: string | null) { return (prompted ?? '').trim().slice(0, 60); }
+$('#siteSel').addEventListener('change', (e) => openSite((e.target as HTMLSelectElement).value));
+$('#siteNew').onclick = () => {
+  const ix = sitesIdx(), name = siteName(prompt('Name the new site', `Site ${ix.list.length + 1}`));
+  if (!name) return;
+  const id = newSiteId();
+  ix.list.push({ id, name, updatedAt: Date.now() });
+  writeSitesIdx(ix);
+  openSite(id);
+};
+$('#siteRename').onclick = () => {
+  const ix = sitesIdx(), s = ix.list.find((x) => x.id === ix.current)!, name = siteName(prompt('Rename this site', s.name));
+  if (!name) return;
+  s.name = name;
+  writeSitesIdx(ix);
+  renderSites();
+};
+$('#siteDup').onclick = () => {
+  saveProject();
+  writeMpExport();
+  const ix = sitesIdx(), s = ix.list.find((x) => x.id === ix.current)!, id = newSiteId();
+  try {
+    const d = localStorage.getItem(KEY), ex = localStorage.getItem(MP_EXPORT_KEY);
+    if (d) localStorage.setItem(siteKey(id), d);
+    if (ex) localStorage.setItem(MP_EXPORT_KEY + ':' + id, ex);
+  } catch { return alert('There is not enough room in this browser to copy the site.'); }
+  ix.list.push({ id, name: `${s.name} (copy)`, updatedAt: Date.now() });
+  writeSitesIdx(ix);
+  openSite(id);
+};
+$('#siteDel').onclick = () => {
+  const ix = sitesIdx(), s = ix.list.find((x) => x.id === ix.current)!;
+  if (!confirm(`Delete \u201c${s.name}\u201d? Its red line, masterplan and massing go with it.${ix.list.length === 1 ? ' (It is the only site, so you start again with an empty one.)' : ''}`)) return;
+  try { localStorage.removeItem(siteKey(s.id)); localStorage.removeItem(MP_EXPORT_KEY + ':' + s.id); } catch { /* ignore */ }
+  ix.list = ix.list.filter((x) => x.id !== s.id);
+  if (!ix.list.length) ix.list.push({ id: newSiteId(), name: 'Site 1', updatedAt: Date.now() });
+  ix.current = ix.list[0].id;
+  writeSitesIdx(ix);
+  loadSite(ix.current);
+};
+renderSites();
 let mpExportT = 0;
 const r6 = (c: any): any => (typeof c[0] === 'number' ? [+c[0].toFixed(6), +c[1].toFixed(6)] : c.map(r6));
 function writeMpExport() {
   clearTimeout(mpExportT);
   try {
     const p = S.plan;
-    if (!p.homes.length && !p.streets.length && !p.open.length && !p.trees.length && !S.blocks.length) return localStorage.removeItem(MP_EXPORT_KEY);
+    if (!p.homes.length && !p.streets.length && !p.open.length && !p.trees.length && !S.blocks.length) { localStorage.removeItem(MP_EXPORT_KEY + ':' + sitesIdx().current); return localStorage.removeItem(MP_EXPORT_KEY); }
     const typeOf = new Map(p.homes.map((h) => [h.id, h.type]));
     const homes = planGeoJSON(p, null).homes.features.map((f: any) => ({
       type: 'Feature', geometry: { type: f.geometry.type, coordinates: r6(f.geometry.coordinates) },
@@ -3309,7 +3410,9 @@ function writeMpExport() {
     }));
     const sk = sketchGeoJSON(p, S.blocks.map((b) => b.shape));
     const slim = (fs: any[]) => fs.map((f) => ({ type: 'Feature', geometry: { type: f.geometry.type, coordinates: r6(f.geometry.coordinates) }, properties: f.properties }));
-    localStorage.setItem(MP_EXPORT_KEY, JSON.stringify({ v: 1, at: Date.now(), homes, sketch: { lines: slim(sk.lines.features), hatches: slim(sk.hatches.features) } }));
+    const out = JSON.stringify({ v: 1, at: Date.now(), site: currentSite().name, homes, sketch: { lines: slim(sk.lines.features), hatches: slim(sk.hatches.features) } });
+    localStorage.setItem(MP_EXPORT_KEY, out);
+    localStorage.setItem(MP_EXPORT_KEY + ':' + sitesIdx().current, out);
   } catch { /* storage full or blocked: Consultation falls back to flat-topped homes */ }
 }
 function saveProject() {
@@ -3318,8 +3421,18 @@ function saveProject() {
   mpExportT = window.setTimeout(writeMpExport, 700);
   try {
     const hasPlan = S.plan.streets.length || S.plan.open.length || S.plan.homes.length || S.plan.trees.length || S.plan.clear.length || S.plan.clearRed;
-    if (!S.red && !S.blocks.length && !hasPlan) return localStorage.removeItem(KEY);
-    localStorage.setItem(KEY, JSON.stringify({ red: S.red, place: S.place, bufferM: S.bufferM, blocks: S.blocks, assume: S.assume, plan: S.plan, mpAssume: S.mpAssume, targets: S.targets }));
+    const ix = sitesIdx();
+    if (!S.red && !S.blocks.length && !hasPlan) { localStorage.removeItem(siteKey(ix.current)); return localStorage.removeItem(KEY); }
+    const data = JSON.stringify({ red: S.red, place: S.place, bufferM: S.bufferM, blocks: S.blocks, assume: S.assume, plan: S.plan, mpAssume: S.mpAssume, targets: S.targets });
+    localStorage.setItem(KEY, data);
+    localStorage.setItem(siteKey(ix.current), data);
+    const me = ix.list.find((x) => x.id === ix.current);
+    if (me) {
+      me.updatedAt = Date.now();
+      // A site still called "Site n" takes the name of its place.
+      if (/^Site \d+$/.test(me.name) && S.place) { me.name = S.place.split(',')[0].trim() || me.name; setTimeout(renderSites, 0); }
+      writeSitesIdx(ix);
+    }
   } catch { /* storage blocked */ }
 }
 let restored = false;
@@ -3352,7 +3465,7 @@ function restoreProject() {
 
 /** Use a red line drawn elsewhere in allto. Returns true if one was taken in. */
 function takeInShared(opening: boolean): boolean {
-  if (!Allto || !Allto.hasNews(PRODUCT)) return false;
+  if (!Allto || !Allto.hasNews(PRODUCT) || !isPrimarySite()) return false;
   const p = Allto.project();
   Allto.markSeen(PRODUCT);
   if (!p.redLine || p.redLine.length < 4) return false;
