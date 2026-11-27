@@ -19,6 +19,10 @@ async function jwt(claims, { kid = 'k1', key = kp.privateKey } = {}) {
 const good = () => jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600, email: 'a.person@turley.co.uk' });
 
 let calls = [];
+let lastClaude = null, claudeStop = 'end_turn';
+const claudeDraft = { summary: 'A small terrace by a green.', streets: [{ name: 'Mill Street', type: 'residential', points: [[100, 800], [900, 800]] }],
+  open_spaces: [{ name: 'Green', type: 'park', outline: [[100, 100], [400, 100], [400, 400], [100, 400]] }],
+  blocks: [{ name: 'Terrace', use: 'residential', storeys: 2, outline: [[500, 500], [800, 500], [800, 600], [500, 600]] }], trees: [[200, 600]] };
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   calls.push(u);
@@ -28,6 +32,13 @@ globalThis.fetch = async (url, init = {}) => {
     return Response.json({ token: 'dl-token', conversationId: 'c1', expires_in: 3600 });
   }
   if (u.startsWith('https://inspire.landregistry.gov.uk/inspire/ows?')) return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'Content-Type': 'image/png' } });
+  if (u.startsWith('https://api.anthropic.com/v1/messages')) {
+    const hd = new Headers(init.headers);
+    lastClaude = { body: JSON.parse(init.body), key: hd.get('x-api-key') || (hd.get('authorization') || '').replace(/^Bearer /, ''), beta: hd.get('anthropic-beta') };
+    if (lastClaude.key !== 'sk-test') return Response.json({ type: 'error', error: { type: 'authentication_error', message: 'bad key' } }, { status: 401 });
+    return Response.json({ id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', stop_reason: claudeStop, stop_sequence: null,
+      content: [{ type: 'text', text: JSON.stringify(claudeDraft) }], usage: { input_tokens: 1200, output_tokens: 300 } });
+  }
   return new Response('?', { status: 500 });
 };
 const ASSETS = { fetch: async (req) => new Response(`file ${new URL(req.url).pathname}`, { headers: { 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60' } }) };
@@ -162,6 +173,33 @@ await test('with Access configured: a good login works, /me says who, and the ke
   assert.equal(await (await worker.fetch(req('/present/index.html', { jwt: token, cookie }), withAccess)).text(), 'file /present/index.html');
   const someoneElse = await jwt({ aud: [AUD], iss: `https://${TEAM}`, exp: Math.floor(Date.now() / 1000) + 600, email: 'b.other@turley.co.uk' });
   assert.match(await (await worker.fetch(req('/present/index.html', { jwt: someoneElse, cookie }), withAccess)).text(), /needs a key/);
+});
+
+await test('/draft-masterplan reads a drawing through Claude, and only with the key set', async () => {
+  const body = JSON.stringify({ image: 'iVBORw0KGgo=', mediaType: 'image/png', note: 'Phase 1 only' });
+  const off = await worker.fetch(req('/draft-masterplan', { method: 'POST', body }), base);
+  assert.equal(off.status, 503);
+  const env = { ...base, ANTHROPIC_API_KEY: 'sk-test' };
+  const r = await worker.fetch(req('/draft-masterplan', { method: 'POST', body }), env);
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.deepEqual(j.draft, claudeDraft);
+  assert.equal(lastClaude.body.model, 'claude-opus-5-5');
+  assert.equal(lastClaude.body.fallbacks, 'default');
+  assert.match(lastClaude.beta, /server-side-fallback-2026-07-01/);
+  assert.equal(lastClaude.body.output_config.format.type, 'json_schema');
+  assert.equal(lastClaude.body.messages[0].content[0].source.media_type, 'image/png');
+  assert.match(lastClaude.body.messages[0].content[1].text, /Phase 1 only/);
+  assert.ok(!(await (await worker.fetch(req('/health'), env)).text()).includes('sk-test'));
+  // bad input, refusal, wrong key, other sites
+  assert.equal((await worker.fetch(req('/draft-masterplan', { method: 'POST', body: '{}' }), env)).status, 400);
+  claudeStop = 'refusal';
+  assert.equal((await worker.fetch(req('/draft-masterplan', { method: 'POST', body }), env)).status, 422);
+  claudeStop = 'end_turn';
+  const bad = await worker.fetch(req('/draft-masterplan', { method: 'POST', body }), { ...base, ANTHROPIC_API_KEY: 'wrong' });
+  assert.equal(bad.status, 502);
+  assert.ok(!(await bad.text()).includes('wrong'));
+  assert.equal((await worker.fetch(req('/draft-masterplan', { method: 'POST', body, origin: 'https://evil.example' }), env)).status, 403);
 });
 
 await test('health reports configuration without secrets', async () => {

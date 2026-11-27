@@ -134,6 +134,7 @@
             <button data-t="homes">Homes</button>
             <button data-t="trees">Trees</button>
             <button data-t="blocks">Blocks</button>
+            <button data-t="ref" title="Trace a drawing, or draft the masterplan from it">Drawing</button>
           </div>
           <div class="mp-scroll">
             <div data-mp="streets">
@@ -202,6 +203,25 @@
               <div class="mp-h">On the plan</div>
               <div id="treeList" class="mp-list"></div>
               <div class="row"><button id="clearTrees" class="ghost">Clear all trees</button></div>
+            </div>
+
+            <div data-mp="ref" hidden>
+              <div class="mp-h">A drawing to work from</div>
+              <p class="hint">Bring in a masterplan drawing (a sketch from the design team or a consultant's plan) and lay it over the map. Line it up with streets you can see, then trace over it, or let allto draft the masterplan from it.</p>
+              <div class="row wrap">
+                <label class="solid file-btn">Choose a drawing<input id="refFile" type="file" accept="image/png,image/jpeg,image/webp" hidden /></label>
+                <button id="refFit" class="ghost" disabled>Fit to the red line</button>
+              </div>
+              <div id="refTools" hidden>
+                <p class="hint">Drag the middle dot to move it, the corner square to resize it and the round handle to turn it.</p>
+                <label class="inline slider">See through <input id="refOpacity" type="range" min="10" max="100" step="5" value="60" /> <span id="refOpacityLbl" class="stat">60%</span></label>
+                <label class="inline"><input id="refLock" type="checkbox" /> Lock in place</label>
+                <div class="mp-h">Draft from the drawing</div>
+                <p class="hint">allto reads the drawing and adds its streets, open spaces, building blocks and trees to the plan, placed where the drawing sits on the map. It is a first draft: check it against the drawing and tidy it up. Undo takes it all back off.</p>
+                <textarea id="refNote" rows="2" placeholder="Anything to know (optional), e.g. only the northern phase; blocks along the canal are 5 storeys"></textarea>
+                <div class="row wrap"><button id="refDraft" class="solid">Draft the masterplan</button><button id="refRemove" class="ghost">Remove the drawing</button></div>
+                <p class="hint" id="refStatus"></p>
+              </div>
             </div>
 
             <div data-mp="blocks" hidden>

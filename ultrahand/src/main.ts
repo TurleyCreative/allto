@@ -426,6 +426,7 @@ function unlitFlatLayers() {
 
 map.on('style.load', () => {
   addLayers();
+  setTimeout(() => { if (map.getSource('refimg')) refShow(); else loadRef(); }, 0);
   map.setCamera({ 'camera-projection': 'orthographic' });
 });
 
@@ -759,7 +760,7 @@ function lookForColour(c: string): import('./axo').Look {
 }
 
 // ---------------------------------------------------------------- masterplan: streets, open space, homes
-type MpTool = 'streets' | 'open' | 'homes' | 'trees' | 'blocks';
+type MpTool = 'streets' | 'open' | 'homes' | 'trees' | 'blocks' | 'ref';
 let mpTool: MpTool = 'streets';
 let mpPick: null | 'line' | 'place' | 'roundabout' | 'tree' | 'treeline' = null; // waiting for a click on the map
 let streetMarkers: mapboxgl.Marker[] = [];
@@ -789,8 +790,262 @@ function setMpTool(t: MpTool) {
   setPick(null);
   document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.classList.toggle('on', b.dataset.t === t));
   document.querySelectorAll<HTMLElement>('[data-mp]').forEach((el) => (el.hidden = el.dataset.mp !== t));
+  refHandles();
 }
 document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.addEventListener('click', () => setMpTool(b.dataset.t as MpTool)));
+
+// ---------------------------------------------------------------- a drawing to trace, or to draft the masterplan from
+// The drawing is laid over the map as an image the user moves, resizes and turns until it lines up.
+// Where it sits says where any point on it is on the ground, so a draft read from it (by Claude, through
+// the allto Worker's /draft-masterplan) lands in place. Kept per site, beside the site's own data.
+interface RefDrawing { src: string; w: number; h: number; c: Position; widthM: number; rot: number; opacity: number; locked: boolean }
+let refDrawing: RefDrawing | null = null;
+let refMarkers: mapboxgl.Marker[] = [];
+const refKey = () => 'ultrahand:ref:' + sitesIdx().current;
+const refFrame = (r: RefDrawing) => ({ kx: 111320 * Math.cos((r.c[1] * Math.PI) / 180), ky: 110574 });
+/** A point on the drawing (u, v from 0 to 1, from the top left) on the ground. */
+function refAt(r: RefDrawing, u: number, v: number): Position {
+  const { kx, ky } = refFrame(r), W = r.widthM, H = (r.widthM * r.h) / r.w, a = (r.rot * Math.PI) / 180;
+  const x = (u - 0.5) * W, y = (0.5 - v) * H;
+  return [r.c[0] + (x * Math.cos(a) + y * Math.sin(a)) / kx, r.c[1] + (-x * Math.sin(a) + y * Math.cos(a)) / ky];
+}
+type Quad = [[number, number], [number, number], [number, number], [number, number]];
+const refCorners = (r: RefDrawing) => [refAt(r, 0, 0), refAt(r, 1, 0), refAt(r, 1, 1), refAt(r, 0, 1)] as Quad;
+function refShow() {
+  const r = refDrawing;
+  if (!map.isStyleLoaded() && !map.getSource('mp-paper')) return;
+  if (!r) {
+    if (map.getLayer('refimg')) map.removeLayer('refimg');
+    if (map.getSource('refimg')) map.removeSource('refimg');
+  } else {
+    const src = map.getSource('refimg') as mapboxgl.ImageSource | undefined;
+    if (!src) {
+      map.addSource('refimg', { type: 'image', url: r.src, coordinates: refCorners(r) });
+      // Over the base map and sketch paper, under everything drawn on the plan.
+      const ids = (map.getStyle().layers || []).map((l) => l.id), before = ids.find((id) => id.startsWith('mp-') && id !== 'mp-paper' && id !== 'mp-clear');
+      map.addLayer({ id: 'refimg', type: 'raster', source: 'refimg', paint: { 'raster-opacity': r.opacity, 'raster-fade-duration': 0 } }, before);
+    } else src.setCoordinates(refCorners(r));
+    map.setPaintProperty('refimg', 'raster-opacity', r.opacity);
+  }
+  $('#refTools').hidden = !r;
+  $<HTMLButtonElement>('#refFit').disabled = !r || !S.red;
+  if (r) {
+    $<HTMLInputElement>('#refOpacity').value = String(Math.round(r.opacity * 100));
+    $('#refOpacityLbl').textContent = `${Math.round(r.opacity * 100)}%`;
+    $<HTMLInputElement>('#refLock').checked = r.locked;
+  }
+  refHandles();
+}
+/** Handles to move, resize and turn the drawing, shown in the Drawing tab while it is not locked. */
+function refHandles() {
+  refMarkers.forEach((m) => m.remove());
+  refMarkers = [];
+  const r = refDrawing;
+  if (!r || r.locked || mpTool !== 'ref' || $('#mpMode').hidden) return;
+  const mk = (cls: string, at: Position, onDrag: (ll: Position) => void) => {
+    const el = document.createElement('div');
+    el.className = 'ref-h ' + cls;
+    const m = new mapboxgl.Marker({ element: el }).setLngLat(at as [number, number]).addTo(map);
+    // Our own drag with pointer capture, so letting go over a panel still ends it.
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.setPointerCapture(e.pointerId);
+      const box = map.getCanvasContainer().getBoundingClientRect();
+      const move = (ev: PointerEvent) => {
+        const ll = map.unproject([ev.clientX - box.left, ev.clientY - box.top]);
+        m.setLngLat(ll);
+        onDrag([ll.lng, ll.lat]);
+        refShow2(m);
+      };
+      const up = () => {
+        el.removeEventListener('pointermove', move);
+        el.removeEventListener('pointerup', up);
+        el.removeEventListener('pointercancel', up);
+        saveRef();
+        refHandles();
+      };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
+    });
+    ['mousedown', 'touchstart'].forEach((t) => el.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+    refMarkers.push(m);
+    return m;
+  };
+  mk('move', r.c, (ll) => (r.c = ll));
+  mk('size', refAt(r, 1, 1), (ll) => {
+    const { kx, ky } = refFrame(r), dx = (ll[0] - r.c[0]) * kx, dy = (ll[1] - r.c[1]) * ky, half = Math.hypot(0.5, (0.5 * r.h) / r.w);
+    r.widthM = Math.max(10, Math.hypot(dx, dy) / half);
+  });
+  mk('rot', refAt(r, 0.5, -0.06), (ll) => {
+    const { kx, ky } = refFrame(r), dx = (ll[0] - r.c[0]) * kx, dy = (ll[1] - r.c[1]) * ky;
+    r.rot = (Math.atan2(dx, dy) * 180) / Math.PI;
+  });
+}
+/** While dragging: move the image and the other handles (never the one in hand) without rebuilding them. */
+function refShow2(dragging?: mapboxgl.Marker) {
+  const r = refDrawing;
+  if (!r) return;
+  (map.getSource('refimg') as mapboxgl.ImageSource | undefined)?.setCoordinates(refCorners(r));
+  const at = [r.c, refAt(r, 1, 1), refAt(r, 0.5, -0.06)];
+  refMarkers.forEach((m, i) => { if (m !== dragging) m.setLngLat(at[i] as [number, number]); });
+}
+function saveRef() {
+  try {
+    if (refDrawing) localStorage.setItem(refKey(), JSON.stringify(refDrawing));
+    else localStorage.removeItem(refKey());
+  } catch { toast('The drawing is too large to keep in this browser. Try a smaller image.'); }
+}
+function loadRef() {
+  try { refDrawing = JSON.parse(localStorage.getItem(refKey()) ?? 'null'); } catch { refDrawing = null; }
+  refShow();
+}
+/** Where a new drawing goes: over the red line if there is one, otherwise over most of the view. */
+function refPlace(r: RefDrawing) {
+  if (S.red) {
+    const [w, s, e, n] = turf.bbox(S.red);
+    r.c = turf.centroid(S.red).geometry.coordinates as Position;
+    r.widthM = Math.max(turf.distance([w, s], [e, s], { units: 'meters' }), (turf.distance([w, s], [w, n], { units: 'meters' }) * r.w) / r.h) * 1.15;
+  } else {
+    const b = map.getBounds()!, c = map.getCenter();
+    r.c = [c.lng, c.lat];
+    r.widthM = turf.distance([b.getWest(), c.lat], [b.getEast(), c.lat], { units: 'meters' }) * 0.6;
+  }
+  r.rot = 0;
+}
+/** A downscaled copy of an image file, as a JPEG data URL. */
+function imageToJpeg(file: File, maxSide: number): Promise<{ src: string; w: number; h: number }> {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * k);
+      c.height = Math.round(img.naturalHeight * k);
+      const g = c.getContext('2d')!;
+      g.fillStyle = '#ffffff';
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      res({ src: c.toDataURL('image/jpeg', 0.86), w: c.width, h: c.height });
+    };
+    img.onerror = () => rej(new Error('That file could not be read as an image.'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+$<HTMLInputElement>('#refFile').addEventListener('change', async (e) => {
+  const f = (e.target as HTMLInputElement).files?.[0];
+  (e.target as HTMLInputElement).value = '';
+  if (!f) return;
+  try {
+    const im = await imageToJpeg(f, 2400);
+    refDrawing = { ...im, c: [0, 0], widthM: 200, rot: 0, opacity: 0.6, locked: false };
+    refPlace(refDrawing);
+    saveRef();
+    refShow();
+    refFit();
+    $('#refStatus').textContent = '';
+  } catch (err) { toast((err as Error).message); }
+});
+$('#refFit').onclick = () => { if (!refDrawing || !S.red) return; refPlace(refDrawing); saveRef(); refShow(); refFit(); };
+/** Show the whole drawing in the open map between the masterplan panels, so its handles are not under them. */
+function refFit() {
+  if (!refDrawing) return;
+  const box = (sel: string) => document.querySelector(sel)?.getBoundingClientRect();
+  const mr = map.getContainer().getBoundingClientRect(), bar = box('#mpMode .mp-bar'), tools = box('#mpMode .mp-tools'), right = box('#mpMode .mp-right');
+  const pad = {
+    top: Math.max(40, (bar ? bar.bottom - mr.top : 0) + 50),
+    left: Math.max(40, (tools ? tools.right - mr.left : 0) + 40),
+    right: Math.max(40, (right ? mr.right - right.left : 0) + 40),
+    bottom: 50,
+  };
+  if (pad.left + pad.right > mr.width - 200) pad.left = pad.right = 40;
+  map.fitBounds(turf.bbox(turf.lineString(refCorners(refDrawing) as Position[])) as any, { padding: pad, duration: 600 });
+}
+$<HTMLInputElement>('#refOpacity').addEventListener('input', (e) => {
+  if (!refDrawing) return;
+  refDrawing.opacity = +(e.target as HTMLInputElement).value / 100;
+  $('#refOpacityLbl').textContent = `${Math.round(refDrawing.opacity * 100)}%`;
+  if (map.getLayer('refimg')) map.setPaintProperty('refimg', 'raster-opacity', refDrawing.opacity);
+  saveRef();
+});
+$<HTMLInputElement>('#refLock').addEventListener('change', (e) => { if (!refDrawing) return; refDrawing.locked = (e.target as HTMLInputElement).checked; saveRef(); refHandles(); });
+$('#refRemove').onclick = () => { if (!confirm('Remove the drawing from the map? (What you have drawn from it stays.)')) return; refDrawing = null; saveRef(); refShow(); };
+
+interface DraftPlan {
+  summary: string;
+  streets: { name: string; type: StreetType; points: number[][] }[];
+  open_spaces: { name: string; type: OpenType; outline: number[][] }[];
+  blocks: { name: string; use: Use; storeys: number; outline: number[][] }[];
+  trees: number[][];
+}
+/** Add a draft read from the drawing to the plan. Returns what was added. */
+function applyDraft(d: DraftPlan) {
+  const r = refDrawing!;
+  const geo = (p: number[]) => refAt(r, Math.min(1, Math.max(0, (+p[0] || 0) / 1000)), Math.min(1, Math.max(0, (+p[1] || 0) / 1000)));
+  const pts = (a: number[][]) => (a || []).filter((p) => Array.isArray(p) && p.length >= 2).map(geo);
+  const n = { streets: 0, open: 0, blocks: 0, trees: 0 };
+  for (const s of d.streets || []) {
+    const p = pts(s.points);
+    if (p.length < 2 || turf.length(turf.lineString(p), { units: 'meters' }) < 8) continue;
+    const st = newStreet(S.plan, STREET_TYPES.some((t) => t.id === s.type) ? s.type : 'residential', autoHandles(p.map((q) => penNode(q)), 0.5), 0.5);
+    if (s.name) st.name = s.name.slice(0, 60);
+    S.plan.streets.push(st);
+    n.streets++;
+  }
+  for (const o of d.open_spaces || []) {
+    const p = pts(o.outline);
+    if (p.length < 3) continue;
+    const type = OPEN_TYPES.some((t) => t.id === o.type) ? o.type : 'park';
+    S.plan.open.push(setOpenNodes({ id: newId('O', S.plan.open), name: (o.name || openType(type).label).slice(0, 60), type, round: 0 } as OpenSpace, p.map((q) => penNode(q))));
+    n.open++;
+  }
+  for (const b of d.blocks || []) {
+    const p = pts(b.outline);
+    if (p.length < 3) continue;
+    const nb = newBlock(turf.polygon([[...p, p[0]]]) as Feature<Polygon>, S.blocks);
+    if (b.name) nb.name = b.name.slice(0, 60);
+    nb.use = USES.some((u) => u.id === b.use) ? b.use : 'residential';
+    nb.storeys = Math.max(1, Math.min(60, Math.round(+b.storeys || 2)));
+    S.blocks.push(nb);
+    n.blocks++;
+  }
+  for (const t of (d.trees || []).slice(0, 600)) {
+    if (!Array.isArray(t) || t.length < 2) continue;
+    S.plan.trees.push(newTree(S.plan, geo(t), 'medium'));
+    n.trees++;
+  }
+  renderPlan();
+  renderBlocks();
+  return n;
+}
+$('#refDraft').onclick = async () => {
+  if (!refDrawing) return;
+  const btn = $<HTMLButtonElement>('#refDraft'), st = $('#refStatus');
+  btn.disabled = true;
+  st.className = 'hint busy';
+  st.textContent = 'Reading the drawing. This usually takes under a minute.';
+  try {
+    const res = await fetch(new URL('../draft-masterplan', location.href).href, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ image: refDrawing.src.split(',')[1], mediaType: 'image/jpeg', note: $<HTMLTextAreaElement>('#refNote').value.trim() }),
+    });
+    const j = await res.json().catch(() => null);
+    if (!res.ok || !j?.draft) throw new Error(j?.error || (res.status === 404 ? 'Drafting from drawings is only available on the allto site itself.' : `The drawing service answered ${res.status}.`));
+    const n = applyDraft(j.draft as DraftPlan);
+    const parts = [[n.streets, 'street'], [n.open, 'open space'], [n.blocks, 'block'], [n.trees, 'tree']].filter((x) => x[0]).map((x) => `${x[0]} ${x[1]}${x[0] === 1 ? '' : 's'}`);
+    st.className = 'hint';
+    st.textContent = parts.length ? `Added ${parts.join(', ')}. ${j.draft.summary || ''} Check them against the drawing; Undo takes them back off.` : `Nothing to add. ${j.draft.summary || ''}`;
+  } catch (err) {
+    st.className = 'hint';
+    st.textContent = (err as Error).message;
+  } finally {
+    btn.disabled = false;
+  }
+};
 
 function setPick(p: typeof mpPick) {
   mpPick = p;

@@ -14,13 +14,16 @@
  *   GET  /me                         { email, unlocked } for the signed-in person
  *   POST /token                      Direct Line token for the Ultrahand site agent
  *   GET  /inspire-parcels?bbox=…     HM Land Registry INSPIRE parcels map tile (Ultrahand)
+ *   POST /draft-masterplan           read a masterplan drawing into streets, open space and blocks (Ultrahand; src/draft.js)
  *   POST /unlock                     check the key, set the cookie
  *   GET  /lock                       forget the key on this browser
  *   everything else                  the app (static files); all but Ultrahand behind the key
  *
  * Settings: ALLOWED_ORIGINS, DIRECTLINE_DOMAIN, COPILOT_TOKEN_ENDPOINT, ACCESS_TEAM_DOMAIN, ACCESS_AUD (vars);
- *           DIRECTLINE_SECRET, TEAM_KEY (secrets).
+ *           DIRECTLINE_SECRET, TEAM_KEY, ANTHROPIC_API_KEY (secrets).
  */
+
+import { draftMasterplan, MODEL as DRAFT_MODEL } from './draft.js';
 
 const INSPIRE_WMS = 'https://inspire.landregistry.gov.uk/inspire/ows';
 const KEY_COOKIE = 'allto_key';
@@ -210,6 +213,7 @@ export default {
           directLineDomain: directLineDomain(env),
           access: env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD ? 'checked' : 'not-configured',
           consultationAndPresentKey: env.TEAM_KEY ? 'required' : 'not-set',
+          draftFromDrawing: env.ANTHROPIC_API_KEY ? `ready (${DRAFT_MODEL})` : 'not-set',
         },
         200,
         headers || {},
@@ -256,6 +260,11 @@ export default {
       const r = await reach('the Land Registry map service', `${INSPIRE_WMS}?${q}`, { cf: { cacheTtl: 86400, cacheEverything: true } }).catch((e) => e);
       if (r instanceof Error || !r.ok || !/^image\//.test(r.headers.get('content-type') || '')) return json({ error: r instanceof Error ? r.message : `Land Registry answered ${r.status}` }, 502, headers);
       return new Response(r.body, { status: 200, headers: { ...headers, 'Content-Type': r.headers.get('content-type'), 'Cache-Control': 'private, max-age=86400' } });
+    }
+
+    if (path === '/draft-masterplan') {
+      if (!headers) return json({ error: 'This site is not allowed to use this service.' }, 403);
+      return draftMasterplan(request, env, json, headers);
     }
 
     if (path === '/token') {

@@ -23,6 +23,10 @@ The Worker also checks the Access login itself before issuing agent tokens, so n
    **Secret**:
    - `DIRECTLINE_SECRET`: the agent's web channel secret (the same one as before).
    - `TEAM_KEY`: the key for Consultation and Present. Pick something long; share it only with the team.
+   - `ANTHROPIC_API_KEY` (optional): an Anthropic API key, for Ultrahand's *Masterplan > Drawing > Draft the
+     masterplan*, which reads a masterplan drawing with Claude (Opus 5.5) through the Worker's `/draft-masterplan`
+     route. The key stays on the Worker and never reaches the browser. Without it, drawings can still be laid over
+     the map and traced; the draft button says the service is not set up. `/health` shows whether it is set.
 3. **Sign-in with Cloudflare Access** (Zero Trust, free up to 50 users):
    - Cloudflare: *Zero Trust*. The first time, choose a team name (e.g. `turley`) and the Free plan.
    - *Settings > Authentication*: make sure **One-time PIN** is a login method.

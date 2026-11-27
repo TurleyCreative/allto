@@ -387,3 +387,12 @@ body.mp-mode #toast { bottom: 22px; }
 .mp-card[hidden] { display: none; }
 .wdrawn { display: flex; align-items: center; gap: 7px; margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .wdrawn .muted { font-weight: 400; }
+
+/* A drawing laid over the map to trace or draft from */
+.file-btn { display: inline-flex; align-items: center; cursor: pointer; }
+#refNote { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; resize: vertical; margin: 4px 0 6px; }
+.ref-h { width: 14px; height: 14px; background: #fff; border: 2.5px solid #2433e0; box-shadow: 0 1px 6px rgba(0,0,0,.35); box-sizing: border-box; cursor: grab; }
+.ref-h.move { border-radius: 50%; width: 18px; height: 18px; background: #2433e0; border-color: #fff; cursor: move; }
+.ref-h.rot { border-radius: 50%; }
+#refStatus.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 2px solid #c9c8c2; border-top-color: #141414; border-radius: 50%; animation: refspin .9s linear infinite; vertical-align: -1px; }
+@keyframes refspin { to { transform: rotate(360deg); } }
