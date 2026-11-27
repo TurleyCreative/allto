@@ -5493,6 +5493,13 @@ function renderSettings() {
     + '<button class="btn btn-g btn-ic" id="btn-cm-add-builtin" style="white-space:nowrap">'+lucideSVG('plus',13,'currentColor')+'Add</button>'
     + '</div></div>';
   html += '</div>';
+  html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('move',14,'currentColor')+'Scene Transitions</span></div>';
+  html += '<div class="f"><label class="fl">Camera movement'+infoBtn('How the map moves from one scene to the next. Fly lifts up and comes back down on the way, which can feel dramatic over long distances. Glide moves straight there, which feels calmer.')+'</label><select id="cfg-tr-style">'
+    + '<option value="fly"'+(P.sceneTransStyle!=='glide'?' selected':'')+'>Fly (zooms out and back in)</option>'
+    + '<option value="glide"'+(P.sceneTransStyle==='glide'?' selected':'')+'>Glide (calmer, no zoom out)</option></select></div>';
+  html += rng('cfg-tr-dur','Length of each move',800,6000,100,P.sceneTransDur||2000,'ms');
+  html += '<div style="font-size:10.5px;line-height:1.55;color:var(--ghost);margin-top:-4px">Longer moves feel slower and gentler. The default is 2000 ms.</div>';
+  html += '</div>';
   html += '<div class="rs"><div class="st"><span class="ico-h">'+lucideSVG('play',14,'currentColor')+'Entrance Animations</span></div>';
   html += '<div class="lr"><span class="ll">Animate markers, lines &amp; zones on entry'+infoBtn('Things animate in whenever a scene brings them into view. Pick the default style for each kind below; any line, marker or zone can pick its own under Entrance in its panel, or right-click it on the map to stop it animating.')+'</span>'
     + '<button class="tg'+(P.animateEntrances!==false?' on':'')+'" id="cfg-anim-tog"></button></div>';
@@ -5575,6 +5582,8 @@ function renderSettings() {
   [['cfg-anim-ln', 'animLineStyle'], ['cfg-anim-mk', 'animMarkerStyle'], ['cfg-anim-zn', 'animZoneStyle']].forEach(function(p) {
     var s0 = el(p[0]); if (s0) s0.addEventListener('change', function() { P[p[1]] = s0.value; markDirty(); });
   });
+  var trSel = el('cfg-tr-style'); if (trSel) trSel.addEventListener('change', function() { P.sceneTransStyle = trSel.value; markDirty(); });
+  bindRng('cfg-tr-dur', function(v) { P.sceneTransDur = +v || 2000; markDirty(); });
   var animTog = el('cfg-anim-tog');
   if(animTog) animTog.addEventListener('click', function(){
     P.animateEntrances = P.animateEntrances===false ? true : false;
@@ -9950,6 +9959,7 @@ function buildCfg() {
     'var MAPBOX_TOKEN = ' + JSON.stringify(P.mapboxToken||'') + ';',
     'var MAPBOX_STYLE = ' + JSON.stringify(P.mapboxStyle||'mapbox://styles/mapbox/dark-v11') + ';',
     'var ANIMATE_ENTRANCES = ' + (P.animateEntrances!==false) + ';',
+    'var SCENE_TRANS = ' + JSON.stringify({ style: P.sceneTransStyle === 'glide' ? 'glide' : 'fly', dur: +P.sceneTransDur || 0 }) + ';',
     'var ANIM_DURATION = ' + (P.animDuration||800) + ';',
     'var ANIM_DELAY = ' + (P.animDelay||0) + ';',
     'var ANIM_EASING = ' + JSON.stringify(P.animEasing||'easeOut') + ';',
@@ -11428,7 +11438,9 @@ function buildJS() {
 '  applyCustomModels(idx);',
 '  stopOrbit();if(orbitTO){clearTimeout(orbitTO);orbitTO=null;}',
 '  document.getElementById("orbit-btn").style.display="none";',
-'  if(anim)map.flyTo({center:sc.camera.center,zoom:sc.camera.zoom,pitch:sc.camera.pitch,bearing:sc.camera.bearing,duration:sc.camera.duration,essential:true});',
+'  var camDur=SCENE_TRANS.dur||sc.camera.duration||2000;',
+'  if(anim){var camTo={center:sc.camera.center,zoom:sc.camera.zoom,pitch:sc.camera.pitch,bearing:sc.camera.bearing,duration:camDur,essential:true};',
+'    if(SCENE_TRANS.style==="glide"){camTo.easing=function(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;};map.easeTo(camTo);}else map.flyTo(camTo);}',
 '  sv("rl-f",L.redline);sv("rl-s",L.redline);',
 '  applyMapLabels(idx);',
 '  ctxMarkers.forEach(function(mk){',
@@ -11464,7 +11476,7 @@ function buildJS() {
 
 '  if(map.getLayer("wo"))map.setLayoutProperty("wo","visibility","none");',
 '  if(sitePin&&sitePin._el)sitePin._el.style.display=(idx===0&&SITE_PIN_SHOW)?"flex":"none";',
-'  if(L.orbit){var delay=anim?sc.camera.duration+400:100;var myS=++orbitSess;orbitTO=setTimeout(function(){orbitTO=null;if(myS!==orbitSess||cS!==idx)return;orbitBearing=sc.camera.bearing;document.getElementById("orbit-btn").style.display="block";startOrbit();},delay);}',
+'  if(L.orbit){var delay=anim?camDur+400:100;var myS=++orbitSess;orbitTO=setTimeout(function(){orbitTO=null;if(myS!==orbitSess||cS!==idx)return;orbitBearing=sc.camera.bearing;document.getElementById("orbit-btn").style.display="block";startOrbit();},delay);}',
 '  if(FB_SCENES.indexOf(idx)>=0)enableFB();else disableFB();',
 '  document.getElementById("map-label").textContent=sc.label;',
 '  document.querySelectorAll(".scene-pip").forEach(function(p,i){p.classList.toggle("active",i===idx);});',
@@ -12207,7 +12219,9 @@ function buildCSS() {
 + ':root{--nav-w:52px;--mob-nav-h:52px;--prose-w:38%;--ink:#0f0e0d;--paper:#f8f6f1;--mid:#e9e5dc;--ghost:#9a9590;--red:#c0392b;--amber:#d4820a;--teal:#2a7c6b;--blue:#2255aa;--purple:#8b5cf6;--accent:#c0392b;--f-body:"tt-commons-pro",system-ui,sans-serif;--ease:cubic-bezier(.4,0,.2,1)}'
 + 'html,body{height:100%;overflow:hidden;font-family:var(--f-body);background:var(--paper);color:var(--ink)}'
 + '#shell{display:flex;height:100vh;height:100dvh;width:100vw;overflow:hidden}'
-+ '#prose-page{position:fixed;top:0;bottom:0;left:var(--nav-w);width:var(--prose-w);background:var(--paper);z-index:30;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;border-right:1px solid var(--mid);opacity:0;visibility:hidden;transform:translate3d(-14px,0,0);transition:opacity .35s var(--ease),transform .45s var(--ease),visibility 0s linear .45s}'
++ '#prose-page{position:fixed;top:0;bottom:0;left:var(--nav-w);width:var(--prose-w);background:var(--paper);z-index:30;overflow-y:auto;overscroll-behavior:contain;border-right:1px solid var(--mid);opacity:0;visibility:hidden;transform:translate3d(-14px,0,0);transition:opacity .35s var(--ease),transform .45s var(--ease),visibility 0s linear .45s}'
++ '#prose-page::-webkit-scrollbar{width:8px}#prose-page::-webkit-scrollbar-button{display:none;width:0;height:0}#prose-page::-webkit-scrollbar-track{background:transparent}#prose-page::-webkit-scrollbar-thumb{background:rgba(15,14,13,.13);border-radius:8px;border:2px solid transparent;background-clip:padding-box}#prose-page:hover::-webkit-scrollbar-thumb{background-color:rgba(15,14,13,.24)}'
++ '@supports not selector(::-webkit-scrollbar){#prose-page{scrollbar-width:thin;scrollbar-color:rgba(15,14,13,.18) transparent}}'
 + '#prose-page:focus{outline:none}#prose-page.open{opacity:1;visibility:visible;transform:none;transition:opacity .35s var(--ease),transform .45s var(--ease),visibility 0s}'
 + '#prose-page .pp{min-height:100%;justify-content:flex-start;padding-top:48px;scroll-snap-align:none}'
 + '.pp-back{display:inline-flex;align-items:center;gap:8px;align-self:flex-start;background:none;border:1px solid var(--mid);border-radius:999px;padding:8px 15px 8px 11px;font:inherit;font-size:12.5px;color:var(--ink);cursor:pointer;margin-bottom:40px;transition:background .2s,border-color .2s}'
