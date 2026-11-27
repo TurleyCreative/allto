@@ -10296,10 +10296,13 @@ function buildJS() {
 
 '    (function(feat,props){',
 '      var dot=el.querySelector("div");',
-'      dot.style.cursor="pointer";',
+// Pins that already show their name as a label skip the hover popup and grow, which would only repeat it.
+'      var noHov=props.mkStyle==="label";',
+'      dot.style.cursor=(noHov&&!props.lightboxEnabled&&!props.flyCamera)?"default":"pointer";',
 '      var _mkPopup = new mapboxgl.Popup({offset:18,closeButton:false,closeOnClick:false,className:"zone-hover-popup"});',
 '      dot.addEventListener("mouseenter",function(e){',
 '        e.stopPropagation();',
+'        if(noHov)return;',
 '        var html="<strong>"+props.name+"</strong>"+(props.desc?"<span>"+props.desc+"</span>":"");',
 '        if(props.lightboxEnabled) html+="<div style=\\"font-size:10px;margin-top:4px;opacity:.7;font-style:italic\\">Click for more &#8594;</div>";',
 '        _mkPopup.setLngLat(feat.geometry.coordinates).setHTML(html).addTo(map);',
@@ -10318,6 +10321,7 @@ function buildJS() {
 '        // No lightbox or camera move configured — mouseenter/mouseleave never fire from a touch',
 '        // tap, so on mobile a marker like this would otherwise give zero feedback when tapped.',
 '        // Toggle the same name/scale hover treatment instead, tap to show, tap again to hide.',
+'        if(noHov)return;',
 '        if(isMobileW()){',
 '          if(dot._tapActive){',
 '            _mkPopup.remove();',
