@@ -208,9 +208,9 @@
 
             <div data-mp="ref" hidden>
               <div class="mp-h">A drawing to work from</div>
-              <p class="hint">Bring in a masterplan drawing (a sketch from the design team or a consultant's plan) and lay it over the map. Line it up with streets you can see, then trace over it, or let allto draft the masterplan from it.</p>
+              <p class="hint">Bring in a masterplan drawing (an image or a PDF from the design team or a consultant) and lay it over the map. Line it up with streets you can see, then trace over it, or let allto draft the masterplan from it. A PDF exported straight from the designer's software traces best; a plain land-use plan (flat colours, no trees drawn over the roads) better still.</p>
               <div class="row wrap">
-                <label class="solid file-btn">Choose a drawing<input id="refFile" type="file" accept="image/png,image/jpeg,image/webp" hidden /></label>
+                <label class="solid file-btn">Choose a drawing<input id="refFile" type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" hidden /></label>
                 <button id="refFit" class="ghost" disabled>Fit to the red line</button>
               </div>
               <div id="refTools" hidden>
@@ -220,7 +220,7 @@
                 <label class="inline slider">See through <input id="refOpacity" type="range" min="10" max="100" step="5" value="60" /> <span id="refOpacityLbl" class="stat">60%</span></label>
                 <label class="inline"><input id="refLock" type="checkbox" /> Lock in place</label>
                 <div class="mp-h">Draft from the drawing</div>
-                <p class="hint">allto traces the drawing's parcels, buildings and ponds from their colours (using its key to tell what each colour is), and reads its streets, open spaces and trees, placed where the drawing sits on the map. With a red line on the drawing, only what is inside it is traced. It is a first draft: check it against the drawing and tidy it up. Undo takes it all back off.</p>
+                <p class="hint">allto traces the drawing's parcels, buildings, ponds, roads and roundabouts from their colours (using its key to tell what each colour is), and reads its open spaces and trees, placed where the drawing sits on the map. With a red line on the drawing, only what is inside it is traced. It is a quick first draft: check it against the drawing, then fill gaps and tidy up with the drawing tools. Undo takes it all back off.</p>
                 <textarea id="refNote" rows="2" placeholder="Anything to know (optional), e.g. only the northern phase; blocks along the canal are 5 storeys"></textarea>
                 <div class="row wrap"><button id="refDraft" class="solid">Draft the masterplan</button><button id="refRemove" class="ghost">Remove the drawing</button></div>
                 <p class="hint" id="refStatus"></p>

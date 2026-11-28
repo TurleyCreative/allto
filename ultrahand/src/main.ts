@@ -18,7 +18,7 @@ import { createPen, type Snap, type SnapSources, type Editable, type Guide } fro
 import { bezierPath, autoHandles, nearestOnPath, splitAt, samePlace, cloneNodes, node as penNode, type PenNode } from './bezier';
 import { clearAreas, TREE_TYPES, treeType, newTree, canopyR, treeSlices, plantAlong, fillWithTrees, treesGeoJSON, canopyShape, type TreeType, roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
-import { loadPixels, siteMask, palette, swatchImage, traceRegions, type Pixels } from './trace';
+import { loadPixels, siteMask, palette, swatchImage, traceRegions, labelWith, traceRoads, type Pixels, type Roads } from './trace';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
 import { fetchPeople, IMD_COLOURS, type People } from './people';
@@ -810,6 +810,8 @@ try { if (localStorage.getItem('ultrahand:mpLabels') === '0') setMpLabels(false)
 // the allto Worker's /draft-masterplan) lands in place. Kept per site, beside the site's own data.
 interface RefDrawing { src: string; w: number; h: number; c: Position; widthM: number; rot: number; opacity: number; locked: boolean }
 let refDrawing: RefDrawing | null = null;
+/** The drawing at full size for tracing, while this page is open (the kept copy is a smaller JPEG). */
+let refHiRes: string | null = null;
 let refMarkers: mapboxgl.Marker[] = [];
 const refKey = () => 'ultrahand:ref:' + sitesIdx().current;
 const refFrame = (r: RefDrawing) => ({ kx: 111320 * Math.cos((r.c[1] * Math.PI) / 180), ky: 110574 });
@@ -992,39 +994,86 @@ function refPlace(r: RefDrawing) {
   }
   r.rot = 0;
 }
-/** A downscaled copy of an image file, as a JPEG data URL. */
-function imageToJpeg(file: File, maxSide: number): Promise<{ src: string; w: number; h: number }> {
+/** A picture (image or canvas) at most maxSide long, on white, as a JPEG data URL. */
+function jpegOf(src: CanvasImageSource, w0: number, h0: number, maxSide: number) {
+  const k = Math.min(1, maxSide / Math.max(w0, h0));
+  const c = document.createElement('canvas');
+  c.width = Math.round(w0 * k);
+  c.height = Math.round(h0 * k);
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, c.width, c.height);
+  g.drawImage(src, 0, 0, c.width, c.height);
+  return { src: c.toDataURL('image/jpeg', 0.86), w: c.width, h: c.height };
+}
+function imageFrom(url: string): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image();
-    img.onload = () => {
-      const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
-      const c = document.createElement('canvas');
-      c.width = Math.round(img.naturalWidth * k);
-      c.height = Math.round(img.naturalHeight * k);
-      const g = c.getContext('2d')!;
-      g.fillStyle = '#ffffff';
-      g.fillRect(0, 0, c.width, c.height);
-      g.drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(img.src);
-      res({ src: c.toDataURL('image/jpeg', 0.86), w: c.width, h: c.height });
-    };
+    img.onload = () => res(img);
     img.onerror = () => rej(new Error('That file could not be read as an image.'));
-    img.src = URL.createObjectURL(file);
+    img.src = url;
   });
 }
+/** One page of a PDF drawn about 4000 px across, so its colours and lines are sharp for tracing. */
+async function pdfPage(file: File): Promise<HTMLCanvasElement> {
+  const pdfjs = await import('pdfjs-dist');
+  pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  const task = pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }), doc = await task.promise;
+  try {
+    let n = 1;
+    if (doc.numPages > 1) {
+      const a = prompt(`This PDF has ${doc.numPages} pages. Which page is the masterplan?`, '1');
+      if (a === null) throw new Error('No page chosen.');
+      n = Math.min(doc.numPages, Math.max(1, parseInt(a, 10) || 1));
+    }
+    const page = await doc.getPage(n);
+    const v1 = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale: Math.min(4000 / Math.max(v1.width, v1.height), Math.sqrt(16e6 / (v1.width * v1.height))) });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width);
+    c.height = Math.round(vp.height);
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvas: c, canvasContext: g, viewport: vp }).promise;
+    return c;
+  } finally {
+    task.destroy();
+  }
+}
+const canvasUrl = (c: HTMLCanvasElement) => new Promise<string>((res, rej) => c.toBlob((b) => (b ? res(URL.createObjectURL(b)) : rej(new Error('The PDF page could not be drawn.'))), 'image/png'));
 $<HTMLInputElement>('#refFile').addEventListener('change', async (e) => {
   const f = (e.target as HTMLInputElement).files?.[0];
   (e.target as HTMLInputElement).value = '';
   if (!f) return;
+  const st = $('#refStatus');
   try {
-    const im = await imageToJpeg(f, 2400);
+    let im: { src: string; w: number; h: number }, hi: string;
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      st.className = 'hint busy';
+      st.textContent = 'Opening the PDF…';
+      const c = await pdfPage(f);
+      im = jpegOf(c, c.width, c.height, 2400);
+      hi = await canvasUrl(c);
+    } else {
+      hi = URL.createObjectURL(f);
+      const img = await imageFrom(hi);
+      im = jpegOf(img, img.naturalWidth, img.naturalHeight, 2400);
+    }
+    if (refHiRes?.startsWith('blob:')) URL.revokeObjectURL(refHiRes);
+    refHiRes = hi;
     refDrawing = { ...im, c: [0, 0], widthM: 200, rot: 0, opacity: 0.6, locked: false };
     refPlace(refDrawing);
     saveRef();
     refShow();
     refFit();
-    $('#refStatus').textContent = '';
-  } catch (err) { toast((err as Error).message); }
+    st.className = 'hint';
+    st.textContent = '';
+  } catch (err) {
+    st.className = 'hint';
+    st.textContent = '';
+    toast((err as Error).message);
+  }
 });
 $('#refFit').onclick = () => { if (!refDrawing || !S.red) return; refPlace(refDrawing); saveRef(); refShow(); refFit(); };
 /** Show the whole drawing in the open map between the masterplan panels, so its handles are not under them. */
@@ -1095,6 +1144,27 @@ function applyTraced(px: Pixels, labels: Uint8Array, mask: Uint8Array | null, co
   }
   return n;
 }
+/** Streets and roundabouts traced from the drawing's roads (pixels of `px`). */
+function applyRoads(px: Pixels, roads: Roads) {
+  const r = refDrawing!;
+  const geo = (x: number, y: number) => refAt(r, (x + 0.5) / px.w, (y + 0.5) / px.h);
+  const mPerPx = r.widthM / px.w;
+  const n = { streets: 0, roundabouts: 0 };
+  for (const ln of roads.lines) {
+    const p = ln.pts.map(([x, y]) => geo(x, y));
+    if (ln.closed) p.push(p[0]);
+    if (p.length < 2 || turf.length(turf.lineString(p), { units: 'meters' }) < 12) continue;
+    S.plan.streets.push(newStreet(S.plan, 'residential', autoHandles(p.map((q) => penNode(q)), 0.35), 0.35));
+    n.streets++;
+  }
+  for (const ring of roads.rings) {
+    // the drawn ring's outer edge is about the roundabout's inscribed circle
+    const d = Math.max(16, Math.min(60, Math.round(ring.r * 2 * mPerPx)));
+    S.plan.streets.push(newRoundabout(S.plan, geo(ring.x, ring.y), 'residential', d));
+    n.roundabouts++;
+  }
+  return n;
+}
 /** Add a draft read from the drawing to the plan. Returns what was added. */
 function applyDraft(d: DraftPlan) {
   const r = refDrawing!;
@@ -1143,7 +1213,8 @@ $('#refDraft').onclick = async () => {
   st.textContent = 'Reading the colours in the drawing…';
   try {
     // The drawing's colours, grouped and numbered here, so the shapes can be traced exactly once Claude says what each colour is.
-    const px = await loadPixels(refDrawing.src, 1000);
+    const source = refHiRes ?? refDrawing.src;
+    const px = await loadPixels(source, 1000);
     const mask = siteMask(px), pal = palette(px, mask, 24);
     const hex = (c: number[]) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
     st.textContent = `Reading the drawing${mask ? ' inside its red line' : ''}. This usually takes under a minute.`;
@@ -1160,14 +1231,25 @@ $('#refDraft').onclick = async () => {
     if (!res.ok || !j?.draft) throw new Error(j?.error || (res.status === 404 ? 'Drafting from drawings is only available on the allto site itself.' : `The drawing service answered ${res.status}.`));
     const draft = j.draft as DraftPlan;
     const t = j.traced && draft.colours?.length ? applyTraced(px, pal.labels, mask, draft.colours) : { blocks: 0, ponds: 0 };
-    const n = applyDraft({ ...draft, blocks: j.traced ? [] : draft.blocks });
+    // Roads: traced from the drawing at a larger size, using the grey of the road surface and any colours named as road
+    let rd = { streets: 0, roundabouts: 0 };
+    if (j.traced) {
+      st.textContent = 'Tracing the roads…';
+      await new Promise((r) => setTimeout(r, 30));
+      const big = await loadPixels(source, 2000), bigMask = siteMask(big);
+      const roadIds = (draft.colours || []).filter((c) => c.category === 'road').map((c) => c.id);
+      const roads = traceRoads(big, bigMask, roadIds.length ? labelWith(big, pal.colours) : null, roadIds);
+      if (roads.lines.length >= 3) rd = applyRoads(big, roads);
+    }
+    const n = applyDraft({ ...draft, blocks: j.traced ? [] : draft.blocks, streets: rd.streets ? [] : draft.streets });
     n.blocks += t.blocks;
     n.open += t.ponds;
-    if (n.blocks > 25) setMpLabels(false);
-    const parts = [[n.streets, 'street'], [n.open, 'open space'], [n.blocks, 'block'], [n.trees, 'tree']].filter((x) => x[0]).map((x) => `${x[0]} ${x[1]}${x[0] === 1 ? '' : 's'}`);
+    n.streets += rd.streets;
+    if (n.blocks + n.streets > 25) setMpLabels(false);
+    const parts = [[n.streets, 'street'], [rd.roundabouts, 'roundabout'], [n.open, 'open space'], [n.blocks, 'block'], [n.trees, 'tree']].filter((x) => x[0]).map((x) => `${x[0]} ${x[1]}${x[0] === 1 ? '' : 's'}`);
     st.className = 'hint';
     st.textContent = parts.length
-      ? `Added ${parts.join(', ')}${t.blocks ? ` (${t.blocks} blocks and ${t.ponds} ponds traced from the drawing's colours)` : ''}. ${draft.summary || ''}${!mask && t.blocks ? ' No red line was found on the drawing, so shapes outside the site may have come in too.' : ''} Check them against the drawing; Undo takes them back off.${n.blocks > 25 ? ' Name tags are off (Labels, top bar).' : ''}`
+      ? `Added ${parts.join(', ')}${t.blocks ? ` (traced from the drawing's colours: ${[t.blocks && `${t.blocks} blocks`, t.ponds && `${t.ponds} ponds`, rd.streets && `${rd.streets} streets`].filter(Boolean).join(', ')})` : ''}. ${draft.summary || ''}${!mask && t.blocks ? ' No red line was found on the drawing, so shapes outside the site may have come in too.' : ''} Check them against the drawing; Undo takes them back off.${n.blocks + n.streets > 25 ? ' Name tags are off (Labels, top bar).' : ''}${rd.streets ? ' Traced streets all come in as residential streets: set the main roads in Streets.' : ''}`
       : `Nothing to add. ${draft.summary || ''}`;
   } catch (err) {
     st.className = 'hint';
