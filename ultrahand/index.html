@@ -119,6 +119,7 @@
           <div class="seg small" id="mpViews"><button data-view="plan" class="on">Plan</button><button data-view="3d">3D</button><button data-view="axo">Axo</button><button data-view="eye">Eye level</button></div>
           <label class="mp-tog" title="Guide lines, snapping to them, and measurements while you draw (G)"><input id="mpGuides" type="checkbox" checked /><span>Guides</span></label>
           <label class="mp-tog"><input id="mpSketch" type="checkbox" /><span>Sketch</span></label>
+          <label class="mp-tog" title="Name tags on blocks and streets"><input id="mpLabels" type="checkbox" checked /><span>Labels</span></label>
           <span class="mp-sep"></span>
           <button id="mpUndo" class="mp-ic" title="Undo (Ctrl+Z)" disabled>↶</button>
           <button id="mpRedo" class="mp-ic" title="Redo (Ctrl+Shift+Z)" disabled>↷</button>
@@ -213,11 +214,13 @@
                 <button id="refFit" class="ghost" disabled>Fit to the red line</button>
               </div>
               <div id="refTools" hidden>
-                <p class="hint">Drag the middle dot to move it, the corner square to resize it and the round handle to turn it.</p>
+                <p class="hint">Drag the middle dot to move it, the corner square to resize it and the round handle to turn it. Or line it up exactly by two points:</p>
+                <div class="row wrap"><button id="refAlign" class="ghost">Line up by two points</button></div>
+                <p class="hint" id="refAlignMsg"></p>
                 <label class="inline slider">See through <input id="refOpacity" type="range" min="10" max="100" step="5" value="60" /> <span id="refOpacityLbl" class="stat">60%</span></label>
                 <label class="inline"><input id="refLock" type="checkbox" /> Lock in place</label>
                 <div class="mp-h">Draft from the drawing</div>
-                <p class="hint">allto reads the drawing and adds its streets, open spaces, building blocks and trees to the plan, placed where the drawing sits on the map. It is a first draft: check it against the drawing and tidy it up. Undo takes it all back off.</p>
+                <p class="hint">allto traces the drawing's parcels, buildings and ponds from their colours (using its key to tell what each colour is), and reads its streets, open spaces and trees, placed where the drawing sits on the map. With a red line on the drawing, only what is inside it is traced. It is a first draft: check it against the drawing and tidy it up. Undo takes it all back off.</p>
                 <textarea id="refNote" rows="2" placeholder="Anything to know (optional), e.g. only the northern phase; blocks along the canal are 5 storeys"></textarea>
                 <div class="row wrap"><button id="refDraft" class="solid">Draft the masterplan</button><button id="refRemove" class="ghost">Remove the drawing</button></div>
                 <p class="hint" id="refStatus"></p>

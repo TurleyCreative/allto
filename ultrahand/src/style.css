@@ -396,3 +396,7 @@ body.mp-mode #toast { bottom: 22px; }
 .ref-h.rot { border-radius: 50%; }
 #refStatus.busy::before { content: ''; display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 2px solid #c9c8c2; border-top-color: #141414; border-radius: 50%; animation: refspin .9s linear infinite; vertical-align: -1px; }
 @keyframes refspin { to { transform: rotate(360deg); } }
+
+.mp-nolabels .block-ref, .mp-nolabels .street-ref { display: none !important; }
+.ref-pt { width: 22px; height: 22px; border-radius: 50%; background: #e6262e; color: #fff; font: 700 12px/22px var(--font); text-align: center; box-shadow: 0 1px 6px rgba(0,0,0,.35); border: 2px solid #fff; }
+.ref-pt.on-map { background: #2433e0; }

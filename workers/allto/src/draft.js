@@ -38,6 +38,32 @@ export const MasterplanDraft = z.object({
   trees: z.array(Point),
 });
 
+/**
+ * With a strip of numbered colour swatches (the drawing's main colours, grouped in the browser), Claude
+ * says what each colour is, and Ultrahand traces those shapes from the pixels: far more exact than
+ * estimating outlines. Claude still reads the streets, the open spaces that are not water, and trees.
+ */
+const COLOUR_CATEGORIES = ['residential', 'commercial', 'retail', 'community', 'school', 'care_home', 'water', 'green', 'road', 'path', 'boundary', 'other'];
+export const MasterplanTraced = z.object({
+  summary: MasterplanDraft.shape.summary,
+  colours: z.array(z.object({
+    id: z.number().int().describe('The swatch number'),
+    category: z.enum(COLOUR_CATEGORIES).describe('What that colour is used for inside the site'),
+  })),
+  streets: MasterplanDraft.shape.streets,
+  open_spaces: MasterplanDraft.shape.open_spaces,
+  trees: MasterplanDraft.shape.trees,
+});
+
+const SWATCH_NOTE = `The second image is a strip of numbered swatches: the main colours of the drawing (inside its red line, where it has one), grouped automatically. The software will trace every patch of a colour from the pixels, so for each swatch number say what that colour is used for inside the site, using the drawing's key where it has one:
+- residential, commercial, retail, community, school, care_home: the fill of development parcels or buildings of that use. Plain white or cream parcels with no other meaning are residential.
+- water: ponds, SuDS basins, swales, rivers.
+- green: parks, grass, planting and tree canopy.
+- road, path: carriageways, footways and paths.
+- boundary: the red line or other outlines.
+- other: anything else (shadows, text, the surroundings, map background, colours mixed at edges).
+Give every swatch a category. In this mode, leave the buildings and parcels out of the lists (they are traced from the colours) and leave water out of open_spaces; still record streets, the open spaces that are not water, and trees.`;
+
 const SYSTEM = `You read urban design masterplan drawings (hand-drawn sketches, consultants' plans, illustrative masterplans) and record what they propose as structured data for a site analysis tool.
 
 Coordinates: give every point on a 0–1000 grid laid over the whole image, x across from the left edge and y down from the top edge. Measure against the full image, including any margins, title block or key.
@@ -60,6 +86,9 @@ export async function draftMasterplan(request, env, json, headers) {
   if (!image || !mediaType) return json({ error: 'Send the drawing as { image: base64, mediaType: image/jpeg | image/png | image/webp }.' }, 400, headers);
   if (image.length > MAX_IMAGE_B64) return json({ error: 'That image is too large. Use one under about 5 MB.' }, 413, headers);
   const note = typeof body?.note === 'string' ? body.note.slice(0, 600) : '';
+  const swatch = typeof body?.swatch === 'string' ? body.swatch.replace(/^data:[^,]*,/, '') : '';
+  const pal = Array.isArray(body?.palette) ? body.palette.slice(0, 32).filter((p) => Number.isInteger(p?.id) && /^#[0-9a-f]{6}$/i.test(p?.hex || '')) : [];
+  const traced = !!(swatch && pal.length && swatch.length < 1_000_000);
 
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 1 });
   try {
@@ -69,12 +98,16 @@ export async function draftMasterplan(request, env, json, headers) {
       // On a policy decline, the API re-runs the request on a fallback model it picks.
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
-      output_config: { effort: 'high', format: betaZodOutputFormat(MasterplanDraft) },
-      system: SYSTEM,
+      output_config: { effort: 'high', format: betaZodOutputFormat(traced ? MasterplanTraced : MasterplanDraft) },
+      system: traced ? `${SYSTEM}\n\n${SWATCH_NOTE}` : SYSTEM,
       messages: [{
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType, data: image } },
+          ...(traced ? [
+            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: swatch } },
+            { type: 'text', text: `Swatches (number, colour, share of the site): ${pal.map((p) => `${p.id} ${p.hex} ${Math.round((+p.share || 0) * 100)}%`).join('; ')}` },
+          ] : []),
           { type: 'text', text: `Record the masterplan in this drawing.${note ? `\n\nNote from the designer: ${note}` : ''}` },
         ],
       }],
@@ -82,7 +115,7 @@ export async function draftMasterplan(request, env, json, headers) {
     if (msg.stop_reason === 'refusal') return json({ error: 'The drawing could not be read. Try a different image.' }, 422, headers);
     if (msg.stop_reason === 'max_tokens') return json({ error: 'The drawing has too much in it to read in one go. Crop it to part of the site and try again.' }, 422, headers);
     if (!msg.parsed_output) return json({ error: 'The drawing could not be turned into a plan. Try a clearer image.' }, 502, headers);
-    return json({ draft: msg.parsed_output, model: msg.model }, 200, headers);
+    return json({ draft: msg.parsed_output, traced, model: msg.model }, 200, headers);
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) return json({ error: 'Busy just now. Try again in a minute.' }, 429, headers);
     if (e instanceof Anthropic.AuthenticationError) return json({ error: 'The Anthropic API key on the allto Worker is not working.' }, 502, headers);

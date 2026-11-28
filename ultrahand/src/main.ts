@@ -18,6 +18,7 @@ import { createPen, type Snap, type SnapSources, type Editable, type Guide } fro
 import { bezierPath, autoHandles, nearestOnPath, splitAt, samePlace, cloneNodes, node as penNode, type PenNode } from './bezier';
 import { clearAreas, TREE_TYPES, treeType, newTree, canopyR, treeSlices, plantAlong, fillWithTrees, treesGeoJSON, canopyShape, type TreeType, roundedShape, sketchGeoJSON, setStreetNodes, setOpenNodes, type HouseType, STREET_TYPES, OPEN_TYPES, HOUSE_TYPES, ROUNDABOUTS, AFFORDABLE_COLOUR, DEFAULT_TARGETS, streetType, openType, houseType, houseHeight, houseEave, emptyPlan, upgradePlan, newId, newStreet, newRoundabout, streetLine, snapEnds, streetPieces, streetLand, roundaboutIsland, homePartyLines, corridor, lineStreet, placeHome, spreadAffordable, schedule, planGeoJSON, type Plan, type Street, type OpenSpace, type Home, type HomeOpts, type Tenure, type Targets, type StreetType, type OpenType, type HouseTypeId, type Obstacles } from './masterplan';
 import { initAgentPanel } from './agent';
+import { loadPixels, siteMask, palette, swatchImage, traceRegions, type Pixels } from './trace';
 import { fetchLidar, measureBuilding, groundLevels, profile, contourLines, type Lidar } from './lidar';
 import { sectionSVG, type SectionPoint } from './section';
 import { fetchPeople, IMD_COLOURS, type People } from './people';
@@ -794,6 +795,15 @@ function setMpTool(t: MpTool) {
 }
 document.querySelectorAll<HTMLButtonElement>('#mpTool button').forEach((b) => b.addEventListener('click', () => setMpTool(b.dataset.t as MpTool)));
 
+// ---------------------------------------------------------------- name tags on the plan
+function setMpLabels(on: boolean) {
+  document.body.classList.toggle('mp-nolabels', !on);
+  $<HTMLInputElement>('#mpLabels').checked = on;
+  try { localStorage.setItem('ultrahand:mpLabels', on ? '1' : '0'); } catch { /* ignore */ }
+}
+$<HTMLInputElement>('#mpLabels').addEventListener('change', (e) => setMpLabels((e.target as HTMLInputElement).checked));
+try { if (localStorage.getItem('ultrahand:mpLabels') === '0') setMpLabels(false); } catch { /* ignore */ }
+
 // ---------------------------------------------------------------- a drawing to trace, or to draft the masterplan from
 // The drawing is laid over the map as an image the user moves, resizes and turns until it lines up.
 // Where it sits says where any point on it is on the ground, so a draft read from it (by Claude, through
@@ -810,6 +820,74 @@ function refAt(r: RefDrawing, u: number, v: number): Position {
   return [r.c[0] + (x * Math.cos(a) + y * Math.sin(a)) / kx, r.c[1] + (-x * Math.sin(a) + y * Math.cos(a)) / ky];
 }
 type Quad = [[number, number], [number, number], [number, number], [number, number]];
+/** Where a point on the ground is on the drawing (u, v from 0 to 1, from the top left). */
+function refUV(r: RefDrawing, ll: Position): [number, number] {
+  const { kx, ky } = refFrame(r), W = r.widthM, H = (r.widthM * r.h) / r.w, a = (r.rot * Math.PI) / 180;
+  const xp = (ll[0] - r.c[0]) * kx, yp = (ll[1] - r.c[1]) * ky;
+  const x = xp * Math.cos(a) - yp * Math.sin(a), y = xp * Math.sin(a) + yp * Math.cos(a);
+  return [x / W + 0.5, 0.5 - y / H];
+}
+/** Place the drawing so two points on it land on two points on the map (move, scale and turn). */
+function refAlignTo(r: RefDrawing, uv: [number, number][], to: Position[]) {
+  const P = uv.map(([u, v]) => [(u - 0.5) * r.w, (0.5 - v) * r.h]); // drawing pixels, y up, from its middle
+  const ky = 110574, kx = 111320 * Math.cos((to[0][1] * Math.PI) / 180);
+  const Q = to.map((t) => [(t[0] - to[0][0]) * kx, (t[1] - to[0][1]) * ky]); // metres from the first target
+  const dp = [P[1][0] - P[0][0], P[1][1] - P[0][1]], dq = [Q[1][0] - Q[0][0], Q[1][1] - Q[0][1]];
+  const den = dp[0] * dp[0] + dp[1] * dp[1];
+  if (den < 1) return false;
+  const zr = (dq[0] * dp[0] + dq[1] * dp[1]) / den, zi = (dq[1] * dp[0] - dq[0] * dp[1]) / den; // q = z p + t
+  const t = [Q[0][0] - (zr * P[0][0] - zi * P[0][1]), Q[0][1] - (zr * P[0][1] + zi * P[0][0])];
+  r.widthM = Math.hypot(zr, zi) * r.w;
+  r.rot = (-Math.atan2(zi, zr) * 180) / Math.PI;
+  r.c = [to[0][0] + t[0] / kx, to[0][1] + t[1] / ky];
+  return true;
+}
+let refAlign: null | { uv: [number, number][]; to: Position[]; marks: mapboxgl.Marker[] } = null;
+function refAlignMsg() {
+  const m = $('#refAlignMsg');
+  if (!refAlign) { m.textContent = ''; $('#refAlign').textContent = 'Line up by two points'; return; }
+  const k = refAlign.uv.length + refAlign.to.length;
+  m.textContent = [
+    'Click a point on the drawing you can find on the map, such as a road junction or a building corner.',
+    'Now click where that point is on the map.',
+    'Click a second point on the drawing, well away from the first.',
+    'Now click where that one is on the map.',
+  ][k];
+  $('#refAlign').textContent = 'Cancel';
+}
+function refAlignEnd() {
+  refAlign?.marks.forEach((m) => m.remove());
+  refAlign = null;
+  map.getCanvas().style.cursor = '';
+  refAlignMsg();
+}
+$('#refAlign').onclick = () => {
+  if (refAlign) return refAlignEnd();
+  if (!refDrawing) return;
+  if (refDrawing.locked) { refDrawing.locked = false; $<HTMLInputElement>('#refLock').checked = false; }
+  refAlign = { uv: [], to: [], marks: [] };
+  map.getCanvas().style.cursor = 'crosshair';
+  refAlignMsg();
+};
+map.on('click', (e) => {
+  if (!refAlign || !refDrawing) return;
+  const ll: Position = [e.lngLat.lng, e.lngLat.lat], onDrawing = refAlign.uv.length === refAlign.to.length;
+  const el = document.createElement('div');
+  el.className = 'ref-pt' + (onDrawing ? '' : ' on-map');
+  el.textContent = String(refAlign.uv.length + (onDrawing ? 1 : 0));
+  refAlign.marks.push(new mapboxgl.Marker({ element: el }).setLngLat(e.lngLat).addTo(map));
+  if (onDrawing) refAlign.uv.push(refUV(refDrawing, ll));
+  else refAlign.to.push(ll);
+  if (refAlign.to.length === 2) {
+    const ok = refAlignTo(refDrawing, refAlign.uv, refAlign.to);
+    refAlignEnd();
+    if (!ok) return toast('Pick two points further apart on the drawing.');
+    saveRef();
+    refShow();
+    toast('Drawing lined up. Check it against a third point; drag the handles to fine-tune.');
+  } else refAlignMsg();
+});
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && refAlign) refAlignEnd(); });
 const refCorners = (r: RefDrawing) => [refAt(r, 0, 0), refAt(r, 1, 0), refAt(r, 1, 1), refAt(r, 0, 1)] as Quad;
 function refShow() {
   const r = refDrawing;
@@ -971,14 +1049,51 @@ $<HTMLInputElement>('#refOpacity').addEventListener('input', (e) => {
   saveRef();
 });
 $<HTMLInputElement>('#refLock').addEventListener('change', (e) => { if (!refDrawing) return; refDrawing.locked = (e.target as HTMLInputElement).checked; saveRef(); refHandles(); });
-$('#refRemove').onclick = () => { if (!confirm('Remove the drawing from the map? (What you have drawn from it stays.)')) return; refDrawing = null; saveRef(); refShow(); };
+$('#refRemove').onclick = () => { if (!confirm('Remove the drawing from the map? (What you have drawn from it stays.)')) return; refAlignEnd(); refDrawing = null; saveRef(); refShow(); };
 
 interface DraftPlan {
   summary: string;
+  colours?: { id: number; category: string }[];
   streets: { name: string; type: StreetType; points: number[][] }[];
   open_spaces: { name: string; type: OpenType; outline: number[][] }[];
   blocks: { name: string; use: Use; storeys: number; outline: number[][] }[];
   trees: number[][];
+}
+const TRACED_USE: Record<string, [Use, string, number]> = {
+  residential: ['residential', 'Parcel', 2], commercial: ['office', 'Commercial unit', 2], retail: ['retail', 'Retail unit', 1],
+  community: ['community', 'Community building', 2], school: ['community', 'School', 2], care_home: ['community', 'Care home', 2],
+};
+/** Trace the colours Claude named into blocks (by use) and ponds. Returns what was added. */
+function applyTraced(px: Pixels, labels: Uint8Array, mask: Uint8Array | null, colours: { id: number; category: string }[]) {
+  const r = refDrawing!;
+  const geo = (x: number, y: number) => refAt(r, (x + 0.5) / px.w, (y + 0.5) / px.h);
+  const ids = (cat: string) => colours.filter((c) => c.category === cat).map((c) => c.id);
+  const minPx = Math.max(20, Math.round(px.w * px.h * 0.00006));
+  const n = { blocks: 0, ponds: 0 };
+  for (const [cat, [use, label, storeys]] of Object.entries(TRACED_USE)) {
+    const g = ids(cat);
+    if (!g.length) continue;
+    let k = 0;
+    for (const reg of traceRegions(px, labels, g, mask, { minPx, open: 1, eps: 1.2, minFill: 0.2 })) {
+      const ring = reg.ring.map(([x, y]) => geo(x, y));
+      const nb = newBlock(turf.polygon([[...ring, ring[0]]]) as Feature<Polygon>, S.blocks);
+      nb.name = `${label} ${++k}`;
+      nb.use = use;
+      nb.storeys = storeys;
+      S.blocks.push(nb);
+      n.blocks++;
+    }
+  }
+  const w = ids('water');
+  if (w.length) {
+    let k = 0;
+    for (const reg of traceRegions(px, labels, w, mask, { minPx: Math.round(minPx / 2), close: 1, eps: 1.5, minFill: 0.15 })) {
+      const ring = reg.ring.map(([x, y]) => geo(x, y));
+      S.plan.open.push(setOpenNodes({ id: newId('O', S.plan.open), name: `Pond ${++k}`, type: 'suds', round: 0.4 } as OpenSpace, ring.map((q) => penNode(q))));
+      n.ponds++;
+    }
+  }
+  return n;
 }
 /** Add a draft read from the drawing to the plan. Returns what was added. */
 function applyDraft(d: DraftPlan) {
@@ -1025,20 +1140,35 @@ $('#refDraft').onclick = async () => {
   const btn = $<HTMLButtonElement>('#refDraft'), st = $('#refStatus');
   btn.disabled = true;
   st.className = 'hint busy';
-  st.textContent = 'Reading the drawing. This usually takes under a minute.';
+  st.textContent = 'Reading the colours in the drawing…';
   try {
+    // The drawing's colours, grouped and numbered here, so the shapes can be traced exactly once Claude says what each colour is.
+    const px = await loadPixels(refDrawing.src, 1000);
+    const mask = siteMask(px), pal = palette(px, mask, 24);
+    const hex = (c: number[]) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+    st.textContent = `Reading the drawing${mask ? ' inside its red line' : ''}. This usually takes under a minute.`;
     const res = await fetch(new URL('../draft-masterplan', location.href).href, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ image: refDrawing.src.split(',')[1], mediaType: 'image/jpeg', note: $<HTMLTextAreaElement>('#refNote').value.trim() }),
+      body: JSON.stringify({
+        image: refDrawing.src.split(',')[1], mediaType: 'image/jpeg', note: $<HTMLTextAreaElement>('#refNote').value.trim(),
+        swatch: swatchImage(pal.colours, pal.share), palette: pal.colours.map((c, i) => ({ id: i, hex: hex(c), share: +pal.share[i].toFixed(4) })),
+      }),
     });
     const j = await res.json().catch(() => null);
     if (!res.ok || !j?.draft) throw new Error(j?.error || (res.status === 404 ? 'Drafting from drawings is only available on the allto site itself.' : `The drawing service answered ${res.status}.`));
-    const n = applyDraft(j.draft as DraftPlan);
+    const draft = j.draft as DraftPlan;
+    const t = j.traced && draft.colours?.length ? applyTraced(px, pal.labels, mask, draft.colours) : { blocks: 0, ponds: 0 };
+    const n = applyDraft({ ...draft, blocks: j.traced ? [] : draft.blocks });
+    n.blocks += t.blocks;
+    n.open += t.ponds;
+    if (n.blocks > 25) setMpLabels(false);
     const parts = [[n.streets, 'street'], [n.open, 'open space'], [n.blocks, 'block'], [n.trees, 'tree']].filter((x) => x[0]).map((x) => `${x[0]} ${x[1]}${x[0] === 1 ? '' : 's'}`);
     st.className = 'hint';
-    st.textContent = parts.length ? `Added ${parts.join(', ')}. ${j.draft.summary || ''} Check them against the drawing; Undo takes them back off.` : `Nothing to add. ${j.draft.summary || ''}`;
+    st.textContent = parts.length
+      ? `Added ${parts.join(', ')}${t.blocks ? ` (${t.blocks} blocks and ${t.ponds} ponds traced from the drawing's colours)` : ''}. ${draft.summary || ''}${!mask && t.blocks ? ' No red line was found on the drawing, so shapes outside the site may have come in too.' : ''} Check them against the drawing; Undo takes them back off.${n.blocks > 25 ? ' Name tags are off (Labels, top bar).' : ''}`
+      : `Nothing to add. ${draft.summary || ''}`;
   } catch (err) {
     st.className = 'hint';
     st.textContent = (err as Error).message;

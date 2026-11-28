@@ -23,6 +23,8 @@ let lastClaude = null, claudeStop = 'end_turn';
 const claudeDraft = { summary: 'A small terrace by a green.', streets: [{ name: 'Mill Street', type: 'residential', points: [[100, 800], [900, 800]] }],
   open_spaces: [{ name: 'Green', type: 'park', outline: [[100, 100], [400, 100], [400, 400], [100, 400]] }],
   blocks: [{ name: 'Terrace', use: 'residential', storeys: 2, outline: [[500, 500], [800, 500], [800, 600], [500, 600]] }], trees: [[200, 600]] };
+const claudeTraced = { summary: 'Parcels in white, ponds in teal.', colours: [{ id: 0, category: 'residential' }, { id: 1, category: 'water' }, { id: 2, category: 'road' }],
+  streets: claudeDraft.streets, open_spaces: claudeDraft.open_spaces, trees: [] };
 globalThis.fetch = async (url, init = {}) => {
   const u = String(url);
   calls.push(u);
@@ -37,7 +39,7 @@ globalThis.fetch = async (url, init = {}) => {
     lastClaude = { body: JSON.parse(init.body), key: hd.get('x-api-key') || (hd.get('authorization') || '').replace(/^Bearer /, ''), beta: hd.get('anthropic-beta') };
     if (lastClaude.key !== 'sk-test') return Response.json({ type: 'error', error: { type: 'authentication_error', message: 'bad key' } }, { status: 401 });
     return Response.json({ id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', stop_reason: claudeStop, stop_sequence: null,
-      content: [{ type: 'text', text: JSON.stringify(claudeDraft) }], usage: { input_tokens: 1200, output_tokens: 300 } });
+      content: [{ type: 'text', text: JSON.stringify(lastClaude.body.messages[0].content.length > 2 ? claudeTraced : claudeDraft) }], usage: { input_tokens: 1200, output_tokens: 300 } });
   }
   return new Response('?', { status: 500 });
 };
@@ -200,6 +202,19 @@ await test('/draft-masterplan reads a drawing through Claude, and only with the 
   assert.equal(bad.status, 502);
   assert.ok(!(await bad.text()).includes('wrong'));
   assert.equal((await worker.fetch(req('/draft-masterplan', { method: 'POST', body, origin: 'https://evil.example' }), env)).status, 403);
+  // with colour swatches: Claude names the colours, Ultrahand traces them
+  const tb = JSON.stringify({ image: 'iVBORw0KGgo=', mediaType: 'image/jpeg', swatch: 'data:image/png;base64,iVBORw0KGgo=', palette: [{ id: 0, hex: '#fdfefc', share: 0.17 }, { id: 1, hex: '#7fc0b4', share: 0.03 }, { id: 2, hex: 'nope', share: 0.1 }] });
+  const t = await worker.fetch(req('/draft-masterplan', { method: 'POST', body: tb }), env);
+  assert.equal(t.status, 200);
+  const tj = await t.json();
+  assert.equal(tj.traced, true);
+  assert.deepEqual(tj.draft.colours, claudeTraced.colours);
+  const content = lastClaude.body.messages[0].content;
+  assert.equal(content.filter((c) => c.type === 'image').length, 2);
+  assert.equal(content[1].source.media_type, 'image/png');
+  assert.match(content[2].text, /0 #fdfefc 17%; 1 #7fc0b4 3%$/);
+  assert.match(lastClaude.body.system, /numbered swatches/);
+  assert.ok(lastClaude.body.output_config.format.schema.properties.colours);
 });
 
 await test('health reports configuration without secrets', async () => {
